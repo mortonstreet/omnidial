@@ -18,6 +18,10 @@ export function getRedis(): Redis {
     try {
       _redis = new Redis(config.redis.url, {
         ...redisConfig,
+        // Railway's private network (*.railway.internal) resolves over IPv6
+        // only; ioredis defaults to IPv4 and fails with ENOTFOUND. 0 lets the
+        // resolver return either family.
+        family: 0,
         maxRetriesPerRequest: 3,
         enableReadyCheck: true,
         retryStrategy(times) {
