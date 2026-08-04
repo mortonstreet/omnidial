@@ -63,7 +63,7 @@ COPY --from=builder /app/backend/dist ./backend/dist
 # Copy shared packages (runtime types/exports)
 COPY --from=builder /app/shared ./shared
 
-EXPOSE 8000
+EXPOSE 8080
 
 # Run migrations then start
 CMD ["sh", "-c", "cd shared/db && npx prisma migrate deploy && cd /app && node backend/dist/server.mjs"]

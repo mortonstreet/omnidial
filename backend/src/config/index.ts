@@ -11,7 +11,9 @@ if (fs.existsSync(envLocalPath)) {
 }
 
 const envSchema = z.object({
-  PORT: z.coerce.number().default(8000),
+  // 8080 matches Railway's default target port; a mismatch here means the
+  // edge cannot reach the container and every request 502s.
+  PORT: z.coerce.number().default(8080),
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
@@ -24,7 +26,7 @@ const envSchema = z.object({
       return val.includes(',') ? val.split(',').map((s) => s.trim()) : val
     }),
   COOKIE_DOMAIN: z.string().optional(),
-  BACKEND_URL: z.string().url().default('http://localhost:8000'),
+  BACKEND_URL: z.string().url().default('http://localhost:8080'),
   FRONTEND_URL: z.string().url(),
   DATABASE_URL: z.string().url(),
   DB_HOST: z.string(),

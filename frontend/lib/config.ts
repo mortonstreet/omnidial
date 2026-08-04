@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const DEV_API_FALLBACK = "http://localhost:8000/api";
+const DEV_API_FALLBACK = "http://localhost:8080/api";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 const assertProductionApiUrl = (message: string): never => {
