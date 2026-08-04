@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { pingRedis } from '@/lib/redis'
 import exampleRoutes from './example'
 import adminRoutes from './admin'
 import organizationRoutes from './organization'
@@ -54,6 +55,13 @@ const router = Router()
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok' })
+})
+
+// Dependency health, reported separately from /health so a degraded
+// dependency never fails the Railway healthcheck and takes the app down.
+router.get('/health/deps', async (req, res) => {
+  const redis = await pingRedis()
+  res.json({ status: 'ok', redis })
 })
 
 router.use('/example', exampleRoutes)
