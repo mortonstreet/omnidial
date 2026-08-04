@@ -278,7 +278,7 @@ function DialerPageContent() {
           </div>
           <h2 className="text-xl font-semibold mb-2">Dialer Not Configured</h2>
           <p className="text-muted-foreground text-sm">
-            The dialer has not been set up for your organization. Contact your administrator to configure Twilio credentials.
+            The dialer has not been set up for your organization. Contact your administrator to configure Telnyx credentials.
           </p>
         </div>
       </div>
@@ -740,7 +740,7 @@ function DialerSettings({ organizationId, isAdminOrOwner }: { organizationId?: s
           {config && (
             <SettingsCard
               title="Phone Numbers"
-              description="Manage phone numbers from your Twilio account and assign them to clients."
+              description="Manage phone numbers from your Telnyx account and assign them to clients."
             >
               <PhoneNumberAssignmentManager organizationId={organizationId!} />
             </SettingsCard>

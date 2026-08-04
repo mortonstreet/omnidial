@@ -25,7 +25,10 @@ interface PhoneNumberPoolManagerProps {
 export function PhoneNumberPoolManager({ className }: PhoneNumberPoolManagerProps) {
   const [page, setPage] = useState(1);
   const [areaCodeFilter, setAreaCodeFilter] = useState("");
-  const [activeFilter, setActiveFilter] = useState<boolean | undefined>(undefined);
+  // Default to active only. Sync deactivates numbers no longer present in the
+  // Telnyx account rather than deleting them, so "all" surfaces every number
+  // the org has ever held — mostly stale pre-Telnyx entries.
+  const [activeFilter, setActiveFilter] = useState<boolean | undefined>(true);
   const limit = 20;
 
   const { data, isLoading, refetch } = usePhonePool(

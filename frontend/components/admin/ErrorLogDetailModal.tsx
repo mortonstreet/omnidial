@@ -218,7 +218,7 @@ export function ErrorLogDetailModal({ errorLogId, isOpen, onClose }: ErrorLogDet
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Twilio Call SID</p>
+                  <p className="text-xs text-muted-foreground">Telnyx Call SID</p>
                   <p className="text-foreground font-mono text-xs">{errorLog.twilioCallSid}</p>
                 </div>
               </div>

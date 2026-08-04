@@ -169,7 +169,7 @@ export function CallsLogTab() {
               type="text"
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search by phone number or Twilio SID..."
+              placeholder="Search by phone number or Telnyx SID..."
               className="w-full pl-10 pr-4 py-1.5 text-sm text-foreground placeholder-muted-foreground bg-card border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
             />
           </div>
@@ -190,7 +190,7 @@ export function CallsLogTab() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 font-medium text-foreground">Twilio SID</th>
+                    <th className="text-left py-3 px-4 font-medium text-foreground">Telnyx SID</th>
                     <th className="text-left py-3 px-4 font-medium text-foreground">Date</th>
                     <th className="text-left py-3 px-4 font-medium text-foreground">Status</th>
                     <th className="text-left py-3 px-4 font-medium text-foreground">Direction</th>

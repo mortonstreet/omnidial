@@ -178,7 +178,7 @@ export function PhoneNumberAssignmentManager({
       ) : (
         <div className="text-center py-4">
           <p className="text-sm text-muted-foreground">
-            No phone numbers found in your Twilio account.
+            No phone numbers found in your Telnyx account.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Purchase phone numbers from your Twilio Console.

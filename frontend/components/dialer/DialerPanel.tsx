@@ -251,7 +251,7 @@ export function DialerPanel({ phoneNumber, leadId, campaignId, clientId, clients
         if (!success) {
           console.error("Failed to initialize device");
           toast.error("Failed to connect to dialer", {
-            description: "Please check your Twilio configuration and try again",
+            description: "Please check your Telnyx configuration and try again",
           });
           setIsDialing(false);
           return;

@@ -86,7 +86,7 @@ export function InviteMemberModal({
               <div>
                 <span className="text-sm font-medium text-foreground">Owner</span>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Full admin access: billing, team management, Twilio config, integrations
+                  Full admin access: billing, team management, Telnyx config, integrations
                 </p>
               </div>
             </label>

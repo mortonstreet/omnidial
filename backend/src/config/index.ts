@@ -26,6 +26,12 @@ const envSchema = z.object({
       return val.includes(',') ? val.split(',').map((s) => s.trim()) : val
     }),
   COOKIE_DOMAIN: z.string().optional(),
+  // Off by default: this runs as an internal tool with no per-org Stripe
+  // subscription, so enforcing would deny every call.
+  BILLING_ENFORCED: z
+    .string()
+    .default('false')
+    .transform((val) => val === 'true'),
   BACKEND_URL: z.string().url().default('http://localhost:8080'),
   FRONTEND_URL: z.string().url(),
   DATABASE_URL: z.string().url(),
@@ -286,6 +292,7 @@ export const config = {
   backendUrl: env.BACKEND_URL,
   corsOrigin: env.CORS_ORIGIN,
   cookieDomain: env.COOKIE_DOMAIN,
+  billingEnforced: env.BILLING_ENFORCED,
   trustedOrigins: getTrustedOrigins(env.CORS_ORIGIN, env.FRONTEND_URL),
   databaseUrl: env.DATABASE_URL,
   db: {

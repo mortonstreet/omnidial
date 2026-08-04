@@ -1,4 +1,5 @@
 import { getRedis } from '@/lib/redis'
+import { config } from '@/config'
 import logger from '@/lib/logger'
 import * as usageTrackingService from '@/services/usageTracking.service'
 import * as subscriptionRepository from '@/repositories/subscription.repository'
@@ -40,6 +41,13 @@ export const canMakeCall = async (
   orgId: string,
   userId: string,
 ): Promise<CallGuardResult> => {
+  // Billing enforcement is opt-in. While this runs as an internal tool there is
+  // no Stripe subscription behind each org, so the guard would deny every call
+  // with NO_ACTIVE_SUBSCRIPTION. Set BILLING_ENFORCED=true to re-enable.
+  if (!config.billingEnforced) {
+    return { allowed: true, reason: 'ALLOWED' }
+  }
+
   // Superadmins bypass all billing checks
   try {
     const user = await getUserById(userId)

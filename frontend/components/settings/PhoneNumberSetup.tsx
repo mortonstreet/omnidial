@@ -68,14 +68,14 @@ function MainAccountState() {
           Phone System
         </CardTitle>
         <CardDescription>
-          This organization uses the master Twilio account. Phone numbers are
+          This organization uses the master Telnyx account. Phone numbers are
           managed by the system administrator.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <CheckCircle2 className="h-4 w-4 text-green-500" />
-          <span>Connected to master Twilio account</span>
+          <span>Connected to master Telnyx account</span>
         </div>
       </CardContent>
     </Card>
@@ -495,7 +495,7 @@ function ActiveState({
               Verify Caller ID
             </Button>
             <p className="text-sm text-muted-foreground mt-2">
-              Twilio will call your number with a verification code.
+              Telnyx will call your number with a verification code.
             </p>
           </div>
         )}

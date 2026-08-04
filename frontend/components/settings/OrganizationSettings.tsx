@@ -215,7 +215,7 @@ export function OrganizationSettings({ isAdmin }: OrganizationSettingsProps) {
             </div>
             <p className="text-xs text-muted-foreground">
               {inviteRole === "admin"
-                ? "Admins can manage billing, team members, Twilio config, and integrations"
+                ? "Admins can manage billing, team members, Telnyx config, and integrations"
                 : "Members can use the dialer, CRM, campaigns, leads, and analytics"}
             </p>
           </form>

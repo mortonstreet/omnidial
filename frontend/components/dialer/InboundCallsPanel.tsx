@@ -445,7 +445,7 @@ export function InboundCallsPanel({
           </div>
           <h3 className="text-lg font-semibold mb-2">Waiting for Calls</h3>
           <p className="text-muted-foreground text-sm">
-            Incoming calls will appear here. Make sure your Twilio number is configured to route calls to this
+            Incoming calls will appear here. Make sure your Telnyx number is configured to route calls to this
             application.
           </p>
           {!isReady && (
