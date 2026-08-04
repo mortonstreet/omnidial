@@ -143,8 +143,15 @@ const deployEnv =
   env.DEPLOY_ENV ?? (env.NODE_ENV === 'production' ? 'prod' : 'dev')
 const dbSslMode =
   env.DB_SSL_MODE ?? (deployEnv === 'dev' ? 'disable' : 'require')
+// Supabase's poolers present a self-signed chain that is not in Node's trust
+// store, so verifying it fails with SELF_SIGNED_CERT_IN_CHAIN and every Kysely
+// query throws. Prisma does not verify, which is why migrations succeed while
+// reads fail. The connection stays TLS-encrypted either way. An explicit
+// DB_SSL_REJECT_UNAUTHORIZED still wins.
+const isSupabaseDbHost =
+  env.DB_HOST.endsWith('.supabase.com') || env.DB_HOST.endsWith('.supabase.co')
 const dbSslRejectUnauthorized =
-  env.DB_SSL_REJECT_UNAUTHORIZED ?? deployEnv !== 'dev'
+  env.DB_SSL_REJECT_UNAUTHORIZED ?? (deployEnv !== 'dev' && !isSupabaseDbHost)
 
 // Build Redis URL from individual variables or use REDIS_URL directly
 const getRedisUrl = (): string => {
