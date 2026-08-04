@@ -1,8 +1,21 @@
 <svg width="32" height="32" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Dark rounded background -->
+  <defs>
+    <linearGradient id="fav-body" x1="30" y1="18" x2="130" y2="146" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9a9298"/>
+      <stop offset="0.45" stop-color="#6b6469"/>
+      <stop offset="0.75" stop-color="#a29ba0"/>
+      <stop offset="1" stop-color="#eae7e9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark rounded background, kept so the tab icon stays recognisable -->
   <rect width="160" height="160" rx="32" fill="#0a0a0a"/>
-  <!-- Ring (the O) -->
-  <circle cx="80" cy="80" r="44" stroke="white" stroke-width="14" fill="none"/>
-  <!-- Dial indicator dot -->
-  <circle cx="111" cy="49" r="14" fill="white"/>
+
+  <!-- Thick twisted ring. Heavy stroke so it survives 16px rendering. -->
+  <circle cx="80" cy="80" r="42" stroke="url(#fav-body)" stroke-width="30" fill="none"/>
+
+  <!-- Quarter-turn seams: the only detail legible at favicon size -->
+  <path d="M80 23 L80 38" stroke="#0a0a0a" stroke-opacity="0.55" stroke-width="4"/>
+  <path d="M137 80 L122 80" stroke="#0a0a0a" stroke-opacity="0.4" stroke-width="4"/>
+  <path d="M80 137 L80 122" stroke="#ffffff" stroke-opacity="0.5" stroke-width="4"/>
 </svg>

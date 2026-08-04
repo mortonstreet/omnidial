@@ -8,6 +8,79 @@ interface Logo3DSpinnerProps {
   className?: string;
 }
 
+/**
+ * The OmniDial mark: a ring whose cross-section is a rounded square that
+ * rotates a full turn as it sweeps the loop. That twist is what produces the
+ * diagonal seams in the logo — a plain TorusGeometry has a circular profile
+ * and can't show them, so the geometry is built by hand.
+ */
+function buildTwistedRing({
+  majorRadius = 0.78,
+  profileRadius = 0.3,
+  twistTurns = 1,
+  loopSegments = 260,
+  profileSegments = 56,
+  squareness = 4.2,
+}) {
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  // Superellipse: squareness 2 is a circle, higher values approach a rounded
+  // square. 4.2 matches the flat faces and soft corners in the reference.
+  const profilePoint = (t: number) => {
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    const e = 2 / squareness;
+    return [
+      Math.sign(c) * Math.pow(Math.abs(c), e) * profileRadius,
+      Math.sign(s) * Math.pow(Math.abs(s), e) * profileRadius,
+    ] as const;
+  };
+
+  for (let i = 0; i <= loopSegments; i++) {
+    const u = i / loopSegments;
+    const theta = u * Math.PI * 2;
+    const twist = u * Math.PI * 2 * twistTurns;
+
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    const cosW = Math.cos(twist);
+    const sinW = Math.sin(twist);
+
+    for (let j = 0; j <= profileSegments; j++) {
+      const [px, py] = profilePoint((j / profileSegments) * Math.PI * 2);
+
+      // Rotate the profile within the (radial, axial) plane, then place it.
+      const radial = px * cosW - py * sinW;
+      const axial = px * sinW + py * cosW;
+
+      positions.push(
+        (majorRadius + radial) * cosT,
+        (majorRadius + radial) * sinT,
+        axial,
+      );
+    }
+  }
+
+  const stride = profileSegments + 1;
+  for (let i = 0; i < loopSegments; i++) {
+    for (let j = 0; j < profileSegments; j++) {
+      const a = i * stride + j;
+      const b = a + stride;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
@@ -24,39 +97,29 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
     renderer.setSize(size, size);
     renderer.setPixelRatio(dpr);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.4;
+    renderer.toneMappingExposure = 1.25;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
     camera.position.set(0, 0, 6);
 
-    // Build the Omnidial mark: torus ring + indicator sphere
-    const torusGeo = new THREE.TorusGeometry(0.7, 0.1, 32, 100);
-    const sphereGeo = new THREE.SphereGeometry(0.12, 32, 32);
+    const ringGeo = buildTwistedRing({});
 
-    // Clean white ceramic material
+    // Brushed graphite: metallic with a clearcoat, matching the reference's
+    // soft specular roll-off rather than a mirror finish.
     const material = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      metalness: 0.0,
-      roughness: 0.15,
-      clearcoat: 0.8,
-      clearcoatRoughness: 0.1,
-      reflectivity: 0.6,
-      envMapIntensity: 0.8,
+      color: 0x8b8388,
+      metalness: 0.92,
+      roughness: 0.28,
+      clearcoat: 0.6,
+      clearcoatRoughness: 0.22,
+      reflectivity: 0.9,
+      envMapIntensity: 1.15,
     });
 
-    const ring = new THREE.Mesh(torusGeo, material);
-    const dot = new THREE.Mesh(sphereGeo, material);
-    // Position dot at 45° on the ring (upper-right)
-    dot.position.set(
-      0.7 * Math.cos(Math.PI / 4),
-      0.7 * Math.sin(Math.PI / 4),
-      0
-    );
-
+    const ring = new THREE.Mesh(ringGeo, material);
     const group = new THREE.Group();
     group.add(ring);
-    group.add(dot);
     scene.add(group);
 
     // Lighting
@@ -102,11 +165,11 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
           vec3 dir = normalize(vWorldPosition);
           float t = dir.y * 0.5 + 0.5;
           vec3 dark = vec3(0.03, 0.03, 0.04);
-          vec3 mid = vec3(0.08, 0.08, 0.1);
-          vec3 bright = vec3(0.2, 0.2, 0.22);
+          vec3 mid = vec3(0.12, 0.12, 0.14);
+          vec3 bright = vec3(0.55, 0.55, 0.58);
           vec3 color = mix(dark, mid, t);
           float spot = smoothstep(0.6, 1.0, t) * smoothstep(0.3, 0.7, dir.x * 0.5 + 0.5);
-          color = mix(color, bright, spot * 0.5);
+          color = mix(color, bright, spot * 0.7);
           gl_FragColor = vec4(color, 1.0);
         }
       `,
@@ -115,7 +178,7 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
     cubeCamera.update(renderer, envScene);
     material.envMap = cubeRenderTarget.texture;
 
-    // Animation
+    // Animation — same cadence as the original mark so the loader reads the same
     let time = 0;
 
     function animate() {
@@ -134,8 +197,7 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
     return () => {
       cancelAnimationFrame(frameRef.current);
       renderer.dispose();
-      torusGeo.dispose();
-      sphereGeo.dispose();
+      ringGeo.dispose();
       material.dispose();
       envGeo.dispose();
       envMat.dispose();

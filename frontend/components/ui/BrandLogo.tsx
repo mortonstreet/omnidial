@@ -1,7 +1,40 @@
+import { CompanyLogo } from "@/components/ui/CompanyLogo";
+
 interface BrandLogoProps {
   provider: string;
   size?: number;
 }
+
+/**
+ * Domains for providers we don't ship a hand-drawn mark for. Anything with a
+ * curated inline SVG below is deliberately NOT listed here — those are exact
+ * brand assets and beat a logo.dev fetch on fidelity, offline behaviour, and
+ * one less network request per tile.
+ */
+const PROVIDER_DOMAINS: Record<string, string> = {
+  attio: "attio.com",
+  prospeo: "prospeo.io",
+  leadmagic: "leadmagic.io",
+  apollo: "apollo.io",
+  zoominfo: "zoominfo.com",
+  clearbit: "clearbit.com",
+  lusha: "lusha.com",
+  forager: "forager.ai",
+  enrichengine: "enrichengine.com",
+  slack: "slack.com",
+  salesforce: "salesforce.com",
+  hubspot: "hubspot.com",
+  pipedrive: "pipedrive.com",
+  monday: "monday.com",
+  google_sheets: "google.com",
+};
+
+/** Display names for the logo.dev fallback's initials tile. */
+const PROVIDER_NAMES: Record<string, string> = {
+  attio: "Attio",
+  prospeo: "Prospeo",
+  leadmagic: "Lead Magic",
+};
 
 export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
   const s = size;
@@ -64,7 +97,13 @@ export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
       );
 
     case "attio":
-      return <img src="/attio-logo.png" alt="Attio" width={s} height={s} style={{ borderRadius: s * 0.2 }} />;
+      return (
+        <CompanyLogo
+          company={PROVIDER_NAMES.attio}
+          website={PROVIDER_DOMAINS.attio}
+          size={s}
+        />
+      );
 
     case "enrichengine":
       return (
@@ -75,7 +114,13 @@ export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
       );
 
     case "prospeo":
-      return <img src="/prospeo-logo.png" alt="Prospeo" width={s} height={s} style={{ borderRadius: s * 0.2 }} />;
+      return (
+        <CompanyLogo
+          company={PROVIDER_NAMES.prospeo}
+          website={PROVIDER_DOMAINS.prospeo}
+          size={s}
+        />
+      );
 
     case "forager":
       return (
@@ -92,7 +137,13 @@ export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
       );
 
     case "leadmagic":
-      return <img src="/leadmagic-logo.jpeg" alt="Lead Magic" width={s} height={s} style={{ borderRadius: s * 0.2 }} />;
+      return (
+        <CompanyLogo
+          company={PROVIDER_NAMES.leadmagic}
+          website={PROVIDER_DOMAINS.leadmagic}
+          size={s}
+        />
+      );
 
     case "apollo":
       return (
@@ -139,12 +190,27 @@ export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
     case "webhook":
       return <img src="/webhook-logo.svg" alt="Webhook" width={s} height={s} style={{ borderRadius: s * 0.2 }} />;
 
-    default:
+    default: {
+      // New providers get a real logo from logo.dev without needing a hand-drawn
+      // mark first. CompanyLogo falls back to initials when the domain is
+      // unknown or the fetch fails.
+      const domain = PROVIDER_DOMAINS[provider];
+      if (domain) {
+        return (
+          <CompanyLogo
+            company={PROVIDER_NAMES[provider] ?? provider}
+            website={domain}
+            size={s}
+          />
+        );
+      }
+
       return (
         <svg width={s} height={s} viewBox="0 0 48 48" fill="none">
           <rect x="3" y="3" width="42" height="42" rx="10" fill="currentColor" className="text-muted-foreground/20"/>
           <path d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" stroke="currentColor" className="text-muted-foreground" strokeWidth="2" transform="translate(8,8) scale(1.3)"/>
         </svg>
       );
+    }
   }
 }

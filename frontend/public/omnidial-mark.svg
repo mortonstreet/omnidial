@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="OmniDial">
+  <defs>
+    <linearGradient id="od-body" x1="18" y1="10" x2="82" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7c7379"/>
+      <stop offset="0.45" stop-color="#5f585d"/>
+      <stop offset="0.72" stop-color="#8e878c"/>
+      <stop offset="1" stop-color="#cfcace"/>
+    </linearGradient>
+    <linearGradient id="od-sheen" x1="20" y1="88" x2="76" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="0.55" stop-color="#e4e0e3" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="od-shadow" x1="70" y1="18" x2="34" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f2b2e" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#2f2b2e" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="od-ring">
+      <rect width="100" height="100" fill="#000"/>
+      <circle cx="50" cy="50" r="47" fill="#fff"/>
+      <ellipse cx="50" cy="49" rx="19.5" ry="21.5" fill="#000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#od-ring)">
+    <circle cx="50" cy="50" r="47" fill="url(#od-body)"/>
+
+    <!-- twisted band: the tube rotates a quarter turn per quadrant -->
+    <path d="M50 3 A47 47 0 0 1 97 50 L78 50 A28 28 0 0 0 50 22 Z" fill="url(#od-shadow)"/>
+    <path d="M3 50 A47 47 0 0 0 50 97 L50 78 A28 28 0 0 1 22 50 Z" fill="url(#od-sheen)"/>
+    <path d="M50 97 A47 47 0 0 0 97 50 L78 50 A28 28 0 0 1 50 78 Z" fill="url(#od-sheen)" opacity="0.55"/>
+
+    <!-- seams where the profile edges cross the silhouette -->
+    <path d="M50 3 L50 22" stroke="#3b3639" stroke-opacity="0.45" stroke-width="1.1"/>
+    <path d="M97 50 L78 50" stroke="#3b3639" stroke-opacity="0.35" stroke-width="1.1"/>
+    <path d="M50 97 L50 78" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1.1"/>
+    <path d="M3 50 L22 50" stroke="#3b3639" stroke-opacity="0.3" stroke-width="1.1"/>
+  </g>
+
+  <circle cx="50" cy="50" r="46.5" fill="none" stroke="#2b2729" stroke-opacity="0.35" stroke-width="1"/>
+</svg>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { MoreHorizontal, Phone, Mail, Building, Trash2 } from "lucide-react";
 import { LinkedInIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { CompanyLogo } from "@/components/ui/CompanyLogo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,7 @@ interface LeadCardProps {
     email?: string | null;
     phone: string;
     company?: string | null;
+    website?: string | null;
     title?: string | null;
     linkedInUrl?: string | null;
     dealValue?: string | number | null;
@@ -122,7 +124,13 @@ export function LeadCard({ lead, onDelete }: LeadCardProps) {
         )}
         {lead.company && (
           <div className="flex items-center gap-2 text-muted-foreground">
-            <Building className="w-4 h-4" />
+            <CompanyLogo
+              company={lead.company}
+              website={lead.website}
+              email={lead.email}
+              size={16}
+              className="rounded-sm"
+            />
             <span className="truncate">{lead.company}</span>
           </div>
         )}
