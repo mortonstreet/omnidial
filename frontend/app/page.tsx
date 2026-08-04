@@ -1,10 +1,9 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import DarkNavigation from "@/components/landing/DarkNavigation";
-import DarkFooter from "@/components/landing/DarkFooter";
-import DarkFeaturesGrid from "@/components/landing/DarkFeaturesGrid";
-import HeroBackgroundAnimation from "@/components/landing/HeroBackgroundAnimation";
+import OmniDialFooter from "@/components/landing/OmniDialFooter";
 import { Logo3DSpinner } from "@/components/ui/Logo3DSpinner";
+import { BOOKING_URL, getSignInUrl } from "@/lib/marketing-links";
 
 export const metadata: Metadata = {
   title: "OmniDial | Sales Dialer Built for Closers",
@@ -12,63 +11,64 @@ export const metadata: Metadata = {
     "Parallel dialing, local presence, and live coaching in one place. Reach more prospects without burning your numbers.",
 };
 
+/**
+ * Marketing page: hero and footer only.
+ *
+ * DarkFeaturesGrid and DarkFooter are deliberately not used — DarkFooter also
+ * renders a "More calls. More connects." headline and a four-column link farm,
+ * which collided with the hero.
+ */
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-white">
       <DarkNavigation />
 
-      <main>
-        {/* Hero */}
-        <section className="relative overflow-hidden pt-32 pb-24">
-          <HeroBackgroundAnimation />
+      <main className="flex flex-1 items-center justify-center px-6 pt-32 pb-24">
+        <div className="flex w-full max-w-3xl flex-col items-center text-center">
+          {/* Continuously rotating mark */}
+          <Logo3DSpinner size={160} className="mb-12" />
 
-          <div className="relative z-10 max-w-7xl mx-auto px-6">
-            <div className="flex flex-col items-center text-center">
-              {/* Continuously rotating mark */}
-              <div className="mb-10">
-                <Logo3DSpinner size={168} />
-              </div>
+          <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
+            The sales dialer built for closers
+          </h1>
 
-              <h1 className="font-display font-semibold tracking-tight text-4xl sm:text-5xl lg:text-6xl max-w-4xl">
-                The sales dialer built for closers
-              </h1>
+          <p className="mt-6 max-w-xl text-base leading-relaxed text-white/55 sm:text-lg">
+            Parallel dialing, local presence, and live coaching in one place.
+            Reach more prospects without burning your numbers.
+          </p>
 
-              <p className="mt-6 text-base sm:text-lg text-white/60 max-w-2xl leading-relaxed">
-                Parallel dialing, local presence, and live coaching in one
-                place. Reach more prospects without burning your numbers.
-              </p>
+          <div className="mt-12 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row">
+            {/* Invite-only: the primary path is a call, not a signup form */}
+            <a
+              href={BOOKING_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full rounded-xl px-7 py-3.5 text-center text-sm font-semibold text-black
+                         bg-[linear-gradient(110deg,#ffffff_0%,#cfcace_45%,#ffffff_100%)]
+                         shadow-[0_0_40px_-12px_rgba(255,255,255,0.45)]
+                         transition-transform duration-200 hover:scale-[1.02] sm:w-auto"
+            >
+              Request access
+            </a>
 
-              <div className="mt-10 flex flex-col sm:flex-row items-center gap-3">
-                <Link href="/signup" className="w-full sm:w-auto">
-                  <span
-                    className="block rounded-xl px-7 py-3.5 text-sm font-semibold text-black text-center
-                               bg-[linear-gradient(110deg,#ffffff_0%,#cfcace_45%,#ffffff_100%)]
-                               shadow-[0_0_40px_-12px_rgba(255,255,255,0.5)]
-                               transition-transform duration-200 hover:scale-[1.02]"
-                  >
-                    Request access
-                  </span>
-                </Link>
-
-                <Link href="/login" className="w-full sm:w-auto">
-                  <span
-                    className="block rounded-xl px-7 py-3.5 text-sm font-semibold text-white text-center
-                               bg-[linear-gradient(110deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.06)_50%,rgba(255,255,255,0.14)_100%)]
-                               border border-white/15 backdrop-blur-sm
-                               transition-colors duration-200 hover:border-white/30 hover:bg-white/10"
-                  >
-                    Log in
-                  </span>
-                </Link>
-              </div>
-            </div>
+            <a
+              href={getSignInUrl()}
+              className="w-full rounded-xl border border-white/15 px-7 py-3.5 text-center text-sm font-semibold text-white
+                         bg-[linear-gradient(110deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.14)_100%)]
+                         backdrop-blur-sm transition-colors duration-200
+                         hover:border-white/30 hover:bg-white/10 sm:w-auto"
+            >
+              Sign in
+            </a>
           </div>
-        </section>
 
-        <DarkFeaturesGrid />
+          <p className="mt-6 text-xs text-white/30">
+            OmniDial is invite only. Sign in is for approved accounts.
+          </p>
+        </div>
       </main>
 
-      <DarkFooter />
+      <OmniDialFooter />
     </div>
   );
 }
