@@ -1,0 +1,43 @@
+{
+  "name": "express-next-monorepo-template",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm exec nx run-many --target=dev --parallel=3",
+    "dev:tunnel": "pnpm dev & pnpm tunnel",
+    "tunnel": "cloudflared tunnel --url http://localhost:8000",
+    "format": "prettier  \"{backend, frontend, shared}/**/*.{ts,tsx,js,json}\" --ignore-path .gitignore",
+    "format:check": "pnpm format --check",
+    "format:write": "pnpm format --write",
+    "build": "pnpm exec nx run-many --target=build",
+    "tsc": "pnpm exec nx run-many --target=tsc",
+    "lint": "pnpm exec nx run-many --target=lint",
+    "qa:extension-h": "node scripts/qa/extension-h-observability-matrix.mjs",
+    "validate": "pnpm format:write && pnpm tsc && pnpm lint && pnpm build",
+    "prepare": "husky install || true"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.19.0",
+  "pnpm": {
+    "overrides": {
+      "prisma": "^6.19.0",
+      "@prisma/client": "^6.19.0",
+      "@types/react": "19.2.7",
+      "@types/react-dom": "19.2.3"
+    }
+  },
+  "devDependencies": {
+    "husky": "^8.0.0",
+    "lint-staged": "^16.2.5",
+    "nx": "21.6.5",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "next": "^16.1.1"
+  }
+}

@@ -1,0 +1,7 @@
+<svg width="200" height="40" viewBox="0 0 200 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bold forward slash -->
+  <path d="M26 4L14 36" stroke="white" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Text "OMNIDIAL" - bold uppercase -->
+  <text x="40" y="28" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="800" fill="#fafafa" letter-spacing="-0.05em">OMNIDIAL</text>
+</svg>

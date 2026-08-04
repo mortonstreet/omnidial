@@ -1,0 +1,26 @@
+# Dependencies - these get installed fresh in the container
+node_modules
+**/node_modules
+
+# Build outputs - these get rebuilt
+.next
+**/dist
+**/.turbo
+
+# Development files
+.git
+.github
+.husky
+.vscode
+*.log
+*.md
+!README.md
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__
+
+# Local env files
+.env*.local
+.env.development

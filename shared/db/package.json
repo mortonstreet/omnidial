@@ -1,0 +1,31 @@
+{
+  "name": "@shared/db",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "node ./scripts/guard-migration-mode.mjs migrate && prisma migrate dev",
+    "db:deploy": "node ./scripts/guard-migration-mode.mjs deploy && prisma migrate deploy",
+    "db:reset": "prisma migrate reset",
+    "db:studio": "prisma studio",
+    "db:format": "prisma format",
+    "db:status": "prisma migrate status --schema ./prisma/schema.prisma",
+    "db:check:rls": "node ./scripts/check-rls-coverage.mjs",
+    "db:check:migration-safety": "node ./scripts/check-migration-safety.mjs",
+    "db:check:extensions": "prisma db execute --schema ./prisma/schema.prisma --file ./prisma/checks/verify_required_extensions.sql",
+    "db:check:rls-claims": "prisma db execute --schema ./prisma/schema.prisma --file ./prisma/checks/verify_rls_claim_contract.sql",
+    "db:predeploy": "pnpm run db:status && pnpm run db:check:rls && pnpm run db:check:migration-safety && pnpm run db:check:extensions && pnpm run db:check:rls-claims"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.1",
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "kysely": "^0.28.8",
+    "prisma": "^6.19.0",
+    "prisma-kysely": "^2.2.1"
+  }
+}

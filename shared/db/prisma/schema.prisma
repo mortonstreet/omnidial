@@ -1,0 +1,2790 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator prisma {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+generator client {
+  provider = "prisma-kysely"
+  output   = "../src/generated"
+  fileName = "types.ts"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                       String    @id @default(uuid())
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @default(now()) @updatedAt
+  email                    String
+  emailVerified            Boolean   @default(false)
+  name                     String?
+  image                    String?
+  stripeCustomerId         String?
+  lastActiveOrganizationId String?
+  role                     String?
+  banned                   Boolean?  @default(false)
+  banReason                String?
+  banExpires               DateTime?
+  mustResetPassword        Boolean   @default(false)
+  passwordResetAt          DateTime?
+  passwordResetByUserId    String?
+  onboardingRole           String?
+  onboardingIndustry       String?
+  onboardingComplete       Boolean   @default(false)
+
+  sessions              Session[]
+  twoFactors            TwoFactor[]
+  accounts              Account[]
+  members               Member[]
+  invitations           Invitation[]
+  notifications         Notification[]
+  campaigns             Campaign[]
+  campaignLeads         CampaignLead[]
+  campaignUsers         CampaignUser[]
+  leadLists             LeadList[]
+  activities            Activity[]
+  scheduleEvents        ScheduleEvent[]
+  powerDialerProgresses PowerDialerProgress[]
+  integrations          Integration[]
+  apiKeys               ApiKey[]
+  listFavorites         ListFavorite[]
+  listOpens             ListOpen[]
+  clientAssignments     ClientUserAssignment[]
+  leadsCreated           Lead[]                   @relation("LeadCreatedBy")
+  leadsModified          Lead[]                   @relation("LeadModifiedBy")
+  leadListsModified      LeadList[]               @relation("LeadListModifiedBy")
+  foldersCreated         LeadListFolder[]         @relation("FolderCreatedBy")
+  foldersModified        LeadListFolder[]         @relation("FolderModifiedBy")
+  enrichEngineConnections EnrichEngineConnection[]
+  slackWorkspacesInstalled SlackWorkspace[]
+  slackUserLinks           SlackUserLink[]
+  slackNotificationRules   SlackNotificationRule[]
+
+  // Agent orchestration v2
+  agentApprovalsResponded AgentApproval[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  activeOrganizationId String?
+  impersonatedBy       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@map("verification")
+}
+
+model TwoFactor {
+  id          String   @id
+  secret      String
+  backupCodes String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("twoFactor")
+}
+
+model Organization {
+  id                    String                  @id
+  name                  String
+  slug                  String
+  logo                  String?
+  createdAt             DateTime
+  metadata              String?
+  members               Member[]
+  invitations           Invitation[]
+  creditTransactions    CreditTransaction[]
+  campaigns             Campaign[]
+  leads                 Lead[]
+  leadListFolders       LeadListFolder[]
+  leadLists             LeadList[]
+  clients               Client[]
+  activities            Activity[]
+  scheduleEvents        ScheduleEvent[]
+  scripts               Script[]
+  integrations          Integration[]
+  apiKeys               ApiKey[]
+  enrichEngineConnection EnrichEngineConnection?
+  slackWorkspaces       SlackWorkspace[]
+
+  // Agent orchestration v2
+  agentDefinitions  AgentDefinition[]
+  agentExecutions   AgentExecution[]
+  agentApprovals    AgentApproval[]
+  agentTools        AgentTool[]
+  agentUsage        AgentUsage[]
+
+  // Phone provisioning
+  phoneProvisioning PhoneProvisioning?
+
+  managedBySuperadmin Boolean @default(false)
+
+  usageCycles UsageCycle[]
+  billingEvents BillingEvent[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+// Client model for organizing campaigns
+model Client {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  color          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaigns       Campaign[]
+  phoneNumbers    ClientPhoneNumber[]
+  userAssignments ClientUserAssignment[]
+  leads           Lead[]
+
+  @@index([organizationId])
+  @@map("client")
+}
+
+// Client-User Assignment for member visibility control
+model ClientUserAssignment {
+  id             String   @id @default(uuid())
+  organizationId String
+  clientId       String
+  userId         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("client_user_assignment")
+}
+
+// Client Phone Number Assignment - links specific Twilio numbers to clients
+model ClientPhoneNumber {
+  id             String   @id @default(uuid())
+  organizationId String
+  clientId       String
+  phoneNumber    String   // E.164 format
+  friendlyName   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, phoneNumber]) // Each phone number unique per org
+  @@index([organizationId])
+  @@index([clientId])
+  @@map("client_phone_number")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String
+  createdAt      DateTime
+
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  createdAt      DateTime
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@map("invitation")
+}
+
+model Subscription {
+  id                   String    @id
+  plan                 String
+  referenceId          String
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String?   @default("incomplete")
+  periodStart          DateTime?
+  periodEnd            DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  cancelAtPeriodEnd    Boolean?  @default(false)
+  seats                Int?
+  accountStatus        String    @default("active") // active | grace_period | suspended | canceled
+  trustTier            String    @default("new") // new | established | trusted | vip
+  overageCapCents      Int       @default(1000) // $10 default
+  overageCapHit        Boolean   @default(false)
+
+  @@map("subscription")
+}
+
+model CreditTransaction {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentInvoiceId String
+  amount           Int
+  type             String
+  metadata         Json
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@map("credit_transaction")
+}
+
+model Notification {
+  id      String    @id @default(uuid())
+  userId  String
+  title   String
+  message String
+  link    String?
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification")
+}
+
+model Example {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("example")
+}
+
+// Campaign models for OmniDial
+model Campaign {
+  id             String    @id @default(uuid())
+  organizationId String
+  createdById    String
+  clientId       String?
+  name           String
+  leadCount      Int       @default(0)
+  dialedCount    Int       @default(0)
+  connectedCount Int       @default(0)
+  lastCalledAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy             User                  @relation(fields: [createdById], references: [id])
+  client                Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  campaignLeads         CampaignLead[]
+  campaignUsers         CampaignUser[]
+  campaignLists         CampaignList[]
+  scripts               Script[]
+  powerDialerProgresses PowerDialerProgress[]
+
+  // Agent orchestration v2
+  agentExecutions AgentExecution[]
+  agentApprovals  AgentApproval[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([clientId])
+  @@map("campaign")
+}
+
+// CRM Models
+
+model Lead {
+  id               String    @id @default(uuid())
+  organizationId   String
+  firstName        String?
+  lastName         String?
+  email            String?
+  phone            String?
+  normalizedPhone  String?   // E.164 format for deduplication (e.g., "+15551234567")
+  company          String?
+  title            String?
+  linkedInUrl      String?
+  website          String?   // Company or personal website URL
+  customFields     Json      @default("{}")
+  pipelineStageId  String?
+  dealValue        Decimal?  @db.Decimal(12, 2)
+  aiCompanySummary String?   // AI-generated company summary (cached, markdown format for backward compat)
+
+  // Structured AI summary fields (Phase 2)
+  aiCompanyOverview      String?   // Company description (2-4 sentences)
+  aiSalesTalkingPoints   Json?     // Array of talking points strings
+  aiBusinessContext      Json?     // { founded, size, funding, recentNews, targetCustomers, products }
+  aiSummaryGeneratedAt   DateTime? // When the summary was last generated
+  aiSummaryProvider      String?   // "openrouter" | "openai" - which provider generated this
+
+  createdById      String?
+  lastModifiedById String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+  deletedAt        DateTime?
+
+  // Call tracking fields for predictive scoring
+  phoneType         String?   // "mobile" | "landline" | "voip" | "unknown"
+  totalCallAttempts Int       @default(0)
+  totalAnswers      Int       @default(0)
+  lastCallAt        DateTime?
+
+  // Enrichment fields
+  enrichmentStatus  String?   // "pending" | "enriched" | "failed" | "stale"
+  enrichmentSources String[]  @default([]) // Array of vendor names that enriched this lead
+
+  // Timezone resolution (from LinkedIn location)
+  timezone            String?   // IANA timezone (e.g., "America/Detroit")
+  timezoneResolvedAt  DateTime? // When resolution was attempted (null = never tried)
+
+  // Voicemail analysis
+  hasPersonalVoicemail Boolean?  // true = personal greeting, false = generic/carrier, null = unknown
+
+  // Direct client assignment (for leads not in a campaign)
+  clientId         String?
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipelineStage  PipelineStage?  @relation(fields: [pipelineStageId], references: [id])
+  client         Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy      User?           @relation("LeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastModifiedBy User?           @relation("LeadModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
+  tasks          Task[]
+  notes          Note[]
+  campaignLeads  CampaignLead[]
+  listEntries    LeadListEntry[]
+  scheduleEvents ScheduleEvent[]
+  qualifications   LeadQualification[]
+  intelligenceData CallIntelligence[]
+  crmSyncRecords   CrmSyncRecord[]
+
+  // Agent orchestration v2
+  agentExecutions AgentExecution[]
+  agentApprovals  AgentApproval[]
+
+  // Note: Partial unique index on (organizationId, normalizedPhone) is created via raw SQL
+  // to only apply when deletedAt IS NULL. See migration 20260120000000_add_normalized_phone
+  @@index([organizationId])
+  @@index([organizationId, phone])
+  @@index([organizationId, normalizedPhone])
+  @@index([organizationId, timezone]) // For timezone-based calling windows
+  @@index([organizationId, enrichmentStatus]) // For enrichment queue processing
+  @@index([createdById])
+  @@index([lastModifiedById])
+  @@index([clientId])
+  @@map("lead")
+}
+
+model PipelineStage {
+  id             String   @id @default(uuid())
+  organizationId String
+  label          String
+  color          String   @default("#6B7280")
+  sortOrder      Int      @default(0)
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  leads Lead[]
+
+  @@index([organizationId])
+  @@map("pipeline_stage")
+}
+
+model Task {
+  id             String    @id @default(uuid())
+  organizationId String
+  userId         String
+  leadId         String
+  title          String
+  dueAt          DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId, dueAt])
+  @@map("task")
+}
+
+model Note {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  leadId         String
+  content        String
+  createdAt      DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([leadId])
+  @@map("note")
+}
+
+model CampaignLead {
+  id             String   @id @default(uuid())
+  campaignId     String
+  leadId         String
+  assignedUserId String?
+  status         String   @default("pending") // 'pending' | 'dialed' | 'completed'
+  dialOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  // Predictive scoring fields
+  predictiveScore Decimal? @db.Decimal(5, 4) // Cached score for this lead in this campaign
+  scoreDialOrder  Int?     // Dial order based on predictive score (null = use dialOrder)
+
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUser User?    @relation(fields: [assignedUserId], references: [id])
+
+  @@unique([campaignId, leadId])
+  @@index([campaignId])
+  @@index([assignedUserId])
+  @@index([campaignId, predictiveScore(sort: Desc)])
+  @@index([campaignId, status, dialOrder]) // For power dialer queue ordering
+  @@map("campaign_lead")
+}
+
+model CampaignUser {
+  campaignId String
+  userId     String
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, userId])
+  @@map("campaign_user")
+}
+
+// Lead Lists Models
+
+model LeadListFolder {
+  id               String   @id @default(uuid())
+  organizationId   String
+  parentId         String?
+  name             String
+  color            String   @default("#6B7280")
+  sortOrder        Int      @default(0)
+  createdById      String?
+  lastModifiedById String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         LeadListFolder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: SetNull)
+  children       LeadListFolder[] @relation("FolderToFolder")
+  lists          LeadList[]
+  favorites      ListFavorite[]
+  opens          ListOpen[]
+  createdBy      User?            @relation("FolderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastModifiedBy User?            @relation("FolderModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([parentId])
+  @@index([createdById])
+  @@index([lastModifiedById])
+  @@map("lead_list_folder")
+}
+
+model LeadList {
+  id               String   @id @default(uuid())
+  organizationId   String
+  folderId         String?
+  name             String
+  description      String?
+  leadCount        Int      @default(0)
+  importStatus     String   @default("pending") // 'pending' | 'processing' | 'completed' | 'failed'
+  importError      String?
+  createdById      String
+  lastModifiedById String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  folder                LeadListFolder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdBy             User                  @relation(fields: [createdById], references: [id])
+  lastModifiedBy        User?                 @relation("LeadListModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
+  entries               LeadListEntry[]
+  campaignLists         CampaignList[]
+  smsCampaignLists      SmsCampaignList[]
+  powerDialerProgresses PowerDialerProgress[]
+  favorites             ListFavorite[]
+  opens                 ListOpen[]
+
+  @@index([organizationId])
+  @@index([folderId])
+  @@index([lastModifiedById])
+  @@map("lead_list")
+}
+
+model LeadListEntry {
+  id        String    @id @default(uuid())
+  listId    String
+  leadId    String
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  removedAt DateTime? // Soft delete - lead removed from list but data preserved
+
+  list LeadList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  lead Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, leadId])
+  @@index([listId])
+  @@index([leadId])
+  @@map("lead_list_entry")
+}
+
+model CampaignList {
+  id         String   @id @default(uuid())
+  campaignId String
+  listId     String
+  addedAt    DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  list     LeadList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, listId])
+  @@index([campaignId])
+  @@index([listId])
+  @@map("campaign_list")
+}
+
+// Twilio/Dialer Models
+
+model TwilioConfig {
+  id                 String   @id @default(uuid())
+  organizationId     String   @unique
+  accountSid         String
+  authTokenEncrypted String
+  phoneNumbers       String[] @default([])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  calls              Call[]
+  voicemailDrops     VoicemailDrop[]
+  voicemailGreetings VoicemailGreeting[]
+  dispositions       Disposition[]
+
+  @@map("twilio_config")
+}
+
+model Call {
+  id               String       @id @default(uuid())
+  twilioConfigId   String
+  twilioConfig     TwilioConfig @relation(fields: [twilioConfigId], references: [id], onDelete: Cascade)
+  userId           String
+  leadId           String?
+  campaignId       String?
+  twilioCallSid    String?      @unique // Parent call SID (browser to Twilio)
+  dialCallSid      String?      @unique // Child call SID (Twilio to destination phone)
+  conferenceSid    String?      // Conference SID for live listening
+  fromNumber       String
+  toNumber         String
+  direction        String       @default("outbound") // "outbound" | "inbound"
+  status           String       @default("initiated") // "initiated" | "ringing" | "in-progress" | "completed" | "failed" | "missed"
+  dispositionId    String?
+  disposition      Disposition? @relation(fields: [dispositionId], references: [id])
+  duration         Int          @default(0)
+  recordingUrl     String?
+  recordingSid     String?
+  voicemailDropped Boolean      @default(false)
+  voicemailLeft    Boolean      @default(false) // true if caller left a voicemail (inbound)
+  voicemailReadAt  DateTime?    // null = unread, timestamp = read
+  startedAt        DateTime     @default(now())
+  answeredAt       DateTime?
+  endedAt          DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Parallel dialing fields
+  parallelSessionId    String?  // Reference to parallel dial session
+  wasParallelAbandoned Boolean  @default(false) // True if this call was abandoned in parallel dialing
+
+  // Predictive scoring field
+  predictiveScore      Decimal? @db.Decimal(5, 4) // Score at time of dial
+
+  // Local presence field
+  poolNumberId         String?  // Which pool number was used for caller ID
+
+  // Sales Coach relations
+  transcript       CallTranscript?
+  coaching         CallCoaching?
+  intelligence     CallIntelligence?
+
+  @@index([twilioConfigId])
+  @@index([userId])
+  @@index([leadId])
+  @@index([campaignId])
+  @@index([direction])
+  @@index([startedAt])
+  @@index([parallelSessionId])
+  @@index([userId, startedAt]) // For user call history and analytics
+  @@index([twilioConfigId, startedAt]) // For org-wide call analytics
+  @@index([voicemailLeft]) // For voicemail inbox queries
+  @@map("call")
+}
+
+model VoicemailGreeting {
+  id             String       @id @default(uuid())
+  twilioConfigId String
+  twilioConfig   TwilioConfig @relation(fields: [twilioConfigId], references: [id], onDelete: Cascade)
+  name           String
+  recordingUrl   String
+  recordingSid   String?
+  duration       Int          @default(0)
+  isActive       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([twilioConfigId])
+  @@map("voicemail_greeting")
+}
+
+model VoicemailDrop {
+  id             String       @id @default(uuid())
+  twilioConfigId String
+  twilioConfig   TwilioConfig @relation(fields: [twilioConfigId], references: [id], onDelete: Cascade)
+  userId         String
+  name           String
+  recordingUrl   String
+  duration       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([twilioConfigId])
+  @@index([userId])
+  @@map("voicemail_drop")
+}
+
+model Disposition {
+  id             String       @id @default(uuid())
+  twilioConfigId String
+  twilioConfig   TwilioConfig @relation(fields: [twilioConfigId], references: [id], onDelete: Cascade)
+  label          String
+  color          String       @default("#6B7280")
+  sortOrder      Int          @default(0)
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  calls Call[]
+
+  @@index([twilioConfigId])
+  @@map("disposition")
+}
+
+// Dashboard Activity Feed
+model Activity {
+  id             String   @id @default(uuid())
+  type           String // 'call' | 'lead_added' | 'lead_updated' | 'task_completed' | 'campaign_created'
+  userId         String
+  organizationId String
+  description    String
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, userId, createdAt(sort: Desc)]) // For user-specific activity feeds
+  @@index([type])
+  @@map("activity")
+}
+
+// Dashboard Schedule Events
+model ScheduleEvent {
+  id             String    @id @default(uuid())
+  type           String // 'callback' | 'meeting' | 'demo'
+  title          String
+  leadId         String?
+  userId         String
+  organizationId String
+  startTime      DateTime
+  endTime        DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  lead         Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startTime])
+  @@index([organizationId, startTime])
+  @@map("schedule_event")
+}
+
+// Call Scripts for campaigns
+model Script {
+  id             String   @id @default(uuid())
+  organizationId String
+  campaignId     String?
+  name           String
+  content        String
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([campaignId])
+  @@map("script")
+}
+
+// Power Dialer Progress tracking
+model PowerDialerProgress {
+  id           String   @id @default(uuid())
+  userId       String
+  campaignId   String
+  listId       String
+  currentIndex Int      @default(0)
+  totalLeads   Int      @default(0)
+  dialedCount  Int      @default(0)
+  isPaused     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  list     LeadList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campaignId, listId])
+  @@index([userId])
+  @@index([campaignId])
+  @@map("power_dialer_progress")
+}
+
+// Integration for OAuth connections (Settings feature)
+model Integration {
+  id             String    @id @default(uuid())
+  organizationId String
+  provider       String // 'salesforce' | 'hubspot' | 'slack' | 'google_sheets' | 'zapier' | 'webhook'
+  accessToken    String? // Encrypted
+  refreshToken   String? // Encrypted
+  tokenExpiresAt DateTime?
+  connectedById  String
+  config         Json? // Sync settings, field mappings, etc.
+  autoSyncToCrm  Boolean   @default(false)
+  lastSyncAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectedBy  User         @relation(fields: [connectedById], references: [id])
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+  @@map("integration")
+}
+
+// API Keys for external access (Settings feature)
+model ApiKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  keyHash        String // bcrypt hash of the full key
+  keyPrefix      String // First 8 chars + last 4 for display (e.g., "sk_live_abc*****xyz1")
+  scopes         String[] // ['read:leads', 'write:leads', 'read:calls', etc.]
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdById    String
+  createdAt      DateTime  @default(now())
+  revokedAt      DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User          @relation(fields: [createdById], references: [id])
+  usageLogs    ApiKeyUsage[]
+
+  @@index([organizationId])
+  @@index([keyHash])
+  @@map("api_key")
+}
+
+// API Key Usage Tracking (Settings feature)
+model ApiKeyUsage {
+  id         String   @id @default(uuid())
+  apiKeyId   String
+  endpoint   String
+  method     String
+  statusCode Int
+  createdAt  DateTime @default(now())
+
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, createdAt(sort: Desc)])
+  @@map("api_key_usage")
+}
+
+// EnrichEngine API Key Connection (not OAuth)
+model EnrichEngineConnection {
+  id              String    @id @default(uuid())
+  organizationId  String    @unique
+  apiKeyEncrypted String    // Encrypted API key from EnrichEngine
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@map("enrichengine_connection")
+}
+
+// List Favorites for users
+model ListFavorite {
+  id        String   @id @default(uuid())
+  userId    String
+  listId    String?
+  folderId  String?
+  createdAt DateTime @default(now())
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  list   LeadList?       @relation(fields: [listId], references: [id], onDelete: Cascade)
+  folder LeadListFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("list_favorite")
+}
+
+// List Opens for tracking recents
+model ListOpen {
+  id       String   @id @default(uuid())
+  userId   String
+  listId   String?
+  folderId String?
+  openedAt DateTime @default(now())
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  list   LeadList?       @relation(fields: [listId], references: [id], onDelete: Cascade)
+  folder LeadListFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, openedAt(sort: Desc)])
+  @@map("list_open")
+}
+
+// Active Dialer Sessions for live listening
+model ActiveDialerSession {
+  id             String    @id @default(uuid())
+  organizationId String
+  userId         String
+  twilioConfigId String
+  status         String    @default("active") // "active" | "paused" | "ended"
+  currentCallId  String?
+  campaignId     String?
+  listId         String?
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Sales floor visibility fields
+  currentLeadId       String?
+  currentLeadName     String?  // Cached for display without join
+  callsThisSession    Int      @default(0)
+  connectedThisSession Int     @default(0)
+
+  @@index([organizationId, status])
+  @@index([userId])
+  @@map("active_dialer_session")
+}
+
+// Sales Coach - Call Transcript storage
+model CallTranscript {
+  id               String   @id @default(uuid())
+  callId           String   @unique
+  organizationId   String
+  transcriptText   String   // Full transcript text
+  transcriptSource String   @default("twilio") // "twilio" | "deepgram" | "assembly" | "manual"
+  speakerLabels    Json     @default("[]") // Array of speaker segments with timestamps
+  durationSeconds  Int      @default(0)
+  language         String   @default("en-US")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  call          Call              @relation(fields: [callId], references: [id], onDelete: Cascade)
+  coaching      CallCoaching?
+  intelligence  CallIntelligence?
+
+  @@index([organizationId])
+  @@index([callId])
+  @@map("call_transcript")
+}
+
+// Sales Coach - AI Coaching Feedback
+model CallCoaching {
+  id             String   @id @default(uuid())
+  callId         String   @unique
+  transcriptId   String   @unique
+  organizationId String
+  userId         String   // The rep who made the call
+
+  // AI Analysis Results
+  overallScore   Int      @default(0) // 1-10 score
+  unhingedQuote  String?  // Headline/memorable coaching quote
+  strengths      String[] @default([]) // Array of strength points
+  improvements   String[] @default([]) // Array of improvement areas
+
+  // Detailed feedback stored as JSON
+  feedback       Json     @default("{}") // Structured coaching feedback by category
+
+  // Analysis metadata
+  modelUsed      String   @default("claude-3-sonnet") // AI model used for analysis
+  tokensUsed     Int      @default(0)
+  analysisTimeMs Int      @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  call       Call          @relation(fields: [callId], references: [id], onDelete: Cascade)
+  transcript CallTranscript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([callId])
+  @@index([overallScore])
+  @@map("call_coaching")
+}
+
+// Call Intelligence - AI-extracted business intelligence from call transcripts
+model CallIntelligence {
+  id             String   @id @default(uuid())
+  callId         String   @unique
+  transcriptId   String   @unique
+  organizationId String
+  userId         String
+  leadId         String?
+
+  // AI Analysis Results
+  decisionMaker     Json     @default("{}") // { name, title, role, notes }
+  currentStrategies Json     @default("[]") // Array of strategy strings
+  painPoints        Json     @default("[]") // Array of pain point strings
+  techStack         Json     @default("[]") // Array of tech/vendor strings
+  talkingPoints     Json     @default("[]") // Array of talking point strings
+  summary           String   @default("")   // 2-3 sentence executive summary
+
+  // Analysis metadata
+  modelUsed      String   @default("claude-3.5-sonnet")
+  tokensUsed     Int      @default(0)
+  analysisTimeMs Int      @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  call       Call           @relation(fields: [callId], references: [id], onDelete: Cascade)
+  transcript CallTranscript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  lead       Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([callId])
+  @@index([leadId])
+  @@map("call_intelligence")
+}
+
+// ============================================
+// Slack Bot Integration Models
+// ============================================
+
+// Slack Workspace - Stores connected Slack workspace information
+model SlackWorkspace {
+  id                 String    @id @default(uuid())
+  organizationId     String?   // Nullable for pending workspaces (App Directory flow)
+  teamId             String    @unique // Slack workspace ID (T01234567)
+  teamName           String    // Workspace name
+  teamDomain         String?   // Workspace domain (company.slack.com)
+  botToken           String    // Encrypted xoxb-... token
+  botUserId          String    // Bot's Slack user ID
+  appId              String    // Slack App ID
+  enterpriseId       String?   // For Enterprise Grid
+  enterpriseName     String?
+  installedById      String?   // OmniDial user who installed
+  installedBySlackId String?   // Slack user who installed
+  defaultChannelId   String?   // Default channel for notifications
+  reviewChannelId    String?   // Channel for AI qualification reviews
+  settings           Json      @default("{}") // Notification preferences
+  isActive           Boolean   @default(true)
+  isPending          Boolean   @default(false) // True when installed from App Directory but not linked to org
+  lastActivityAt     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @default(now()) @updatedAt
+
+  organization      Organization?           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  installedBy       User?                   @relation(fields: [installedById], references: [id], onDelete: SetNull)
+  userLinks         SlackUserLink[]
+  notificationRules SlackNotificationRule[]
+  messageLogs       SlackMessageLog[]
+  linkTokens        SlackLinkToken[]
+
+  @@index([organizationId])
+  @@index([teamId])
+  @@map("slack_workspace")
+}
+
+// Slack User Link - Links OmniDial users to Slack identities
+model SlackUserLink {
+  id                   String   @id @default(uuid())
+  workspaceId          String
+  userId               String
+  slackUserId          String   // Slack user ID (U01234567)
+  slackEmail           String?  // Email from Slack profile
+  slackDisplayName     String?
+  slackRealName        String?
+  slackTimezone        String?
+  notificationsEnabled Boolean  @default(true)
+  dmChannelId          String?  // Cached DM channel ID
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+
+  workspace SlackWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@unique([workspaceId, slackUserId])
+  @@index([userId])
+  @@index([slackUserId])
+  @@map("slack_user_link")
+}
+
+// Slack Notification Rule - Configurable notification rules per channel
+model SlackNotificationRule {
+  id          String   @id @default(uuid())
+  workspaceId String
+  channelId   String   // Slack channel ID
+  channelName String?  // Cached channel name
+  eventType   String   // Event type enum
+  enabled     Boolean  @default(true)
+  config      Json     @default("{}") // Event-specific config
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  workspace SlackWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, channelId, eventType])
+  @@index([workspaceId])
+  @@index([eventType])
+  @@map("slack_notification_rule")
+}
+
+// Slack Message Log - Audit log for messages sent
+model SlackMessageLog {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  channelId    String
+  messageTs    String?  // Slack message timestamp
+  eventType    String?
+  payload      Json?    // Message content sent
+  success      Boolean  @default(true)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  workspace SlackWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("slack_message_log")
+}
+
+// Slack Link Token - Secure tokens for linking pending workspaces to organizations
+model SlackLinkToken {
+  id          String    @id @default(uuid())
+  workspaceId String
+  token       String    @unique // crypto.randomBytes(32).toString('hex')
+  slackUserId String    // Slack user who initiated the link
+  expiresAt   DateTime  // 1 hour expiry
+  usedAt      DateTime? // Set when token is used
+  createdAt   DateTime  @default(now())
+
+  workspace SlackWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([workspaceId])
+  @@map("slack_link_token")
+}
+
+// ============================================
+// OmniDial Enhancements - Parallel Dialing
+// ============================================
+
+// Parallel Dial Session - Tracks when a rep is running parallel dialing
+model ParallelDialSession {
+  id             String    @id @default(uuid())
+  organizationId String
+  userId         String
+  campaignId     String?
+  listId         String?
+  lineCount      Int       @default(2) // Number of parallel lines (2-5)
+  status         String    @default("active") // "active" | "paused" | "ended"
+  conferenceId   String?   // Twilio conference SID for the rep
+  totalAttempts  Int       @default(0)
+  totalConnects  Int       @default(0)
+  totalAbandoned Int       @default(0)
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  attempts ParallelDialAttempt[]
+
+  @@index([organizationId, status])
+  @@index([userId])
+  @@map("parallel_dial_session")
+}
+
+// Parallel Dial Attempt - Individual outbound calls during parallel dialing
+model ParallelDialAttempt {
+  id              String    @id @default(uuid())
+  sessionId       String
+  leadId          String
+  callSid         String?   @unique // Twilio call SID
+  status          String    @default("dialing") // "dialing" | "ringing" | "connected" | "abandoned" | "failed" | "no_answer"
+  wasConnected    Boolean   @default(false) // True if this lead answered first
+  wasAbandoned    Boolean   @default(false) // True if answered but dropped due to another connect
+  abandonedAfterMs Int?     // How long they waited before abandon
+  startedAt       DateTime  @default(now())
+  answeredAt      DateTime?
+  endedAt         DateTime?
+
+  session ParallelDialSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([leadId])
+  @@map("parallel_dial_attempt")
+}
+
+// ============================================
+// OmniDial Enhancements - Predictive Scoring
+// ============================================
+
+// Lead Predictive Score - Calculated likelihood to answer
+model LeadPredictiveScore {
+  id             String   @id @default(uuid())
+  organizationId String
+  leadId         String   @unique
+  score          Decimal  @db.Decimal(5, 4) // 0.0000 to 1.0000
+  phoneType      String?  // "mobile" | "landline" | "voip" | "unknown"
+  bestDayOfWeek  Int?     // 0-6 (Sunday-Saturday)
+  bestHourOfDay  Int?     // 0-23
+  totalAttempts  Int      @default(0)
+  totalAnswers   Int      @default(0)
+  lastAttemptAt  DateTime?
+  lastAnswerAt   DateTime?
+  hasPersonalVoicemail Boolean? // true = personal greeting, false = generic/carrier, null = unknown
+  calculatedAt   DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([organizationId, score(sort: Desc)])
+  @@index([leadId])
+  @@map("lead_predictive_score")
+}
+
+// Call Answer Pattern - Historical patterns for predictive scoring
+model CallAnswerPattern {
+  id             String   @id @default(uuid())
+  organizationId String
+  dayOfWeek      Int      // 0-6 (Sunday-Saturday)
+  hourOfDay      Int      // 0-23
+  attempts       Int      @default(0)
+  answers        Int      @default(0)
+  answerRate     Decimal  @db.Decimal(5, 4) // Cached calculation
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([organizationId, dayOfWeek, hourOfDay])
+  @@index([organizationId])
+  @@map("call_answer_pattern")
+}
+
+// ============================================
+// OmniDial Enhancements - Virtual Sales Floor
+// ============================================
+
+// Call Blitz - Team competition/sprint sessions
+model CallBlitz {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  status         String    @default("scheduled") // "scheduled" | "active" | "paused" | "ended"
+  startAt        DateTime
+  endAt          DateTime
+  goalType       String    @default("calls") // "calls" | "connects" | "meetings"
+  goalTarget     Int?      // Optional target to hit
+  prizeDescription String?
+  createdById    String
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  participants BlitzParticipant[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, startAt])
+  @@map("call_blitz")
+}
+
+// Blitz Participant - Tracks individual performance in a blitz
+model BlitzParticipant {
+  id             String    @id @default(uuid())
+  blitzId        String
+  userId         String
+  callCount      Int       @default(0)
+  connectCount   Int       @default(0)
+  meetingCount   Int       @default(0)
+  rank           Int?      // Current leaderboard position
+  joinedAt       DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  blitz CallBlitz @relation(fields: [blitzId], references: [id], onDelete: Cascade)
+
+  @@unique([blitzId, userId])
+  @@index([blitzId, rank])
+  @@map("blitz_participant")
+}
+
+// Manager Listen Session - Whisper/barge/listen for managers
+model ManagerListenSession {
+  id             String    @id @default(uuid())
+  organizationId String
+  managerId      String    // The manager listening
+  repId          String    // The rep being monitored
+  callId         String    // The call being monitored
+  conferenceSid  String?   // Twilio conference SID
+  mode           String    @default("listen") // "listen" | "whisper" | "barge"
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+  @@index([managerId])
+  @@index([repId])
+  @@index([callId])
+  @@map("manager_listen_session")
+}
+
+// ============================================
+// OmniDial Enhancements - AI Live Coach
+// ============================================
+
+// Coach Card - Configurable coaching cards with trigger phrases
+model CoachCard {
+  id             String   @id @default(uuid())
+  organizationId String
+  title          String
+  category       String   @default("general") // "objection" | "question" | "closing" | "discovery" | "general"
+  triggerPhrases String[] @default([])
+  content        String   // Main coaching content (markdown)
+  tips           String[] @default([]) // Bullet point tips
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  triggers CoachCardTrigger[]
+
+  @@index([organizationId, isActive])
+  @@index([organizationId, category])
+  @@map("coach_card")
+}
+
+// Coach Card Trigger - Log of when cards were triggered
+model CoachCardTrigger {
+  id             String   @id @default(uuid())
+  coachCardId    String
+  callId         String
+  userId         String
+  triggerPhrase  String   // The phrase that triggered this
+  confidence     Decimal? @db.Decimal(5, 4) // Match confidence score
+  wasHelpful     Boolean? // User feedback
+  triggeredAt    DateTime @default(now())
+
+  coachCard CoachCard @relation(fields: [coachCardId], references: [id], onDelete: Cascade)
+
+  @@index([coachCardId])
+  @@index([callId])
+  @@index([userId])
+  @@map("coach_card_trigger")
+}
+
+// Live Transcript Segment - Real-time transcript chunks during calls
+model LiveTranscriptSegment {
+  id             String   @id @default(uuid())
+  callId         String
+  organizationId String
+  speaker        String   @default("unknown") // "rep" | "prospect" | "unknown"
+  text           String
+  confidence     Decimal? @db.Decimal(5, 4)
+  startMs        Int      // Milliseconds from call start
+  endMs          Int
+  isFinal        Boolean  @default(false) // Interim vs final transcript
+  createdAt      DateTime @default(now())
+
+  @@index([callId, startMs])
+  @@index([organizationId])
+  @@map("live_transcript_segment")
+}
+
+// ============================================
+// OmniDial Enhancements - Local Presence
+// ============================================
+
+// Phone Number Pool - Owned numbers for local presence dialing
+model PhoneNumberPool {
+  id             String    @id @default(uuid())
+  organizationId String
+  phoneNumber    String    // E.164 format
+  friendlyName   String?
+  areaCode       String    // 3-digit area code
+  region         String?   // State/province
+  country        String    @default("US")
+  twilioSid      String?   @unique // Twilio phone number SID
+  capabilities   String[]  @default([]) // ["voice", "sms", "mms"]
+  cnamStatus     String?   // "pending" | "approved" | "rejected"
+  cnamName       String?   // Registered CNAM name
+  isActive       Boolean   @default(true)
+  lastUsedAt     DateTime?
+  callsToday     Int       @default(0) // For rotation/spam prevention
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  callbackRoutes CallbackRoute[]
+
+  @@unique([organizationId, phoneNumber])
+  @@index([organizationId, areaCode])
+  @@index([organizationId, isActive])
+  @@map("phone_number_pool")
+}
+
+// Callback Route - Routes inbound calls to the rep who dialed
+model CallbackRoute {
+  id             String    @id @default(uuid())
+  organizationId String
+  poolNumberId   String
+  leadPhone      String    // The lead's phone number (normalized)
+  repUserId      String    // The rep who dialed this lead
+  lastCallAt     DateTime  @default(now())
+  expiresAt      DateTime  // When this route expires
+  createdAt      DateTime  @default(now())
+
+  poolNumber PhoneNumberPool @relation(fields: [poolNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([poolNumberId, leadPhone])
+  @@index([organizationId])
+  @@index([leadPhone])
+  @@index([expiresAt])
+  @@map("callback_route")
+}
+
+// ============================================
+// OmniDial Enhancements - Multi-Vendor Enrichment
+// ============================================
+
+// Data Vendor Connection - API keys for enrichment vendors
+model DataVendorConnection {
+  id               String    @id @default(uuid())
+  organizationId   String
+  provider         String    // "zoominfo" | "apollo" | "clearbit" | "lusha" | "enrichengine"
+  apiKeyEncrypted  String    // Encrypted API key
+  isActive         Boolean   @default(true)
+  priority         Int       @default(0) // Order for waterfall enrichment
+  enabledDataTypes String[]  @default(["phone", "email", "profile"])
+  creditsUsed      Int       @default(0)
+  creditsLimit     Int?      // Monthly limit if set
+  lastSyncAt       DateTime?
+  connectedById    String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+
+  enrichmentHistory EnrichmentHistory[]
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, isActive])
+  @@map("data_vendor_connection")
+}
+
+// Lead Contact Info - Multiple contact points per lead
+model LeadContactInfo {
+  id             String   @id @default(uuid())
+  leadId         String
+  type           String   // "work_email" | "personal_email" | "mobile" | "direct_dial" | "office"
+  value          String   // The actual email/phone
+  isPrimary      Boolean  @default(false)
+  isVerified     Boolean  @default(false)
+  source         String?  // Which vendor provided this
+  confidence     Decimal? @db.Decimal(5, 4) // Vendor confidence score
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([leadId, type])
+  @@index([leadId, isPrimary])
+  @@map("lead_contact_info")
+}
+
+// Enrichment History - Track enrichment events for billing/audit
+model EnrichmentHistory {
+  id               String   @id @default(uuid())
+  organizationId   String
+  leadId           String
+  vendorConnectionId String?
+  provider         String   // Which vendor was used
+  requestType      String   // "person" | "company" | "email_lookup" | "phone_lookup"
+  fieldsRequested  String[] @default([])
+  fieldsEnriched   String[] @default([]) // Which fields were actually filled
+  creditsCost      Int      @default(1)
+  success          Boolean  @default(true)
+  errorMessage     String?
+  responseTimeMs   Int?
+  createdAt        DateTime @default(now())
+
+  vendorConnection DataVendorConnection? @relation(fields: [vendorConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([leadId])
+  @@index([vendorConnectionId])
+  @@map("enrichment_history")
+}
+
+// Enrichment Cache - Platform-level cache for vendor responses (no org scope)
+// RLS classification: no-rls (backend-only access)
+model EnrichmentCache {
+  id             String   @id @default(uuid())
+  lookupKey      String   // Canonical LinkedIn URL or identity hash
+  lookupType     String   // "linkedin" | "identity_hash"
+  provider       String   // "prospeo" | "forager" | "leadmagic"
+  rawResponse    Json     // Full vendor response
+  normalizedData Json     // { firstName, lastName, email, phone, phoneNumbers[], company, title }
+  expiresAt      DateTime
+  hitCount       Int      @default(0)
+  lastHitAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([lookupKey, provider])
+  @@index([lookupKey])
+  @@index([expiresAt])
+  @@map("enrichment_cache")
+}
+
+// ============================================
+// Web Research Agent Models
+// ============================================
+
+// Custom Field Schema - Defines custom fields per organization
+model CustomFieldSchema {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String   // Internal field name (snake_case, e.g., "funding_amount")
+  label          String   // Display label (e.g., "Funding Amount")
+  fieldType      String   @default("text") // "text" | "number" | "date" | "url" | "email" | "phone" | "select" | "multiselect"
+  description    String?
+  isRequired     Boolean  @default(false)
+  defaultValue   String?
+  validationRule String?  // JSON: regex pattern, min/max, allowed values, etc.
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  approvals ResearchApproval[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@map("custom_field_schema")
+}
+
+// Research Template - Predefined research task configurations
+model ResearchTemplate {
+  id               String   @id @default(uuid())
+  organizationId   String?  // null for system templates
+  name             String
+  description      String?
+  prompt           String   // LLM prompt for extraction
+  targetUrls       String[] @default([]) // URL patterns like "crunchbase.com", "{company_website}"
+  extractionSchema Json     @default("{}") // LLM extraction schema
+  fieldMappings    Json     @default("{}") // Maps extracted fields to custom fields
+  isSystemTemplate Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  tasks ResearchTask[]
+
+  @@index([organizationId, isActive])
+  @@index([isSystemTemplate])
+  @@map("research_template")
+}
+
+// Research Task - Individual research requests tracked through execution
+model ResearchTask {
+  id             String    @id @default(uuid())
+  organizationId String
+  leadId         String
+  templateId     String?
+  customPrompt   String?   // Override prompt if not using template
+  targetUrls     String[]  @default([]) // Resolved URLs for this specific task
+  status         String    @default("pending") // "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
+  priority       Int       @default(0) // Higher = higher priority
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?
+  retryCount     Int       @default(0)
+  maxRetries     Int       @default(3)
+  rawResults     Json?     // Raw crawl results
+  extractedData  Json?     // Processed extraction data
+  creditsUsed    Int       @default(0)
+  crawlCount     Int       @default(0) // Number of URLs crawled
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  template  ResearchTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  approvals ResearchApproval[]
+  history   ResearchHistory[]
+
+  @@index([organizationId, status])
+  @@index([leadId])
+  @@index([status, priority(sort: Desc)])
+  @@map("research_task")
+}
+
+// Research Approval - Pending field updates requiring user approval
+model ResearchApproval {
+  id              String    @id @default(uuid())
+  researchTaskId  String
+  leadId          String
+  fieldSchemaId   String?   // Reference to CustomFieldSchema
+  fieldName       String    // Field being updated
+  fieldType       String    @default("text") // Type of field
+  currentValue    String?   // Current value on lead
+  proposedValue   String    // Value extracted from research
+  source          String?   // URL or source of the data
+  confidence      Decimal?  @db.Decimal(5, 4) // 0.0000 to 1.0000
+  status          String    @default("pending") // "pending" | "approved" | "rejected" | "modified"
+  reviewedById    String?
+  reviewedAt      DateTime?
+  modifiedValue   String?   // If user modified before approving
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  task        ResearchTask       @relation(fields: [researchTaskId], references: [id], onDelete: Cascade)
+  fieldSchema CustomFieldSchema? @relation(fields: [fieldSchemaId], references: [id], onDelete: SetNull)
+
+  @@index([researchTaskId])
+  @@index([leadId, status])
+  @@index([status])
+  @@map("research_approval")
+}
+
+// Research History - Audit log for all research activities
+model ResearchHistory {
+  id             String   @id @default(uuid())
+  organizationId String
+  leadId         String?
+  taskId         String?
+  action         String   // "task_created" | "task_started" | "task_completed" | "approval_approved" | "approval_rejected" | etc.
+  details        Json     @default("{}") // Action-specific details
+  performedById  String?
+  createdAt      DateTime @default(now())
+
+  task ResearchTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([leadId])
+  @@index([taskId])
+  @@map("research_history")
+}
+
+// ============================================
+// Admin Error Logs
+// ============================================
+
+// Error Log - Platform-wide error tracking for admin visibility
+model ErrorLog {
+  id             String    @id @default(uuid())
+  code           String    // e.g., "TWILIO_31002", "DIALER_INIT_FAILED", "API_500"
+  message        String
+  description    String?
+  severity       String    // "warning" | "error" | "critical"
+  product        String    // "Programmable Voice" | "Calls" | "Dialer" | "API"
+  category       String    // "TWILIO" | "DIALER" | "API" | "VALIDATION" | "CONFIG"
+  organizationId String?
+  userId         String?
+  callId         String?
+  campaignId     String?
+  leadId         String?
+  twilioCallSid  String?
+  metadata       Json      @default("{}")
+  source         String?   // "backend" | "webhook" | "cron"
+  requestId      String?
+  stackTrace     String?
+  status         String    @default("open") // "open" | "acknowledged" | "resolved"
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  resolutionNote String?
+  occurredAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+  @@index([severity])
+  @@index([product])
+  @@index([category])
+  @@index([occurredAt])
+  @@index([status])
+  @@map("error_log")
+}
+
+// ============================================
+// Lead Agent Integration (AI SDR)
+// ============================================
+
+// Lead Qualification Result - Core of the lead agent
+model LeadQualification {
+  id             String    @id @default(uuid())
+  organizationId String
+  leadId         String
+  agentId        String?
+
+  // Qualification result
+  category  String // "high_intent" | "medium" | "low_intent" | "disqualified"
+  score     Int // 0-100
+  reasoning String // AI reasoning chain (for explainability)
+
+  // Research data collected
+  companyResearch Json? // { website, techStack, funding, employees, etc }
+  linkedInData    Json? // { profile, company page data }
+  intentSignals   Json? // { how they found us, what they asked, etc }
+
+  // Generated outreach
+  generatedEmail Json?   // { subject, body, approved: boolean }
+  generatedSms   String?
+
+  // Human review
+  reviewStatus String    @default("pending") // pending|approved|rejected|edited
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNotes  String?
+
+  // Execution
+  emailSentAt DateTime?
+  smsSentAt   DateTime?
+
+  // Slack review tracking
+  slackMessageTs String?
+  slackChannelId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  lead  Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([leadId])
+  @@index([agentId])
+  @@index([category])
+  @@index([reviewStatus])
+  @@map("lead_qualification")
+}
+
+// Agent - AI SDR agent configuration
+model Agent {
+  id             String  @id @default(uuid())
+  organizationId String
+  memberId       String  @unique // Member account for the agent
+  name           String
+  description    String?
+  systemPrompt   String  @db.Text
+  status         String  @default("inactive") // inactive|active|paused
+
+  // Capabilities
+  emailEnabled   Boolean @default(false)
+  smsEnabled     Boolean @default(false)
+  dailyEmailLimit Int    @default(100)
+  dailySmsLimit   Int    @default(50)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Agent orchestration v2
+  orchestrationEnabled      Boolean @default(false)
+  orchestratorDefinitionId  String?
+
+  emailConfig            AgentEmailConfig?
+  smsConfig              AgentSmsConfig?
+  workflows              AgentWorkflow[]
+  messages               AgentMessage[]
+  qualifications         LeadQualification[]
+  orchestratorDefinition AgentDefinition? @relation("OrchestratorDefinition", fields: [orchestratorDefinitionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("agent")
+}
+
+// Agent Email Configuration
+model AgentEmailConfig {
+  id      String @id @default(uuid())
+  agentId String @unique
+
+  provider                 String // agentmail|gmail|outlook
+  agentmailApiKeyEncrypted String?
+  agentmailInboxId         String?
+  accessTokenEncrypted     String?
+  refreshTokenEncrypted    String?
+  tokenExpiresAt           DateTime?
+  fromEmail                String
+  fromName                 String?
+  signatureHtml            String? @db.Text
+
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("agent_email_config")
+}
+
+// Agent SMS Configuration (Twilio A2P + Custom AI Agent)
+model AgentSmsConfig {
+  id      String @id @default(uuid())
+  agentId String @unique
+
+  // Twilio subaccount
+  twilioSubaccountSid       String?
+  twilioAuthTokenEncrypted  String?
+  twilioPhoneNumber         String?
+  twilioPhoneNumberSid      String?
+  twilioMessagingServiceSid String?
+
+  // A2P 10DLC registration
+  a2pBrandSid    String?
+  a2pCampaignSid String?
+  a2pStatus      String? // pending|approved|rejected
+
+  // AI Agent Settings (for response generation)
+  aiModel        String @default("claude-3-5-sonnet") // LLM model
+  aiSystemPrompt String? @db.Text // SMS-specific system prompt
+  aiMaxTokens    Int    @default(160) // Keep SMS concise
+  aiTemperature  Float  @default(0.7)
+
+  // Autonomous mode settings
+  autonomousEnabled  Boolean @default(false)
+  maxRepliesPerLead  Int     @default(5)
+
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([twilioPhoneNumber])
+  @@map("agent_sms_config")
+}
+
+// Twilio ISV Master Config (admin only)
+model TwilioIsvConfig {
+  id                    String  @id @default(uuid())
+  accountSid            String  @unique
+  authTokenEncrypted    String
+  apiKeySid             String
+  apiKeySecretEncrypted String
+  isActive              Boolean @default(true)
+  createdAt             DateTime @default(now())
+
+  @@map("twilio_isv_config")
+}
+
+// A2P Brand Registration
+model A2pBrandRegistration {
+  id               String    @id @default(uuid())
+  organizationId   String
+  twilioBrandSid   String?   @unique
+  businessName     String
+  businessType     String
+  ein              String?
+  websiteUrl       String
+  vertical         String
+  companyAddress   Json
+  contactInfo      Json
+  status           String    @default("pending") // pending|approved|rejected
+  trustScore       Int?
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime  @default(now())
+
+  campaigns A2pCampaign[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("a2p_brand_registration")
+}
+
+// A2P Campaign
+model A2pCampaign {
+  id                  String   @id @default(uuid())
+  brandRegistrationId String
+  twilioCampaignSid   String?  @unique
+  useCase             String
+  useCaseDescription  String   @db.Text
+  sampleMessages      String[]
+  optInKeywords       String[] @default(["START", "YES"])
+  optOutKeywords      String[] @default(["STOP"])
+  optInMessage        String
+  optOutMessage       String
+  status              String   @default("draft") // draft|pending|approved|rejected
+  dailyLimit          Int?
+  tps                 Int? // Throughput per second
+  createdAt           DateTime @default(now())
+
+  brandRegistration A2pBrandRegistration @relation(fields: [brandRegistrationId], references: [id], onDelete: Cascade)
+
+  @@index([brandRegistrationId])
+  @@index([status])
+  @@map("a2p_campaign")
+}
+
+// Agent Workflow Definition
+model AgentWorkflow {
+  id      String @id @default(uuid())
+  agentId String
+
+  name          String
+  triggerType   String // schedule|event|manual
+  triggerConfig Json
+  actionType    String // send_email|send_sms|send_both
+  actionConfig  Json
+  targetType    String // campaign|list|lead
+  targetId      String?
+  targetFilters Json   @default("{}")
+
+  isActive        Boolean   @default(false)
+  executionCount  Int       @default(0)
+  lastExecutedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  agent    Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages AgentMessage[]
+
+  @@index([agentId])
+  @@index([isActive])
+  @@map("agent_workflow")
+}
+
+// Agent Message History
+model AgentMessage {
+  id         String  @id @default(uuid())
+  agentId    String
+  workflowId String?
+  leadId     String
+  campaignId String?
+
+  messageType String @default("email") // email|sms
+  status      String @default("queued") // queued|sending|sent|delivered|opened|clicked|failed|bounced
+
+  // Email fields
+  emailSubject  String?
+  emailBodyHtml String? @db.Text
+  toEmail       String?
+
+  // SMS fields
+  smsBody          String?
+  toPhone          String?
+  twilioMessageSid String? @unique
+
+  // Inbound SMS fields
+  direction        String  @default("outbound") // outbound|inbound
+  fromPhone        String?
+  replyToMessageId String?
+  replyToMessage   AgentMessage? @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          AgentMessage[] @relation("MessageReplies")
+
+  // Tracking
+  deliveredAt   DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  failureReason String?
+
+  createdAt DateTime @default(now())
+
+  agent    Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workflow AgentWorkflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  @@index([agentId])
+  @@index([leadId])
+  @@index([workflowId])
+  @@index([status])
+  @@index([messageType])
+  @@index([direction])
+  @@index([fromPhone])
+  @@map("agent_message")
+}
+
+// ============================================
+// Agent Orchestration (OpenClaw/ClawdBody)
+// ============================================
+
+// Agent Instance - Running OpenClaw/ClawdBody instances
+model AgentInstance {
+  id             String    @id @default(uuid())
+  organizationId String
+  agentId        String
+
+  // Runtime info
+  provider       String    @default("openclaw") // openclaw|clawdbody|local
+  instanceUrl    String?   // URL to the running instance
+  instanceId     String?   // External instance ID (OpenClaw session ID or ClawdBody VM ID)
+
+  // Status
+  status         String    @default("provisioning") // provisioning|running|paused|stopped|failed
+  lastHeartbeat  DateTime?
+
+  // Resource allocation
+  memoryMb       Int       @default(512)
+  cpuCores       Float     @default(0.5)
+
+  // Metrics
+  totalSessions    Int     @default(0)
+  totalToolCalls   Int     @default(0)
+  totalTokensUsed  Int     @default(0)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  stoppedAt      DateTime?
+
+  sessions       AgentSession[]
+
+  @@index([organizationId])
+  @@index([agentId])
+  @@index([status])
+  @@map("agent_instance")
+}
+
+// Agent Session - Conversation sessions with memory
+model AgentSession {
+  id              String    @id @default(uuid())
+  instanceId      String
+  organizationId  String
+
+  // Context
+  leadId          String?   // If session is about a specific lead
+  campaignId      String?   // If session is for a campaign
+  clientId        String?   // Client account this session is for
+
+  // Session state
+  status          String    @default("active") // active|paused|completed|failed
+  contextSummary  String?   @db.Text // AI-generated summary of session context
+
+  // Metrics
+  messageCount    Int       @default(0)
+  toolCallCount   Int       @default(0)
+  tokensUsed      Int       @default(0)
+
+  startedAt       DateTime  @default(now())
+  lastActivityAt  DateTime  @default(now())
+  completedAt     DateTime?
+
+  instance        AgentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  memories        AgentMemory[]
+  toolCalls       AgentToolCall[]
+
+  @@index([instanceId])
+  @@index([organizationId])
+  @@index([leadId])
+  @@index([status])
+  @@map("agent_session")
+}
+
+// Agent Memory - Persistent memory entries
+model AgentMemory {
+  id             String    @id @default(uuid())
+  sessionId      String?   // Can be session-specific or global
+  organizationId String
+  agentId        String
+
+  // Memory content
+  memoryType     String    // fact|preference|context|learning|relationship
+  key            String    // Unique key for this memory
+  content        String    @db.Text // The memory content
+  embedding      Json?     // Vector embedding for semantic search (stored as JSON array)
+
+  // Metadata
+  importance     Float     @default(0.5) // 0-1 importance score
+  accessCount    Int       @default(0)
+  lastAccessedAt DateTime?
+  expiresAt      DateTime? // Optional expiration
+
+  // Source tracking
+  sourceType     String?   // conversation|tool_result|user_feedback|system
+  sourceId       String?   // Reference to source
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  session        AgentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, key])
+  @@index([organizationId])
+  @@index([agentId])
+  @@index([sessionId])
+  @@index([memoryType])
+  @@map("agent_memory")
+}
+
+// Agent Tool Call - Log of tool executions
+model AgentToolCall {
+  id             String    @id @default(uuid())
+  sessionId      String
+  organizationId String
+
+  // Tool info
+  toolName       String    // e.g., search_leads, send_email, qualify_lead
+  toolInput      Json      // Input parameters
+  toolOutput     Json?     // Output result
+
+  // Execution
+  status         String    @default("pending") // pending|running|success|failed
+  errorMessage   String?
+  durationMs     Int?
+
+  // Approvals (for human-in-loop)
+  requiresApproval Boolean @default(false)
+  approvalStatus   String? // pending|approved|rejected
+  approvedById     String?
+  approvedAt       DateTime?
+
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  session        AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([organizationId])
+  @@index([toolName])
+  @@index([status])
+  @@map("agent_tool_call")
+}
+
+// ============================================
+// SMS Campaign Sequencer
+// ============================================
+
+// SMS Campaign - Multi-step automated SMS outreach campaign
+model SmsCampaign {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  status         String    @default("draft") // draft | active | paused | completed
+
+  // Send window configuration (in lead's local timezone)
+  sendWindowStart String   @default("09:00") // HH:MM format
+  sendWindowEnd   String   @default("18:00") // HH:MM format
+  sendDays        Int[]    @default([1, 2, 3, 4, 5]) // 0=Sunday, 1=Monday, etc.
+  defaultTimezone String   @default("America/New_York") // Fallback if lead has no timezone
+
+  // AI personalization settings
+  aiEnabled       Boolean  @default(false)
+  aiModel         String?  // llama-3.3-70b-versatile
+  aiSystemPrompt  String?  @db.Text
+  valueProposition String? @db.Text
+
+  // Limits
+  dailySendLimit  Int      @default(100) // Max messages per day for this campaign
+
+  // Stats (denormalized for performance)
+  totalEnrolled    Int     @default(0)
+  totalSent        Int     @default(0)
+  totalDelivered   Int     @default(0)
+  totalReplied     Int     @default(0)
+  totalUnsubscribed Int    @default(0)
+
+  // Metadata
+  createdById    String
+  activatedAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  steps       SmsCampaignStep[]
+  lists       SmsCampaignList[]
+  enrollments SmsCampaignEnrollment[]
+  messages    SmsCampaignMessage[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("sms_campaign")
+}
+
+// SMS Campaign Step - Individual message template in a sequence
+model SmsCampaignStep {
+  id         String  @id @default(uuid())
+  campaignId String
+  stepNumber Int     // 1, 2, 3...
+  dayOffset  Int     // Day 0, Day 3, Day 7, etc.
+
+  // Message content
+  messageTemplate String  @db.Text // Supports {{firstName}}, {{company}}, etc.
+
+  // AI settings (inherit from campaign if null)
+  aiEnabled        Boolean? // null = inherit from campaign
+  aiPromptOverride String?  @db.Text
+
+  // Behavior
+  skipIfReplied Boolean @default(true) // Skip this step if lead has replied
+
+  // Stats
+  totalSent      Int @default(0)
+  totalDelivered Int @default(0)
+  totalFailed    Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  campaign SmsCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages SmsCampaignMessage[]
+
+  @@unique([campaignId, stepNumber])
+  @@index([campaignId])
+  @@map("sms_campaign_step")
+}
+
+// SMS Campaign List - Junction table linking campaigns to lead lists
+model SmsCampaignList {
+  id         String   @id @default(uuid())
+  campaignId String
+  listId     String
+  addedAt    DateTime @default(now())
+
+  campaign SmsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  list     LeadList    @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, listId])
+  @@index([campaignId])
+  @@index([listId])
+  @@map("sms_campaign_list")
+}
+
+// SMS Campaign Enrollment - Tracks each lead's progress through a campaign
+model SmsCampaignEnrollment {
+  id         String @id @default(uuid())
+  campaignId String
+  leadId     String
+
+  // Progress
+  status      String    @default("active") // active | paused | completed | replied | unsubscribed | failed
+  currentStep Int       @default(1)
+  nextSendAt  DateTime?
+
+  // Lead info (cached for send window calculation)
+  timezone    String?
+
+  // Research data for personalization (cached from lead research)
+  researchData Json?
+
+  // Timestamps
+  lastSentAt      DateTime?
+  repliedAt       DateTime?
+  unsubscribedAt  DateTime?
+  enrolledAt      DateTime  @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  campaign SmsCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages SmsCampaignMessage[]
+
+  @@unique([campaignId, leadId])
+  @@index([campaignId])
+  @@index([leadId])
+  @@index([campaignId, status])
+  @@index([status, nextSendAt]) // For worker queries
+  @@map("sms_campaign_enrollment")
+}
+
+// SMS Campaign Message - Individual message history
+model SmsCampaignMessage {
+  id           String  @id @default(uuid())
+  campaignId   String
+  enrollmentId String
+  stepId       String
+  leadId       String
+
+  // Message details
+  toPhone         String
+  messageBody     String  @db.Text
+  originalTemplate String @db.Text
+  aiPersonalized  Boolean @default(false)
+
+  // Twilio tracking
+  twilioMessageSid String? @unique
+
+  // Status
+  status       String    @default("queued") // queued | sending | sent | delivered | failed | undelivered
+  failureReason String?
+
+  // Timestamps
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  campaign   SmsCampaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  enrollment SmsCampaignEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step       SmsCampaignStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([enrollmentId])
+  @@index([stepId])
+  @@index([leadId])
+  @@index([twilioMessageSid])
+  @@index([status])
+  @@map("sms_campaign_message")
+}
+
+// Orchestration Job - Parent job for parallel orchestration
+model OrchestrationJob {
+  id             String    @id @default(uuid())
+  organizationId String
+
+  // Job definition
+  name           String
+  description    String?
+  jobType        String    // lead_qualification|outreach_campaign|research_batch|custom
+
+  // Targeting
+  targetType     String    // leads|campaign|list|custom
+  targetId       String?   // ID of target (campaign ID, list ID, etc.)
+  targetFilters  Json      @default("{}") // Additional filters
+  targetCount    Int       @default(0) // Total items to process
+
+  // Parallelism
+  maxParallel    Int       @default(5) // Max concurrent agents
+  batchSize      Int       @default(10) // Items per batch
+
+  // Status
+  status         String    @default("pending") // pending|running|paused|completed|failed|cancelled
+  progress       Float     @default(0) // 0-100 percentage
+
+  // Results
+  processedCount Int       @default(0)
+  successCount   Int       @default(0)
+  failureCount   Int       @default(0)
+
+  // Timing
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  estimatedEndAt DateTime?
+
+  // Configuration
+  config         Json      @default("{}") // Job-specific configuration
+  retryPolicy    Json      @default("{}") // Retry configuration
+
+  createdById    String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  steps          OrchestrationStep[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([jobType])
+  @@index([scheduledAt])
+  @@map("orchestration_job")
+}
+
+// Orchestration Step - Individual steps within a job
+model OrchestrationStep {
+  id             String    @id @default(uuid())
+  jobId          String
+
+  // Step definition
+  stepNumber     Int       // Order in the job
+  stepType       String    // agent_task|wait|condition|parallel_split|parallel_join|human_review
+
+  // Target (what this step operates on)
+  targetId       String?   // Lead ID, etc.
+  targetData     Json?     // Additional target data
+
+  // Agent assignment
+  agentId        String?   // Which agent handles this
+  sessionId      String?   // Session ID if running
+
+  // Status
+  status         String    @default("pending") // pending|running|waiting|completed|failed|skipped
+
+  // Results
+  input          Json?     // Step input
+  output         Json?     // Step output
+  errorMessage   String?
+
+  // Timing
+  startedAt      DateTime?
+  completedAt    DateTime?
+  durationMs     Int?
+
+  // Retry tracking
+  attemptCount   Int       @default(0)
+  maxAttempts    Int       @default(3)
+  nextRetryAt    DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  job            OrchestrationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([status])
+  @@index([agentId])
+  @@index([stepType])
+  @@map("orchestration_step")
+}
+
+// ClawdBody Instance - Managed VM instances
+model ClawdBodyInstance {
+  id             String    @id @default(uuid())
+  organizationId String
+
+  // VM info
+  vmId           String    @unique // ClawdBody VM ID
+  vmName         String
+  vmUrl          String    // Access URL
+  vmRegion       String    @default("us-east-1")
+
+  // Specs
+  vmSize         String    @default("small") // small|medium|large|xlarge
+  memoryGb       Int       @default(2)
+  cpuCores       Int       @default(2)
+  storageGb      Int       @default(20)
+
+  // Status
+  status         String    @default("provisioning") // provisioning|running|stopped|terminated
+  healthStatus   String    @default("unknown") // healthy|degraded|unhealthy|unknown
+  lastHealthCheck DateTime?
+
+  // Usage
+  activeAgents   Int       @default(0)
+  totalSessions  Int       @default(0)
+  uptimeSeconds  Int       @default(0)
+
+  // Cost tracking
+  hourlyRate     Float     @default(0)
+  totalCost      Float     @default(0)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  terminatedAt   DateTime?
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("clawdbody_instance")
+}
+
+// ============================================
+// Simplified Agent Orchestration (v2)
+// ============================================
+
+// Agent definitions - configured via dashboard or system defaults
+model AgentDefinition {
+  id             String  @id @default(uuid())
+  organizationId String
+
+  name        String  @db.VarChar(100)
+  type        String  @db.VarChar(50) // orchestrator, email, sms, research, qualify, analytics, campaign
+  description String? @db.Text
+
+  systemPrompt String  @db.Text
+  tools        Json    @default("[]")
+  guardrails   Json    @default("{}")
+
+  model       String  @default("claude-sonnet") @db.VarChar(50)
+  maxTokens   Int     @default(2048)
+  temperature Decimal @default(0.5) @db.Decimal(3, 2)
+
+  isActive Boolean @default(true)
+  isSystem Boolean @default(false) // Built-in vs user-created
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  executions   AgentExecution[]
+  usage        AgentUsage[]
+  agents       Agent[]             @relation("OrchestratorDefinition")
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([isActive])
+  @@map("agent_definition")
+}
+
+// Agent executions - audit trail of all agent invocations
+model AgentExecution {
+  id                  String  @id @default(uuid())
+  organizationId      String
+  agentDefinitionId   String
+
+  // Trigger info
+  triggerType    String  @db.VarChar(50) // user, orchestrator, schedule, webhook, inbound_sms
+  triggerContext Json?
+  parentExecutionId String?
+
+  // Input/Output
+  inputPrompt    String  @db.Text
+  inputContext   Json?
+  outputResponse String? @db.Text
+  outputToolCalls Json?
+
+  // Status
+  status String @default("running") @db.VarChar(20) // running, awaiting_approval, completed, failed, cancelled
+  error  String? @db.Text
+
+  // Related entities
+  leadId     String?
+  campaignId String?
+
+  // Metrics
+  tokensInput   Int?
+  tokensOutput  Int?
+  durationMs    Int?
+  estimatedCost Decimal? @db.Decimal(10, 6)
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentDefinition AgentDefinition   @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+  parentExecution AgentExecution?   @relation("ExecutionHierarchy", fields: [parentExecutionId], references: [id], onDelete: SetNull)
+  childExecutions AgentExecution[]  @relation("ExecutionHierarchy")
+  lead            Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign        Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  approvals       AgentApproval[]
+  toolExecutions  AgentToolExecution[]
+
+  @@index([organizationId])
+  @@index([agentDefinitionId])
+  @@index([parentExecutionId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@index([leadId])
+  @@map("agent_execution")
+}
+
+// Agent approvals - human-in-the-loop checkpoints
+model AgentApproval {
+  id             String @id @default(uuid())
+  organizationId String
+  executionId    String
+
+  approvalType String @db.VarChar(50) // send_email, send_sms, create_campaign, bulk_action
+
+  // What needs approval
+  actionSummary String @db.Text
+  actionDetails Json
+
+  // Related entities
+  leadId     String?
+  campaignId String?
+
+  // Status
+  status        String  @default("pending") @db.VarChar(20) // pending, approved, rejected, modified, expired
+  respondedById String?
+  response      String? @db.VarChar(20) // approved, rejected, modified
+  responseNote  String? @db.Text
+  modifications Json?
+
+  // Slack routing
+  slackMessageTs String? @db.VarChar(50)
+  slackChannelId String? @db.VarChar(50)
+
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  execution    AgentExecution   @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign     Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  respondedBy  User?            @relation(fields: [respondedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([executionId])
+  @@map("agent_approval")
+}
+
+// Registered tools that agents can use
+model AgentTool {
+  id             String  @id @default(uuid())
+  organizationId String? // NULL for system tools
+
+  name        String @db.VarChar(100)
+  description String @db.Text
+  category    String @db.VarChar(50) // email, sms, research, crm, analytics
+
+  parameters Json   @db.JsonB // JSON Schema for parameters
+  handler    String @db.VarChar(200) // Service method reference
+
+  requiresApproval Boolean @default(false)
+  isSystem         Boolean @default(true)
+  isActive         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  toolExecutions AgentToolExecution[]
+
+  @@unique([name, organizationId])
+  @@index([category])
+  @@map("agent_tool")
+}
+
+// Tool execution logs
+model AgentToolExecution {
+  id          String @id @default(uuid())
+  executionId String
+  toolId      String
+
+  input  Json
+  output Json?
+  error  String? @db.Text
+
+  status     String @default("running") @db.VarChar(20) // running, completed, failed
+  durationMs Int?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  execution AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  tool      AgentTool      @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+  @@map("agent_tool_execution")
+}
+
+// Daily usage tracking for rate limiting
+model AgentUsage {
+  id                String @id @default(uuid())
+  organizationId    String
+  agentDefinitionId String
+  date              DateTime @db.Date
+
+  executionCount Int @default(0)
+  tokenCount     Int @default(0)
+  approvalCount  Int @default(0)
+  errorCount     Int @default(0)
+
+  emailsSent Int @default(0)
+  smsSent    Int @default(0)
+
+  estimatedCost Decimal @default(0) @db.Decimal(10, 4)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentDefinition AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, agentDefinitionId, date])
+  @@map("agent_usage")
+}
+
+// Phone provisioning for ISV-managed Twilio subaccounts
+model PhoneProvisioning {
+  id                       String    @id @default(uuid())
+  organizationId           String    @unique
+  twilioSubaccountSid      String?
+  twilioAuthTokenEncrypted String?
+  apiKeySid                String?
+  apiKeySecretEncrypted    String?
+  twimlAppSid              String?
+  phoneNumber              String?
+  phoneNumberSid           String?
+  numberType               String    @default("trial") // "trial" | "dedicated"
+  provisioningStatus       String    @default("pending") // "pending" | "provisioning" | "active" | "failed" | "suspended"
+  usesMainAccount          Boolean   @default(false)
+  callerIdVerified         Boolean   @default(false)
+  provisionedAt            DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("phone_provisioning")
+}
+
+model AdminAuditLog {
+  id          String   @id @default(uuid())
+  adminUserId String
+  action      String
+  targetType  String
+  targetId    String?
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_audit_log")
+}
+
+// ============================================
+// CRM Sync Records - Multi-CRM Push Tracking
+// ============================================
+
+model CrmSyncRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  leadId         String
+  provider       String   // "hubspot" | "salesforce" | "attio"
+  externalId     String   // Contact ID in the external CRM
+  externalUrl    String?  // Direct link to CRM contact
+  syncDirection  String   // "push" | "pull"
+  syncStatus     String   // "synced" | "failed" | "pending"
+  lastSyncedAt   DateTime
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, leadId, provider])
+  @@index([organizationId, provider])
+  @@index([leadId])
+  @@map("crm_sync_record")
+}
+
+// Usage-based billing
+model UsageCycle {
+  id                      String    @id @default(uuid())
+  organizationId          String
+  subscriptionId          String
+  periodStart             DateTime
+  periodEnd               DateTime
+  includedMinutes         Int
+  usedMinutes             Int       @default(0)
+  overageMinutes          Int       @default(0)
+  overageAmountCents      Int       @default(0)
+  overageRateCents        Int       // e.g. 15 = $0.015/min (tenths of cents)
+  overageReportedToStripe Int       @default(0) // minutes already sent to Stripe
+  lastStripeReportAt      DateTime?
+  isCurrent               Boolean   @default(true)
+  finalized               Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, periodStart])
+  @@index([organizationId, isCurrent])
+  @@map("usage_cycle")
+}
+
+model BillingEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  eventType      String   // subscription_created, payment_succeeded, payment_failed, overage_reported, cap_hit, service_suspended, etc.
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("billing_event")
+}
+
+model WebhookEventReceipt {
+  // RLS classification: no-rls (backend-only dedupe/audit log)
+  id          String    @id @default(uuid())
+  provider    String
+  eventId     String
+  eventType   String?
+  status      String
+  hash        String?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@unique([provider, eventId])
+  @@index([provider, status, processedAt])
+  @@map("webhook_event_receipt")
+}

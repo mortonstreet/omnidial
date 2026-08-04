@@ -1,0 +1,96 @@
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@10.19.0 --activate
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# -- Dependencies stage --
+FROM base AS deps
+WORKDIR /app
+ENV NODE_ENV=development
+
+# Copy workspace manifests needed for filtered install
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY frontend/package.json ./frontend/
+COPY shared/types/package.json ./shared/types/
+COPY shared/db/package.json ./shared/db/
+
+# Force devDependencies in build stages even if Coolify sets NODE_ENV=production.
+RUN pnpm install --frozen-lockfile --prod=false --filter frontend --filter @shared/types --filter @shared/db
+
+# -- Build stage --
+FROM base AS builder
+WORKDIR /app
+ENV NODE_ENV=development
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/frontend/node_modules ./frontend/node_modules
+COPY --from=deps /app/shared/types/node_modules ./shared/types/node_modules
+COPY --from=deps /app/shared/db/node_modules ./shared/db/node_modules
+
+COPY frontend ./frontend
+COPY shared ./shared
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
+
+# Build-time public env for Next.js. Coolify can pass these as build args.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_MARKETING_URL
+ARG NEXT_PUBLIC_ROOT_DOMAIN
+ARG NEXT_PUBLIC_GOOGLE_ANALYTICS_ID
+ARG NEXT_PUBLIC_POSTHOG_ENABLED
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ARG NEXT_PUBLIC_POSTHOG_HOST
+ARG NEXT_PUBLIC_PUSHER_ENABLED
+ARG NEXT_PUBLIC_PUSHER_KEY
+ARG NEXT_PUBLIC_PUSHER_HOST
+ARG NEXT_PUBLIC_PUSHER_PORT
+ARG NEXT_PUBLIC_PUSHER_USE_TLS
+
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_MARKETING_URL=$NEXT_PUBLIC_MARKETING_URL
+ENV NEXT_PUBLIC_ROOT_DOMAIN=$NEXT_PUBLIC_ROOT_DOMAIN
+ENV NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=$NEXT_PUBLIC_GOOGLE_ANALYTICS_ID
+ENV NEXT_PUBLIC_POSTHOG_ENABLED=$NEXT_PUBLIC_POSTHOG_ENABLED
+ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
+ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
+ENV NEXT_PUBLIC_PUSHER_ENABLED=$NEXT_PUBLIC_PUSHER_ENABLED
+ENV NEXT_PUBLIC_PUSHER_KEY=$NEXT_PUBLIC_PUSHER_KEY
+ENV NEXT_PUBLIC_PUSHER_HOST=$NEXT_PUBLIC_PUSHER_HOST
+ENV NEXT_PUBLIC_PUSHER_PORT=$NEXT_PUBLIC_PUSHER_PORT
+ENV NEXT_PUBLIC_PUSHER_USE_TLS=$NEXT_PUBLIC_PUSHER_USE_TLS
+
+RUN test -n "$NEXT_PUBLIC_API_URL" || (echo "NEXT_PUBLIC_API_URL build arg is required for frontend builds" >&2; exit 1)
+RUN test -n "$NEXT_PUBLIC_APP_URL" || (echo "NEXT_PUBLIC_APP_URL build arg is required for frontend builds" >&2; exit 1)
+RUN case "$NEXT_PUBLIC_API_URL" in \
+  http://localhost*|https://localhost*|http://127.0.0.1*|https://127.0.0.1*) \
+    echo "NEXT_PUBLIC_API_URL cannot target localhost in production image builds: $NEXT_PUBLIC_API_URL" >&2; exit 1 ;; \
+  *) : ;; \
+  esac
+RUN case "$NEXT_PUBLIC_APP_URL" in \
+  http://localhost*|https://localhost*|http://127.0.0.1*|https://127.0.0.1*) \
+    echo "NEXT_PUBLIC_APP_URL cannot target localhost in production image builds: $NEXT_PUBLIC_APP_URL" >&2; exit 1 ;; \
+  *) : ;; \
+  esac
+
+RUN pnpm --filter frontend build
+
+# -- Runtime stage --
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY frontend/package.json ./frontend/
+COPY shared/types/package.json ./shared/types/
+COPY shared/db/package.json ./shared/db/
+
+RUN pnpm install --frozen-lockfile --prod --filter frontend --filter @shared/types --filter @shared/db
+
+COPY --from=builder /app/frontend/.next ./frontend/.next
+COPY --from=builder /app/frontend/public ./frontend/public
+COPY --from=builder /app/frontend/next.config.ts ./frontend/next.config.ts
+COPY --from=builder /app/shared ./shared
+
+EXPOSE 3000
+CMD ["pnpm", "--filter", "frontend", "start"]

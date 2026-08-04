@@ -1,0 +1,10 @@
+import posthog from 'posthog-js'
+
+const isPostHogEnabled = process.env.NEXT_PUBLIC_POSTHOG_ENABLED === 'true'
+
+if (isPostHogEnabled && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    defaults: '2025-11-30'
+  })
+}

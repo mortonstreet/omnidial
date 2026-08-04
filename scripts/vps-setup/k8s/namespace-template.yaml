@@ -1,0 +1,224 @@
+# Kubernetes Namespace Template for Tenant Isolation
+# Used by tenantProvisioning.service.ts for enterprise customers
+#
+# Deploy with: kubectl apply -f namespace-template.yaml
+# Replace ${TENANT_ID}, ${TENANT_NAME}, etc. with actual values
+#
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-${TENANT_ID}
+  labels:
+    app: omnidial
+    tenant: ${TENANT_ID}
+    tenant-name: ${TENANT_NAME}
+    environment: production
+
+---
+# Resource Quota - Limit resources per tenant
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: tenant-${TENANT_ID}
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+
+---
+# Network Policy - Isolate tenant traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tenant-isolation
+  namespace: tenant-${TENANT_ID}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+    # Allow traffic within same namespace
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow external HTTPS (for LLM APIs)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow traffic within same namespace
+    - to:
+        - podSelector: {}
+
+---
+# OpenClaw Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: tenant-${TENANT_ID}
+  labels:
+    app: openclaw
+    tenant: ${TENANT_ID}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openclaw
+  template:
+    metadata:
+      labels:
+        app: openclaw
+        tenant: ${TENANT_ID}
+    spec:
+      containers:
+        - name: openclaw
+          image: openclaw/openclaw:latest
+          ports:
+            - containerPort: 3100
+          env:
+            - name: OPENCLAW_PORT
+              value: "3100"
+            - name: OPENCLAW_HOST
+              value: "0.0.0.0"
+            - name: DATABASE_URL
+              value: "file:/data/openclaw.db"
+            - name: OPENCLAW_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: api-key
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: anthropic-api-key
+            - name: MEMORY_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3100
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3100
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openclaw-data
+
+---
+# Persistent Volume Claim for OpenClaw data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openclaw-data
+  namespace: tenant-${TENANT_ID}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: hcloud-volumes
+
+---
+# Service for OpenClaw
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw
+  namespace: tenant-${TENANT_ID}
+  labels:
+    app: openclaw
+    tenant: ${TENANT_ID}
+spec:
+  selector:
+    app: openclaw
+  ports:
+    - port: 3100
+      targetPort: 3100
+      protocol: TCP
+
+---
+# Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openclaw-ingress
+  namespace: tenant-${TENANT_ID}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  tls:
+    - hosts:
+        - ${TENANT_ID}.agents.omnidial.com
+      secretName: openclaw-tls
+  rules:
+    - host: ${TENANT_ID}.agents.omnidial.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openclaw
+                port:
+                  number: 3100
+
+---
+# Secrets (create separately with actual values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-secrets
+  namespace: tenant-${TENANT_ID}
+type: Opaque
+stringData:
+  api-key: "${OPENCLAW_API_KEY}"
+  anthropic-api-key: "${ANTHROPIC_API_KEY}"
