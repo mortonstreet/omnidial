@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { pingRedis } from '@/lib/redis'
+import { getTelnyxHealth } from '@/services/telnyxHealth.service'
 import exampleRoutes from './example'
 import adminRoutes from './admin'
 import organizationRoutes from './organization'
@@ -60,8 +61,15 @@ router.get('/health', (req, res) => {
 // Dependency health, reported separately from /health so a degraded
 // dependency never fails the Railway healthcheck and takes the app down.
 router.get('/health/deps', async (req, res) => {
-  const redis = await pingRedis()
-  res.json({ status: 'ok', redis })
+  const [redis, telnyx] = await Promise.all([pingRedis(), getTelnyxHealth()])
+  res.json({ status: 'ok', redis, telnyx })
+})
+
+// Polled by the dialer so reps see "carrier degraded" instead of an opaque
+// failure. Cached in the service, so frequent polling costs no extra API calls.
+router.get('/health/telnyx', async (req, res) => {
+  const telnyx = await getTelnyxHealth()
+  res.json(telnyx)
 })
 
 router.use('/example', exampleRoutes)

@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { CarrierStatusBanner } from "@/components/dialer/CarrierStatusBanner";
 import {
   Phone,
   PhoneIncoming,
@@ -292,6 +293,12 @@ function DialerPageContent() {
         <div>
           <h1 className="font-display font-semibold text-2xl md:text-3xl tracking-tight text-foreground">Dialer</h1>
         </div>
+      </div>
+
+      {/* Carrier outage notice — distinguishes "Telnyx is down" from "your setup
+          is broken", which are otherwise indistinguishable from the UI. */}
+      <div className="mb-4 empty:mb-0">
+        <CarrierStatusBanner />
       </div>
 
       {/* Full branded loader on first init */}
