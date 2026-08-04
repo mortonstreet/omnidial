@@ -44,19 +44,39 @@ export default function OmniDialLogo({
           height={size}
           viewBox="0 0 24 24"
           fill="none"
+          className="transition-all duration-300"
+          style={{
+            filter: isHovered
+              ? "drop-shadow(0 0 5px rgba(255,255,255,0.45))"
+              : "none",
+          }}
         >
-          <circle cx="12" cy="12" r="7" stroke="white" strokeWidth="2.5" fill="none"
-            className="transition-all duration-300"
-            style={{
-              filter: isHovered ? "drop-shadow(0 0 4px rgba(255,255,255,0.5))" : "none",
-            }}
+          <defs>
+            <linearGradient
+              id="od-mark-anim"
+              x1="4"
+              y1="3"
+              x2="20"
+              y2="21"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0" stopColor="#ffffff" />
+              <stop offset="0.5" stopColor="#b9b3b7" />
+              <stop offset="1" stopColor="#ffffff" />
+            </linearGradient>
+          </defs>
+          {/* Thick twisted ring — the seams sit where the profile turns */}
+          <circle
+            cx="12"
+            cy="12"
+            r="7.4"
+            stroke="url(#od-mark-anim)"
+            strokeWidth="5"
+            fill="none"
           />
-          <circle cx="17" cy="7" r="2.5" fill="white"
-            className="transition-all duration-300"
-            style={{
-              filter: isHovered ? "drop-shadow(0 0 4px rgba(255,255,255,0.5))" : "none",
-            }}
-          />
+          <path d="M12 4.6 V7.2" stroke="#0a0a0a" strokeOpacity="0.5" strokeWidth="1.1" />
+          <path d="M19.4 12 H16.8" stroke="#0a0a0a" strokeOpacity="0.35" strokeWidth="1.1" />
+          <path d="M12 19.4 V16.8" stroke="#ffffff" strokeOpacity="0.5" strokeWidth="1.1" />
         </svg>
       </div>
 
@@ -92,8 +112,10 @@ export function OmniDialLogoStatic({
         viewBox="0 0 24 24"
         fill="none"
       >
-        <circle cx="12" cy="12" r="7" stroke={color} strokeWidth="2.5" fill="none"/>
-        <circle cx="17" cy="7" r="2.5" fill={color}/>
+        {/* Solid-colour variant: callers pass an explicit colour, so no gradient */}
+        <circle cx="12" cy="12" r="7.4" stroke={color} strokeWidth="5" fill="none"/>
+        <path d="M12 4.6 V7.2" stroke="#0a0a0a" strokeOpacity="0.45" strokeWidth="1.1"/>
+        <path d="M12 19.4 V16.8" stroke="#0a0a0a" strokeOpacity="0.25" strokeWidth="1.1"/>
       </svg>
     </div>
   );
@@ -120,8 +142,8 @@ export function OmniDialIcon({
         viewBox="0 0 24 24"
         fill="none"
       >
-        <circle cx="12" cy="12" r="7" stroke={color} strokeWidth="2.5" fill="none"/>
-        <circle cx="17" cy="7" r="2.5" fill={color}/>
+        {/* Compact: seams dropped, they turn to mush below ~20px */}
+        <circle cx="12" cy="12" r="7.4" stroke={color} strokeWidth="5" fill="none"/>
       </svg>
     </div>
   );

@@ -1,6 +1,17 @@
 <svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Ring (the O) -->
-  <circle cx="80" cy="80" r="44" stroke="white" stroke-width="14" fill="none"/>
-  <!-- Dial indicator dot -->
-  <circle cx="111" cy="49" r="14" fill="white"/>
+  <defs>
+    <linearGradient id="od-logo" x1="26" y1="18" x2="134" y2="142" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#b9b3b7"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Thick twisted ring -->
+  <circle cx="80" cy="80" r="49" stroke="url(#od-logo)" stroke-width="34" fill="none"/>
+
+  <!-- Seams where the swept profile turns a quarter -->
+  <path d="M80 31 V48" stroke="#0a0a0a" stroke-opacity="0.5" stroke-width="4.5"/>
+  <path d="M129 80 H112" stroke="#0a0a0a" stroke-opacity="0.35" stroke-width="4.5"/>
+  <path d="M80 129 V112" stroke="#ffffff" stroke-opacity="0.5" stroke-width="4.5"/>
 </svg>
