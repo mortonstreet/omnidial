@@ -117,7 +117,8 @@ interface DialerContextValue {
 const DialerContext = createContext<DialerContextValue | null>(null)
 
 const LEGACY_TOKEN_CACHE_KEY = 'omnidial-token'
-const TOKEN_CACHE_KEY_PREFIX = 'omnidial-token-v2'
+const PREVIOUS_TOKEN_CACHE_KEY_PREFIXES = ['omnidial-token-v2']
+const TOKEN_CACHE_KEY_PREFIX = 'omnidial-token-v3'
 const TOKEN_TTL_MS = 50 * 60 * 1000 // 50 minutes
 // Telnyx has no in-place token update; proactively rebuild the client before the token expires
 const TOKEN_REFRESH_MS = 45 * 60 * 1000 // 45 minutes
@@ -141,6 +142,16 @@ function tokenCacheKey(organizationId?: string | null): string {
   return organizationId
     ? `${TOKEN_CACHE_KEY_PREFIX}:${organizationId}`
     : TOKEN_CACHE_KEY_PREFIX
+}
+
+function removeStaleTokenCaches(organizationId?: string | null) {
+  localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY)
+  for (const prefix of PREVIOUS_TOKEN_CACHE_KEY_PREFIXES) {
+    localStorage.removeItem(prefix)
+    if (organizationId) {
+      localStorage.removeItem(`${prefix}:${organizationId}`)
+    }
+  }
 }
 
 function requireSipDomain(sipDomain = telnyxSipDomain): string {
@@ -176,7 +187,7 @@ async function resumeSharedAudioContext() {
 function getCachedToken(organizationId?: string | null): string | null {
   const cacheKey = tokenCacheKey(organizationId)
   try {
-    localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY)
+    removeStaleTokenCaches(organizationId)
     const raw = localStorage.getItem(cacheKey)
     if (!raw) return null
     const cached: CachedToken = JSON.parse(raw)
@@ -206,6 +217,7 @@ function setCachedToken(
       sipDomain: telnyxSipDomain,
     }
     localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY)
+    removeStaleTokenCaches(organizationId)
     localStorage.setItem(tokenCacheKey(organizationId), JSON.stringify(data))
   } catch {
     // localStorage may be unavailable
@@ -214,7 +226,7 @@ function setCachedToken(
 
 function clearCachedToken(organizationId?: string | null) {
   try {
-    localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY)
+    removeStaleTokenCaches(organizationId)
     localStorage.removeItem(tokenCacheKey(organizationId))
   } catch {
     // noop

@@ -622,6 +622,8 @@ export interface TelephonyCredential {
   sip_username?: string
   connection_id?: string
   resource_id?: string
+  created_at?: string
+  updated_at?: string
   [key: string]: unknown
 }
 
@@ -656,6 +658,37 @@ export const ensureCredentialConnectionInternalSip = async (
   )
 }
 
+const telephonyCredentialConnectionMatches = (
+  credential: TelephonyCredential,
+  connectionId: string,
+): boolean =>
+  credential.connection_id === connectionId ||
+  credential.resource_id === `connection:${connectionId}`
+
+const telephonyCredentialTimestamp = (
+  credential: TelephonyCredential,
+): number => {
+  const value = credential.updated_at ?? credential.created_at
+  if (!value) return 0
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+const newestTelephonyCredential = (
+  credentials: TelephonyCredential[] | undefined,
+  connectionId?: string,
+): TelephonyCredential | undefined => {
+  const matches = (credentials ?? []).filter((credential) =>
+    connectionId
+      ? telephonyCredentialConnectionMatches(credential, connectionId)
+      : true,
+  )
+  return matches.sort(
+    (a, b) =>
+      telephonyCredentialTimestamp(b) - telephonyCredentialTimestamp(a),
+  )[0]
+}
+
 /**
  * Find or create an on-demand telephony credential for a WebRTC identity.
  * Credentials are named after the identity so TeXML `<Dial><Client>identity`
@@ -672,11 +705,7 @@ export const findOrCreateTelephonyCredential = async (
     'GET',
     `/telephony_credentials?filter[tag]=${encodeURIComponent(tag)}&page[size]=10`,
   )
-  const match = existing.data?.find(
-    (credential) =>
-      credential.connection_id === params.connectionId ||
-      credential.resource_id === `connection:${params.connectionId}`,
-  )
+  const match = newestTelephonyCredential(existing.data, params.connectionId)
   if (match) {
     return match
   }
@@ -740,13 +769,7 @@ export const findTelephonyCredentialSipUsername = async (
     'GET',
     `/telephony_credentials?filter[tag]=${encodeURIComponent(tag)}&page[size]=10`,
   )
-  const credential = connectionId
-    ? result.data?.find(
-        (item) =>
-          item.connection_id === connectionId ||
-          item.resource_id === `connection:${connectionId}`,
-      )
-    : result.data?.[0]
+  const credential = newestTelephonyCredential(result.data, connectionId)
   return credential?.sip_username ?? null
 }
 

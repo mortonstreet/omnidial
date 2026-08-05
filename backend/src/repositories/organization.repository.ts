@@ -29,16 +29,14 @@ export const findMember = async (organizationId: string, userId: string) => {
 /**
  * Find all members of an organization
  * Used to route inbound calls to all users in the org
- * Excludes superadmin users (virtual access only)
+ * Includes app-level superadmins when they are explicit org members. Superadmin
+ * "virtual access" is handled by the absence of a member row.
  */
 export const findMembersByOrganizationId = async (organizationId: string) => {
   return await db
     .selectFrom('member')
     .innerJoin('user', 'user.id', 'member.userId')
     .where('member.organizationId', '=', organizationId)
-    .where((eb) =>
-      eb.or([eb('user.role', '!=', 'superadmin'), eb('user.role', 'is', null)]),
-    )
     .select([
       'member.id',
       'member.organizationId',
