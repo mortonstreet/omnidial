@@ -1,110 +1,115 @@
-"use client";
+'use client'
 
-import { use } from "react";
-import { useLead, useUpdateLead, useDeleteLead, useGenerateCompanySummary } from "@/hooks/api/useLeads";
-import { usePipelineStages } from "@/hooks/api/usePipeline";
-import { useConnectedCrms, useCrmPushLead } from "@/hooks/api/useCrmSync";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { toast } from "sonner";
-import { useQuickCall } from "@/hooks/useQuickCall";
+import { use } from 'react'
+import {
+  useLead,
+  useUpdateLead,
+  useDeleteLead,
+  useGenerateCompanySummary,
+} from '@/hooks/api/useLeads'
+import { usePipelineStages } from '@/hooks/api/usePipeline'
+import { useConnectedCrms, useCrmPushLead } from '@/hooks/api/useCrmSync'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { useQuickCall } from '@/hooks/useQuickCall'
 import {
   LeadDetailHeader,
   LeadTabSidebar,
   LeadTabContent,
   tabs,
   type TabType,
-} from "@/components/leads/detail";
+} from '@/components/leads/detail'
 
 interface LeadDetailPageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>
 }
 
 export default function LeadDetailPage({ params }: LeadDetailPageProps) {
-  const { id } = use(params);
-  const router = useRouter();
-  const { data: lead, isLoading: leadLoading, refetch } = useLead(id);
-  const { data: stagesData, isLoading: stagesLoading } = usePipelineStages();
-  const updateLead = useUpdateLead();
-  const deleteLead = useDeleteLead();
-  const generateSummary = useGenerateCompanySummary();
-  const { data: connectedCrmsData } = useConnectedCrms();
-  const syncLeadToCrm = useCrmPushLead();
+  const { id } = use(params)
+  const router = useRouter()
+  const { data: lead, isLoading: leadLoading, refetch } = useLead(id)
+  const { data: stagesData, isLoading: stagesLoading } = usePipelineStages()
+  const updateLead = useUpdateLead()
+  const deleteLead = useDeleteLead()
+  const generateSummary = useGenerateCompanySummary()
+  const { data: connectedCrmsData } = useConnectedCrms()
+  const syncLeadToCrm = useCrmPushLead()
 
-  const { quickCall } = useQuickCall();
+  const { quickCall } = useQuickCall()
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>("overview");
+  const [isEditing, setIsEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    company: "",
-    title: "",
-    linkedInUrl: "",
-    website: "",
-    dealValue: "",
-    pipelineStageId: "",
-  });
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    company: '',
+    title: '',
+    linkedInUrl: '',
+    website: '',
+    dealValue: '',
+    pipelineStageId: '',
+  })
 
-  const stages = stagesData?.data || [];
-  const isLoading = leadLoading || stagesLoading;
+  const stages = stagesData?.data || []
+  const isLoading = leadLoading || stagesLoading
   const isHubSpotConnected =
-    connectedCrmsData?.data?.some((crm) => crm.provider === "hubspot") ?? false;
+    connectedCrmsData?.data?.some((crm) => crm.provider === 'hubspot') ?? false
 
   const getSyncErrorMessage = (error: unknown) =>
     error instanceof Error && error.message
       ? error.message
-      : "Failed to sync to HubSpot";
+      : 'Failed to sync to HubSpot'
 
-  const handleHubSpotSync = async (successMessage = "Synced to HubSpot") => {
-    if (!lead) return false;
+  const handleHubSpotSync = async (successMessage = 'Synced to HubSpot') => {
+    if (!lead) return false
 
     try {
       await syncLeadToCrm.mutateAsync({
         leadId: lead.id,
-        provider: "hubspot",
-      });
-      refetch();
-      toast.success(successMessage);
-      return true;
+        provider: 'hubspot',
+      })
+      refetch()
+      toast.success(successMessage)
+      return true
     } catch (error) {
-      toast.error("HubSpot sync failed", {
+      toast.error('HubSpot sync failed', {
         description: getSyncErrorMessage(error),
-      });
-      return false;
+      })
+      return false
     }
-  };
+  }
 
   const initializeForm = () => {
     if (lead) {
       setFormData({
-        firstName: lead.firstName || "",
-        lastName: lead.lastName || "",
-        email: lead.email || "",
-        phone: lead.phone || "",
-        company: lead.company || "",
-        title: lead.title || "",
-        linkedInUrl: lead.linkedInUrl || "",
-        website: lead.website || "",
-        dealValue: lead.dealValue?.toString() || "",
-        pipelineStageId: lead.pipelineStageId || "",
-      });
+        firstName: lead.firstName || '',
+        lastName: lead.lastName || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        company: lead.company || '',
+        title: lead.title || '',
+        linkedInUrl: lead.linkedInUrl || '',
+        website: lead.website || '',
+        dealValue: lead.dealValue?.toString() || '',
+        pipelineStageId: lead.pipelineStageId || '',
+      })
     }
-  };
+  }
 
   const handleEdit = () => {
-    initializeForm();
-    setIsEditing(true);
-  };
+    initializeForm()
+    setIsEditing(true)
+  }
 
   const handleCancel = () => {
-    setIsEditing(false);
-  };
+    setIsEditing(false)
+  }
 
   const handleSave = async () => {
     try {
@@ -120,26 +125,26 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         website: formData.website || null,
         dealValue: formData.dealValue ? parseFloat(formData.dealValue) : null,
         pipelineStageId: formData.pipelineStageId || null,
-      });
-      setIsEditing(false);
-      refetch();
-      toast.success("Lead updated");
+      })
+      setIsEditing(false)
+      refetch()
+      toast.success('Lead updated')
     } catch {
-      toast.error("Failed to update lead");
+      toast.error('Failed to update lead')
     }
-  };
+  }
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this lead?")) return;
+    if (!confirm('Are you sure you want to delete this lead?')) return
 
     try {
-      await deleteLead.mutateAsync(lead!.id);
-      toast.success("Lead deleted");
-      router.push("/dashboard/crm");
+      await deleteLead.mutateAsync(lead!.id)
+      toast.success('Lead deleted')
+      router.push('/dashboard/crm')
     } catch {
-      toast.error("Failed to delete lead");
+      toast.error('Failed to delete lead')
     }
-  };
+  }
 
   const handleStageChange = async (stageId: string) => {
     if (!isEditing && lead) {
@@ -147,39 +152,42 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         await updateLead.mutateAsync({
           id: lead.id,
           pipelineStageId: stageId || null,
-        });
-        refetch();
+        })
+        refetch()
         if (isHubSpotConnected) {
-          await handleHubSpotSync("Stage updated and synced to HubSpot");
+          await handleHubSpotSync('Stage updated and synced to HubSpot')
         } else {
-          toast.success("Stage updated");
+          toast.success('Stage updated')
         }
       } catch {
-        toast.error("Failed to update stage");
+        toast.error('Failed to update stage')
       }
     } else {
-      setFormData((prev) => ({ ...prev, pipelineStageId: stageId }));
+      setFormData((prev) => ({ ...prev, pipelineStageId: stageId }))
     }
-  };
+  }
 
   const handleGenerateSummary = async (forceRegenerate = false) => {
-    if (!lead) return;
+    if (!lead) return
     try {
       await generateSummary.mutateAsync({
         leadId: lead.id,
         forceRegenerate,
-      });
-      refetch();
-      toast.success(forceRegenerate ? "Summary regenerated" : "Summary generated");
+      })
+      refetch()
+      toast.success(
+        forceRegenerate ? 'Summary regenerated' : 'Summary generated',
+      )
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate summary";
-      toast.error(message);
+      const message =
+        error instanceof Error ? error.message : 'Failed to generate summary'
+      toast.error(message)
     }
-  };
+  }
 
   const handleFormChange = (updates: Partial<typeof formData>) => {
-    setFormData((prev) => ({ ...prev, ...updates }));
-  };
+    setFormData((prev) => ({ ...prev, ...updates }))
+  }
 
   if (isLoading) {
     return (
@@ -254,7 +262,10 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         <div className="sm:hidden fixed bottom-0 left-0 right-0 z-10 bg-background border-t border-border">
           <div className="flex items-center justify-around py-2 px-4">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex flex-col items-center gap-1 py-2 px-3">
+              <div
+                key={i}
+                className="flex flex-col items-center gap-1 py-2 px-3"
+              >
                 <div className="w-5 h-5 bg-muted rounded" />
                 <div className="w-10 h-3 bg-muted rounded" />
               </div>
@@ -262,7 +273,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   if (!lead) {
@@ -297,12 +308,12 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
           </Link>
         </div>
       </div>
-    );
+    )
   }
 
   const fullName =
-    [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Unknown Lead";
-  const currentStage = stages.find((s) => s.id === lead.pipelineStageId);
+    [lead.firstName, lead.lastName].filter(Boolean).join(' ') || 'Unknown Lead'
+  const currentStage = stages.find((s) => s.id === lead.pipelineStageId)
 
   return (
     <div className="space-y-6 pb-20 sm:pb-6">
@@ -315,20 +326,30 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         pipelineStageId={lead.pipelineStageId}
         stages={stages}
         email={lead.email}
+        phone={lead.phone}
         isEditing={isEditing}
         isSaving={updateLead.isPending}
         onEdit={handleEdit}
         onCancel={handleCancel}
         onSave={handleSave}
         onDelete={handleDelete}
-        onCall={() => quickCall({ leadId: lead.id, leadName: fullName, phone: lead.phone, clientId: lead.client?.id })}
+        onCall={() =>
+          quickCall({
+            leadId: lead.id,
+            leadName: fullName,
+            phone: lead.phone,
+            clientId: lead.client?.id,
+          })
+        }
         onStageChange={handleStageChange}
         enrichmentStatus={lead.enrichmentStatus}
         backUrl="/dashboard/crm"
         backLabel="Back to Pipeline"
         isHubSpotConnected={isHubSpotConnected}
         isHubSpotSyncing={syncLeadToCrm.isPending}
-        onHubSpotSync={() => { void handleHubSpotSync(); }}
+        onHubSpotSync={() => {
+          void handleHubSpotSync()
+        }}
       />
 
       {/* Main content: sidebar + tab content */}
@@ -352,11 +373,20 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
           isEditing={isEditing}
           formData={formData}
           onFormChange={handleFormChange}
-          onCall={() => quickCall({ leadId: lead.id, leadName: fullName, phone: lead.phone, clientId: lead.client?.id })}
+          onCall={() =>
+            quickCall({
+              leadId: lead.id,
+              leadName: fullName,
+              phone: lead.phone,
+              clientId: lead.client?.id,
+            })
+          }
           aiCompanySummary={lead.aiCompanySummary}
           aiCompanyOverview={lead.aiCompanyOverview}
           aiSalesTalkingPoints={lead.aiSalesTalkingPoints as string[] | null}
-          aiBusinessContext={lead.aiBusinessContext as Record<string, unknown> | null}
+          aiBusinessContext={
+            lead.aiBusinessContext as Record<string, unknown> | null
+          }
           isGeneratingSummary={generateSummary.isPending}
           onGenerateSummary={handleGenerateSummary}
           enrichmentStatus={lead.enrichmentStatus}
@@ -370,7 +400,11 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
       {/* Mobile Bottom Tab Bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-t border-border safe-area-inset-bottom">
-        <div className="flex items-center justify-around py-2 px-4" role="tablist" aria-label="Lead details">
+        <div
+          className="flex items-center justify-around py-2 px-4"
+          role="tablist"
+          aria-label="Lead details"
+        >
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -379,18 +413,17 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
               aria-controls={`tabpanel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={`flex flex-col items-center gap-1 py-2 px-3 rounded-lg min-w-[60px] transition-colors touch-manipulation ${
-                activeTab === tab.id
-                  ? "text-primary"
-                  : "text-muted-foreground"
+                activeTab === tab.id ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
               <tab.icon className="w-5 h-5" aria-hidden="true" />
-              <span className="text-xs font-medium">{tab.shortLabel || tab.label}</span>
+              <span className="text-xs font-medium">
+                {tab.shortLabel || tab.label}
+              </span>
             </button>
           ))}
         </div>
       </div>
-
     </div>
-  );
+  )
 }

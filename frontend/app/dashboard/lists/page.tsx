@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Plus,
   PlusCircle,
@@ -19,28 +19,29 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
-} from "lucide-react";
-import { Logo3DSpinner } from "@/components/ui/Logo3DSpinner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+} from 'lucide-react'
+import { Logo3DSpinner } from '@/components/ui/Logo3DSpinner'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { HubSpotContactImporter } from "@/components/settings/HubSpotContactImporter";
-import { BrandLogo } from "@/components/ui/BrandLogo";
+} from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { HubSpotContactImporter } from '@/components/settings/HubSpotContactImporter'
+import { BrandLogo } from '@/components/ui/BrandLogo'
 import {
   useLists,
   useFolders,
@@ -58,486 +59,620 @@ import {
   useRecordFolderOpen,
   usePrefetchFolderLists,
   useAddListToCampaign,
-} from "@/hooks/api/useLists";
-import { useCampaigns } from "@/hooks/api/useCampaigns";
-import { useConnectedCrms } from "@/hooks/api/useCrmSync";
-import { useListOrganizationMembers } from "@/hooks/api/useOrganization";
-import { useEnrichList } from "@/hooks/api/useEnrichment";
-import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+} from '@/hooks/api/useLists'
+import { useCampaigns } from '@/hooks/api/useCampaigns'
+import { useConnectedCrms } from '@/hooks/api/useCrmSync'
+import { useListOrganizationMembers } from '@/hooks/api/useOrganization'
+import { useEnrichList, useEnrichmentVendors } from '@/hooks/api/useEnrichment'
+import { useOrganizationAdmin } from '@/hooks/useOrganizationAdmin'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+import {
+  ContactEnrichmentField,
+  getActiveContactEnrichmentVendors,
+  getEnrichmentProviderLabel,
+} from '@/lib/enrichment-ui'
+import type { DataVendorProvider } from '@shared/types/src'
 
-type TabType = "all" | "recents" | "favorites";
+type TabType = 'all' | 'recents' | 'favorites'
 
 interface BreadcrumbItem {
-  id: string;
-  name: string;
+  id: string
+  name: string
 }
 
 interface DetailsSidebarItem {
-  type: "folder" | "list";
-  id: string;
-  name: string;
-  description?: string;
-  color?: string;
-  leadCount?: number;
-  createdAt: string;
-  folderId?: string;
+  type: 'folder' | 'list'
+  id: string
+  name: string
+  description?: string
+  color?: string
+  leadCount?: number
+  createdAt: string
+  folderId?: string
 }
 
 interface OrganizationMember {
-  userId: string;
-  role: string;
+  userId: string
+  role: string
   user?: {
-    name?: string | null;
-    email?: string;
-  };
+    name?: string | null
+    email?: string
+  }
 }
 
 interface ListWithCreator {
-  createdById?: string;
+  createdById?: string
 }
 
 export default function ListsPage() {
-  const router = useRouter();
+  const router = useRouter()
 
   // View state
-  const [activeTab, setActiveTab] = useState<TabType>("all");
-  const [folderPath, setFolderPath] = useState<BreadcrumbItem[]>([]);
-  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<TabType>('all')
+  const [folderPath, setFolderPath] = useState<BreadcrumbItem[]>([])
+  const [search, setSearch] = useState('')
 
   // Current folder is the last item in the path
-  const currentFolderId = folderPath.length > 0 ? folderPath[folderPath.length - 1].id : null;
+  const currentFolderId =
+    folderPath.length > 0 ? folderPath[folderPath.length - 1].id : null
 
   // Details sidebar
-  const [detailsItem, setDetailsItem] = useState<DetailsSidebarItem | null>(null);
+  const [detailsItem, setDetailsItem] = useState<DetailsSidebarItem | null>(
+    null,
+  )
 
   // Create dialog (for both list and folder)
-  const [createType, setCreateType] = useState<"list" | "folder" | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
+  const [createType, setCreateType] = useState<'list' | 'folder' | null>(null)
+  const [newName, setNewName] = useState('')
+  const [newDescription, setNewDescription] = useState('')
 
   // Rename dialog
-  const [renamingItem, setRenamingItem] = useState<{ type: "folder" | "list"; id: string; name: string } | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const [renamingItem, setRenamingItem] = useState<{
+    type: 'folder' | 'list'
+    id: string
+    name: string
+  } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   // Move dialog
-  const [movingList, setMovingList] = useState<{ id: string; name: string; folderId?: string } | null>(null);
-  const [folderSearchQuery, setFolderSearchQuery] = useState("");
+  const [movingList, setMovingList] = useState<{
+    id: string
+    name: string
+    folderId?: string
+  } | null>(null)
+  const [folderSearchQuery, setFolderSearchQuery] = useState('')
 
   // Add to Campaign dialog
-  const [addToCampaignList, setAddToCampaignList] = useState<{ id: string; name: string } | null>(null);
-  const [campaignSearchQuery, setCampaignSearchQuery] = useState("");
-  const [isHubSpotImportOpen, setIsHubSpotImportOpen] = useState(false);
+  const [addToCampaignList, setAddToCampaignList] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [campaignSearchQuery, setCampaignSearchQuery] = useState('')
+  const [isHubSpotImportOpen, setIsHubSpotImportOpen] = useState(false)
+  const [listEnrichmentRequest, setListEnrichmentRequest] = useState<{
+    listId: string
+    listName: string
+    provider: DataVendorProvider
+  } | null>(null)
+  const [listEnrichmentFields, setListEnrichmentFields] = useState<
+    ContactEnrichmentField[]
+  >(['phone'])
 
   // Data fetching
   const { data: listsData, isLoading: isLoadingLists } = useLists({
     folderId: currentFolderId ?? undefined,
     search: search || undefined,
-  });
-  const { data: foldersData, isLoading: isLoadingFolders } = useFolders();
+  })
+  const { data: foldersData, isLoading: isLoadingFolders } = useFolders()
 
-  const createListMutation = useCreateList();
-  const createFolderMutation = useCreateFolder();
-  const updateFolderMutation = useUpdateFolder();
-  const deleteFolderMutation = useDeleteFolder();
-  const updateListMutation = useUpdateList();
-  const deleteListMutation = useDeleteList();
-  const addListToCampaignMutation = useAddListToCampaign();
-  const enrichListMutation = useEnrichList();
-  const canManageLists = useOrganizationAdmin();
+  const createListMutation = useCreateList()
+  const createFolderMutation = useCreateFolder()
+  const updateFolderMutation = useUpdateFolder()
+  const deleteFolderMutation = useDeleteFolder()
+  const updateListMutation = useUpdateList()
+  const deleteListMutation = useDeleteList()
+  const addListToCampaignMutation = useAddListToCampaign()
+  const enrichListMutation = useEnrichList()
+  const canManageLists = useOrganizationAdmin()
 
   // Fetch campaigns for "Add to Campaign" dialog
-  const { data: campaignsData } = useCampaigns();
+  const { data: campaignsData } = useCampaigns()
 
   // Favorites and Recents
-  const { data: favoritesData } = useFavorites();
-  const { data: favoriteIdsData } = useFavoriteIds();
-  const { data: recentsData } = useRecents();
-  const { data: connectedCrmsData } = useConnectedCrms();
-  const toggleFavoriteMutation = useToggleFavorite();
-  const recordListOpenMutation = useRecordListOpen();
-  const recordFolderOpenMutation = useRecordFolderOpen();
-  const prefetchFolderLists = usePrefetchFolderLists();
+  const { data: favoritesData } = useFavorites()
+  const { data: favoriteIdsData } = useFavoriteIds()
+  const { data: recentsData } = useRecents()
+  const { data: connectedCrmsData } = useConnectedCrms()
+  const { data: enrichmentVendorsData } = useEnrichmentVendors()
+  const toggleFavoriteMutation = useToggleFavorite()
+  const recordListOpenMutation = useRecordListOpen()
+  const recordFolderOpenMutation = useRecordFolderOpen()
+  const prefetchFolderLists = usePrefetchFolderLists()
 
   // Organization members for owner display and filter
-  const { data: membersData } = useListOrganizationMembers();
-  const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
+  const { data: membersData } = useListOrganizationMembers()
+  const [ownerFilter, setOwnerFilter] = useState<string | null>(null)
 
-  const allLists = useMemo(() => listsData?.data ?? [], [listsData?.data]);
-  const allFolders = useMemo(() => foldersData?.data ?? [], [foldersData?.data]);
+  const allLists = useMemo(() => listsData?.data ?? [], [listsData?.data])
+  const allFolders = useMemo(() => foldersData?.data ?? [], [foldersData?.data])
 
   // User map for owner display
   const userMap = useMemo(() => {
-    const map = new Map<string, string>();
-    const members = membersData?.data?.members;
+    const map = new Map<string, string>()
+    const members = membersData?.data?.members
     if (members) {
       for (const member of members) {
-        map.set(member.userId, member.user?.name || member.user?.email || "Unknown");
+        map.set(
+          member.userId,
+          member.user?.name || member.user?.email || 'Unknown',
+        )
       }
     }
-    return map;
-  }, [membersData]);
+    return map
+  }, [membersData])
 
   // Favorite IDs for quick lookups
-  const favoriteListIds = useMemo(() => new Set(favoriteIdsData?.listIds ?? []), [favoriteIdsData?.listIds]);
-  const favoriteFolderIds = useMemo(() => new Set(favoriteIdsData?.folderIds ?? []), [favoriteIdsData?.folderIds]);
+  const favoriteListIds = useMemo(
+    () => new Set(favoriteIdsData?.listIds ?? []),
+    [favoriteIdsData?.listIds],
+  )
+  const favoriteFolderIds = useMemo(
+    () => new Set(favoriteIdsData?.folderIds ?? []),
+    [favoriteIdsData?.folderIds],
+  )
 
   // Create lookup map for "Last opened by me" timestamps from recents data
   const openedAtMap = useMemo(() => {
-    const map = new Map<string, string>();
-    const recents = recentsData?.data ?? [];
+    const map = new Map<string, string>()
+    const recents = recentsData?.data ?? []
     for (const item of recents) {
       // Use a composite key: type-id to handle both lists and folders
-      map.set(`${item.type}-${item.id}`, item.openedAt);
+      map.set(`${item.type}-${item.id}`, item.openedAt)
     }
-    return map;
-  }, [recentsData]);
+    return map
+  }, [recentsData])
 
   // Combine and filter items based on current location and active tab
   const items = useMemo(() => {
     let result: Array<
-      | { type: "folder"; data: typeof allFolders[0]; openedAt?: string }
-      | { type: "list"; data: typeof allLists[0]; openedAt?: string }
-    > = [];
+      | { type: 'folder'; data: (typeof allFolders)[0]; openedAt?: string }
+      | { type: 'list'; data: (typeof allLists)[0]; openedAt?: string }
+    > = []
 
     // Handle Favorites tab
-    if (activeTab === "favorites") {
-      const favLists = favoritesData?.lists ?? [];
-      const favFolders = favoritesData?.folders ?? [];
-      favFolders.forEach((f) => result.push({
-        type: "folder",
-        data: f as typeof allFolders[0],
-        openedAt: openedAtMap.get(`folder-${f.id}`),
-      }));
-      favLists.forEach((l) => result.push({
-        type: "list",
-        data: l as typeof allLists[0],
-        openedAt: openedAtMap.get(`list-${l.id}`),
-      }));
+    if (activeTab === 'favorites') {
+      const favLists = favoritesData?.lists ?? []
+      const favFolders = favoritesData?.folders ?? []
+      favFolders.forEach((f) =>
+        result.push({
+          type: 'folder',
+          data: f as (typeof allFolders)[0],
+          openedAt: openedAtMap.get(`folder-${f.id}`),
+        }),
+      )
+      favLists.forEach((l) =>
+        result.push({
+          type: 'list',
+          data: l as (typeof allLists)[0],
+          openedAt: openedAtMap.get(`list-${l.id}`),
+        }),
+      )
     }
     // Handle Recents tab - use data directly from backend (includes full objects)
-    else if (activeTab === "recents") {
-      const recents = recentsData?.data ?? [];
+    else if (activeTab === 'recents') {
+      const recents = recentsData?.data ?? []
       for (const item of recents) {
-        if (item.type === "folder") {
+        if (item.type === 'folder') {
           // Backend returns full folder data with openedAt
           result.push({
-            type: "folder",
-            data: item as typeof allFolders[0],
+            type: 'folder',
+            data: item as (typeof allFolders)[0],
             openedAt: item.openedAt,
-          });
+          })
         } else {
           // Backend returns full list data with openedAt
           result.push({
-            type: "list",
-            data: item as typeof allLists[0],
+            type: 'list',
+            data: item as (typeof allLists)[0],
             openedAt: item.openedAt,
-          });
+          })
         }
       }
     }
     // Handle All tab
     else if (search) {
       // Search across all items
-      const searchLower = search.toLowerCase();
+      const searchLower = search.toLowerCase()
       allFolders
         .filter((f) => f.name.toLowerCase().includes(searchLower))
-        .forEach((f) => result.push({
-          type: "folder",
-          data: f,
-          openedAt: openedAtMap.get(`folder-${f.id}`),
-        }));
+        .forEach((f) =>
+          result.push({
+            type: 'folder',
+            data: f,
+            openedAt: openedAtMap.get(`folder-${f.id}`),
+          }),
+        )
       allLists
         .filter(
           (l) =>
             l.name.toLowerCase().includes(searchLower) ||
-            l.description?.toLowerCase().includes(searchLower)
+            l.description?.toLowerCase().includes(searchLower),
         )
-        .forEach((l) => result.push({
-          type: "list",
-          data: l,
-          openedAt: openedAtMap.get(`list-${l.id}`),
-        }));
+        .forEach((l) =>
+          result.push({
+            type: 'list',
+            data: l,
+            openedAt: openedAtMap.get(`list-${l.id}`),
+          }),
+        )
     } else if (currentFolderId) {
       // Inside a folder - show only items IN this folder
       // Subfolders with parentId = currentFolderId
       allFolders
         .filter((f) => f.parentId === currentFolderId)
-        .forEach((f) => result.push({
-          type: "folder",
-          data: f,
-          openedAt: openedAtMap.get(`folder-${f.id}`),
-        }));
+        .forEach((f) =>
+          result.push({
+            type: 'folder',
+            data: f,
+            openedAt: openedAtMap.get(`folder-${f.id}`),
+          }),
+        )
       // Lists with folderId = currentFolderId (already filtered by useLists hook)
-      allLists.forEach((l) => result.push({
-        type: "list",
-        data: l,
-        openedAt: openedAtMap.get(`list-${l.id}`),
-      }));
+      allLists.forEach((l) =>
+        result.push({
+          type: 'list',
+          data: l,
+          openedAt: openedAtMap.get(`list-${l.id}`),
+        }),
+      )
     } else {
       // Home (root) - show only ROOT level items
       // Folders without a parent (parentId is null/undefined)
       allFolders
         .filter((f) => !f.parentId)
-        .forEach((f) => result.push({
-          type: "folder",
-          data: f,
-          openedAt: openedAtMap.get(`folder-${f.id}`),
-        }));
+        .forEach((f) =>
+          result.push({
+            type: 'folder',
+            data: f,
+            openedAt: openedAtMap.get(`folder-${f.id}`),
+          }),
+        )
       // Lists without a folder (folderId is null/undefined)
       allLists
         .filter((l) => !l.folderId)
-        .forEach((l) => result.push({
-          type: "list",
-          data: l,
-          openedAt: openedAtMap.get(`list-${l.id}`),
-        }));
+        .forEach((l) =>
+          result.push({
+            type: 'list',
+            data: l,
+            openedAt: openedAtMap.get(`list-${l.id}`),
+          }),
+        )
     }
 
     // Apply owner filter if set (only applies to lists which have createdById)
     if (ownerFilter) {
       result = result.filter((item) => {
-        if (item.type === "list") {
-          return (item.data as ListWithCreator).createdById === ownerFilter;
+        if (item.type === 'list') {
+          return (item.data as ListWithCreator).createdById === ownerFilter
         }
         // Folders don't have createdById, so we exclude them when filtering by owner
-        return false;
-      });
+        return false
+      })
     }
 
-    return result;
-  }, [search, currentFolderId, allFolders, allLists, activeTab, favoritesData, recentsData, ownerFilter, openedAtMap]);
+    return result
+  }, [
+    search,
+    currentFolderId,
+    allFolders,
+    allLists,
+    activeTab,
+    favoritesData,
+    recentsData,
+    ownerFilter,
+    openedAtMap,
+  ])
 
-  const isLoading = isLoadingLists || isLoadingFolders;
+  const isLoading = isLoadingLists || isLoadingFolders
   const isHubSpotConnected =
-    connectedCrmsData?.data?.some((crm) => crm.provider === "hubspot") ?? false;
+    connectedCrmsData?.data?.some((crm) => crm.provider === 'hubspot') ?? false
+  const activeEnrichmentVendors = useMemo(
+    () => getActiveContactEnrichmentVendors(enrichmentVendorsData?.data),
+    [enrichmentVendorsData?.data],
+  )
 
   // Filtered folders for move dialog
   const filteredFoldersForMove = useMemo(() => {
-    if (!folderSearchQuery.trim()) return allFolders;
-    const q = folderSearchQuery.toLowerCase();
-    return allFolders.filter((f) => f.name.toLowerCase().includes(q));
-  }, [allFolders, folderSearchQuery]);
+    if (!folderSearchQuery.trim()) return allFolders
+    const q = folderSearchQuery.toLowerCase()
+    return allFolders.filter((f) => f.name.toLowerCase().includes(q))
+  }, [allFolders, folderSearchQuery])
 
   // Filtered campaigns for "Add to Campaign" dialog
-  const allCampaigns = useMemo(() => campaignsData?.data ?? [], [campaignsData?.data]);
+  const allCampaigns = useMemo(
+    () => campaignsData?.data ?? [],
+    [campaignsData?.data],
+  )
   const filteredCampaignsForAdd = useMemo(() => {
-    if (!campaignSearchQuery.trim()) return allCampaigns;
-    const q = campaignSearchQuery.toLowerCase();
-    return allCampaigns.filter((c: { name: string }) => c.name.toLowerCase().includes(q));
-  }, [allCampaigns, campaignSearchQuery]);
+    if (!campaignSearchQuery.trim()) return allCampaigns
+    const q = campaignSearchQuery.toLowerCase()
+    return allCampaigns.filter((c: { name: string }) =>
+      c.name.toLowerCase().includes(q),
+    )
+  }, [allCampaigns, campaignSearchQuery])
 
   // Get lists inside a folder for details sidebar
   const listsInFolder = useMemo(() => {
-    if (!detailsItem || detailsItem.type !== "folder") return [];
-    return allLists.filter((l) => l.folderId === detailsItem.id);
-  }, [detailsItem, allLists]);
+    if (!detailsItem || detailsItem.type !== 'folder') return []
+    return allLists.filter((l) => l.folderId === detailsItem.id)
+  }, [detailsItem, allLists])
 
   // Get subfolders for details sidebar
   const subfoldersInFolder = useMemo(() => {
-    if (!detailsItem || detailsItem.type !== "folder") return [];
-    return allFolders.filter((f) => f.parentId === detailsItem.id);
-  }, [detailsItem, allFolders]);
+    if (!detailsItem || detailsItem.type !== 'folder') return []
+    return allFolders.filter((f) => f.parentId === detailsItem.id)
+  }, [detailsItem, allFolders])
 
   // All folders are grey per Clay-inspired design
-  const FOLDER_COLOR = "#6b7280";
+  const FOLDER_COLOR = '#6b7280'
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }
 
   const navigateToFolder = (folderId: string, folderName: string) => {
     // Prefetch folder contents BEFORE state update for instant navigation
-    prefetchFolderLists(folderId);
-    setFolderPath((prev) => [...prev, { id: folderId, name: folderName }]);
-    setSearch("");
+    prefetchFolderLists(folderId)
+    setFolderPath((prev) => [...prev, { id: folderId, name: folderName }])
+    setSearch('')
     // Record folder open for recents (fire and forget)
-    recordFolderOpenMutation.mutate(folderId);
-  };
+    recordFolderOpenMutation.mutate(folderId)
+  }
 
   const navigateToList = (listId: string) => {
     // Record list open for recents
-    recordListOpenMutation.mutate(listId);
-    router.push(`/dashboard/lists/${listId}`);
-  };
+    recordListOpenMutation.mutate(listId)
+    router.push(`/dashboard/lists/${listId}`)
+  }
 
   const navigateToBreadcrumb = (index: number) => {
     if (index === -1) {
       // Navigate to Home
-      setFolderPath([]);
+      setFolderPath([])
     } else {
       // Navigate to specific folder in path
-      setFolderPath((prev) => prev.slice(0, index + 1));
+      setFolderPath((prev) => prev.slice(0, index + 1))
     }
-    setSearch("");
-  };
+    setSearch('')
+  }
 
   const handleCreate = async () => {
     if (!newName.trim()) {
-      toast.error(`Please enter a ${createType} name`);
-      return;
+      toast.error(`Please enter a ${createType} name`)
+      return
     }
 
     try {
-      if (createType === "list") {
+      if (createType === 'list') {
         await createListMutation.mutateAsync({
           name: newName.trim(),
           description: newDescription.trim() || undefined,
           folderId: currentFolderId,
-        });
-        toast.success("List created!");
+        })
+        toast.success('List created!')
       } else {
         await createFolderMutation.mutateAsync({
           name: newName.trim(),
           color: FOLDER_COLOR,
           parentId: currentFolderId,
-        });
-        toast.success("Folder created!");
+        })
+        toast.success('Folder created!')
       }
-      setCreateType(null);
-      setNewName("");
-      setNewDescription("");
+      setCreateType(null)
+      setNewName('')
+      setNewDescription('')
     } catch {
-      toast.error(`Failed to create ${createType}`);
+      toast.error(`Failed to create ${createType}`)
     }
-  };
+  }
 
   const handleRename = async () => {
-    if (!renamingItem || !renameValue.trim()) return;
+    if (!renamingItem || !renameValue.trim()) return
 
     try {
-      if (renamingItem.type === "folder") {
-        const folder = allFolders.find((f) => f.id === renamingItem.id);
+      if (renamingItem.type === 'folder') {
+        const folder = allFolders.find((f) => f.id === renamingItem.id)
         await updateFolderMutation.mutateAsync({
           id: renamingItem.id,
           name: renameValue.trim(),
-          color: folder?.color ?? "#6366f1",
-        });
+          color: folder?.color ?? '#6366f1',
+        })
       } else {
         await updateListMutation.mutateAsync({
           id: renamingItem.id,
           name: renameValue.trim(),
-        });
+        })
       }
-      toast.success("Renamed successfully");
-      setRenamingItem(null);
+      toast.success('Renamed successfully')
+      setRenamingItem(null)
     } catch {
-      toast.error("Failed to rename");
+      toast.error('Failed to rename')
     }
-  };
+  }
 
-  const handleDelete = async (type: "folder" | "list", id: string) => {
-    const message = type === "folder"
-      ? "Delete this folder? Lists inside will move to root."
-      : "Delete this list? This cannot be undone.";
+  const handleDelete = async (type: 'folder' | 'list', id: string) => {
+    const message =
+      type === 'folder'
+        ? 'Delete this folder? Lists inside will move to root.'
+        : 'Delete this list? This cannot be undone.'
 
-    if (!confirm(message)) return;
+    if (!confirm(message)) return
 
     try {
-      if (type === "folder") {
-        await deleteFolderMutation.mutateAsync(id);
+      if (type === 'folder') {
+        await deleteFolderMutation.mutateAsync(id)
       } else {
-        await deleteListMutation.mutateAsync(id);
+        await deleteListMutation.mutateAsync(id)
       }
-      toast.success(`${type === "folder" ? "Folder" : "List"} deleted`);
-      if (detailsItem?.id === id) setDetailsItem(null);
+      toast.success(`${type === 'folder' ? 'Folder' : 'List'} deleted`)
+      if (detailsItem?.id === id) setDetailsItem(null)
     } catch {
-      toast.error(`Failed to delete ${type}`);
+      toast.error(`Failed to delete ${type}`)
     }
-  };
+  }
 
   const handleMoveList = async (folderId: string | null) => {
-    if (!movingList) return;
+    if (!movingList) return
     try {
       await updateListMutation.mutateAsync({
         id: movingList.id,
         folderId,
-      });
-      toast.success(folderId ? "List moved to folder" : "List moved to root");
-      setMovingList(null);
-      setFolderSearchQuery("");
+      })
+      toast.success(folderId ? 'List moved to folder' : 'List moved to root')
+      setMovingList(null)
+      setFolderSearchQuery('')
     } catch {
-      toast.error("Failed to move list");
+      toast.error('Failed to move list')
     }
-  };
+  }
 
-  const handleAddToCampaign = async (campaignId: string, campaignName: string) => {
-    if (!addToCampaignList) return;
+  const handleAddToCampaign = async (
+    campaignId: string,
+    campaignName: string,
+  ) => {
+    if (!addToCampaignList) return
     try {
       const result = await addListToCampaignMutation.mutateAsync({
         campaignId,
         listId: addToCampaignList.id,
-      });
-      toast.success(`Added ${result.leadsAdded.toLocaleString()} leads from "${addToCampaignList.name}" to "${campaignName}"`);
-      setAddToCampaignList(null);
-      setCampaignSearchQuery("");
+      })
+      toast.success(
+        `Added ${result.leadsAdded.toLocaleString()} leads from "${addToCampaignList.name}" to "${campaignName}"`,
+      )
+      setAddToCampaignList(null)
+      setCampaignSearchQuery('')
     } catch {
-      toast.error("Failed to add list to campaign");
+      toast.error('Failed to add list to campaign')
     }
-  };
+  }
 
   const handleHubSpotImportSuccess = (
     listId: string,
     listName: string,
-    leadsImported: number
+    leadsImported: number,
   ) => {
-    toast.success(`Imported ${leadsImported} leads to "${listName}"`);
-    navigateToList(listId);
-  };
+    toast.success(`Imported ${leadsImported} leads to "${listName}"`)
+    navigateToList(listId)
+  }
 
-  const handleAddToFavorites = async (type: "folder" | "list", itemId: string, name: string) => {
+  const openListEnrichment = (
+    listId: string,
+    listName: string,
+    provider: DataVendorProvider,
+  ) => {
+    setListEnrichmentRequest({ listId, listName, provider })
+    setListEnrichmentFields(['phone'])
+  }
+
+  const toggleListEnrichmentField = (
+    field: ContactEnrichmentField,
+    checked: boolean,
+  ) => {
+    setListEnrichmentFields((prev) =>
+      checked
+        ? Array.from(new Set([...prev, field]))
+        : prev.filter((f) => f !== field),
+    )
+  }
+
+  const handleListEnrichment = async () => {
+    if (!listEnrichmentRequest || listEnrichmentFields.length === 0) return
+
+    const providerLabel = getEnrichmentProviderLabel(
+      listEnrichmentRequest.provider,
+    )
+    toast.info(
+      `${providerLabel} enrichment started for "${listEnrichmentRequest.listName}"`,
+    )
+
     try {
-      const result = await toggleFavoriteMutation.mutateAsync({ itemId, type });
+      const result = await enrichListMutation.mutateAsync({
+        listId: listEnrichmentRequest.listId,
+        providers: [listEnrichmentRequest.provider],
+        dataTypes: listEnrichmentFields,
+      })
+      toast.success(
+        `${providerLabel} enriched ${result.totalEnriched.toLocaleString()} leads, skipped ${result.totalSkipped.toLocaleString()} (${result.totalCredits} credits used)`,
+      )
+      setListEnrichmentRequest(null)
+    } catch {
+      toast.error('Enrichment failed')
+    }
+  }
+
+  const handleAddToFavorites = async (
+    type: 'folder' | 'list',
+    itemId: string,
+    name: string,
+  ) => {
+    try {
+      const result = await toggleFavoriteMutation.mutateAsync({ itemId, type })
       if (result.favorited) {
-        toast.success(`Added "${name}" to favorites`);
+        toast.success(`Added "${name}" to favorites`)
       } else {
-        toast.success(`Removed "${name}" from favorites`);
+        toast.success(`Removed "${name}" from favorites`)
       }
     } catch {
-      toast.error("Failed to update favorites");
+      toast.error('Failed to update favorites')
     }
-  };
+  }
 
-  const openDetails = (item: typeof items[0]) => {
-    if (item.type === "folder") {
+  const openDetails = (item: (typeof items)[0]) => {
+    if (item.type === 'folder') {
       setDetailsItem({
-        type: "folder",
+        type: 'folder',
         id: item.data.id,
         name: item.data.name,
         color: item.data.color,
         createdAt: item.data.createdAt,
-      });
+      })
     } else {
       setDetailsItem({
-        type: "list",
+        type: 'list',
         id: item.data.id,
         name: item.data.name,
         description: item.data.description,
         leadCount: item.data.leadCount,
         createdAt: item.data.createdAt,
         folderId: item.data.folderId,
-      });
+      })
     }
-  };
+  }
 
   const tabs: { key: TabType; label: string }[] = [
-    { key: "all", label: "All files" },
-    { key: "recents", label: "Recents" },
-    { key: "favorites", label: "Favorites" },
-  ];
+    { key: 'all', label: 'All files' },
+    { key: 'recents', label: 'Recents' },
+    { key: 'favorites', label: 'Favorites' },
+  ]
 
   // Get current folder name for title
-  const currentFolderName = folderPath.length > 0 ? folderPath[folderPath.length - 1].name : "All Files";
+  const currentFolderName =
+    folderPath.length > 0 ? folderPath[folderPath.length - 1].name : 'All Files'
 
   return (
     <div className="flex h-full">
       {/* Main Content */}
-      <div className={cn("flex-1 p-6 space-y-4 overflow-auto", detailsItem && "pr-0")}>
+      <div
+        className={cn(
+          'flex-1 p-6 space-y-4 overflow-auto',
+          detailsItem && 'pr-0',
+        )}
+      >
         {/* Page Title */}
         <h1 className="font-display font-semibold text-2xl md:text-3xl tracking-tight text-foreground">
           Lists
@@ -549,15 +684,15 @@ export default function ListsPage() {
             <button
               key={tab.key}
               onClick={() => {
-                setActiveTab(tab.key);
-                setFolderPath([]);
-                setSearch("");
+                setActiveTab(tab.key)
+                setFolderPath([])
+                setSearch('')
               }}
               className={cn(
-                "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+                'px-4 py-1.5 text-sm font-medium rounded-md transition-colors',
                 activeTab === tab.key
-                  ? "bg-background text-primary shadow-sm border"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? 'bg-background text-primary shadow-sm border'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {tab.label}
@@ -570,8 +705,8 @@ export default function ListsPage() {
           <button
             onClick={() => navigateToBreadcrumb(-1)}
             className={cn(
-              "hover:text-foreground transition-colors",
-              folderPath.length === 0 && "text-foreground font-medium"
+              'hover:text-foreground transition-colors',
+              folderPath.length === 0 && 'text-foreground font-medium',
             )}
           >
             Home
@@ -582,8 +717,9 @@ export default function ListsPage() {
               <button
                 onClick={() => navigateToBreadcrumb(index)}
                 className={cn(
-                  "hover:text-foreground transition-colors",
-                  index === folderPath.length - 1 && "text-foreground font-medium"
+                  'hover:text-foreground transition-colors',
+                  index === folderPath.length - 1 &&
+                    'text-foreground font-medium',
                 )}
               >
                 {item.name}
@@ -603,7 +739,10 @@ export default function ListsPage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9">
-                  Owner: {ownerFilter ? userMap.get(ownerFilter) ?? "Unknown" : "All"}
+                  Owner:{' '}
+                  {ownerFilter
+                    ? (userMap.get(ownerFilter) ?? 'Unknown')
+                    : 'All'}
                   <ChevronDown className="w-4 h-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
@@ -612,14 +751,16 @@ export default function ListsPage() {
                   All
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {membersData?.data?.members?.map((member: OrganizationMember) => (
-                  <DropdownMenuItem
-                    key={member.userId}
-                    onClick={() => setOwnerFilter(member.userId)}
-                  >
-                    {member.user?.name || member.user?.email || "Unknown"}
-                  </DropdownMenuItem>
-                ))}
+                {membersData?.data?.members?.map(
+                  (member: OrganizationMember) => (
+                    <DropdownMenuItem
+                      key={member.userId}
+                      onClick={() => setOwnerFilter(member.userId)}
+                    >
+                      {member.user?.name || member.user?.email || 'Unknown'}
+                    </DropdownMenuItem>
+                  ),
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -657,11 +798,11 @@ export default function ListsPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setCreateType("list")}>
+                  <DropdownMenuItem onClick={() => setCreateType('list')}>
                     <FileSpreadsheet className="w-4 h-4 mr-2" />
                     New List
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setCreateType("folder")}>
+                  <DropdownMenuItem onClick={() => setCreateType('folder')}>
                     <Folder className="w-4 h-4 mr-2" />
                     New Folder
                   </DropdownMenuItem>
@@ -677,20 +818,37 @@ export default function ListsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b bg-muted/30">
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[40%]">Name</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[60px]">Tags</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]">Created at</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[140px]">Last opened by me</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]">Owner</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[60px]">Access</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[40%]">
+                  Name
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[60px]">
+                  Tags
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]">
+                  Created at
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[140px]">
+                  Last opened by me
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]">
+                  Owner
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-[60px]">
+                  Access
+                </th>
                 <th className="w-[50px]"></th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                    <div className="flex justify-center mb-2"><Logo3DSpinner size={64} /></div>
+                  <td
+                    colSpan={7}
+                    className="p-8 text-center text-muted-foreground"
+                  >
+                    <div className="flex justify-center mb-2">
+                      <Logo3DSpinner size={64} />
+                    </div>
                     Loading...
                   </td>
                 </tr>
@@ -698,10 +856,10 @@ export default function ListsPage() {
                 <tr>
                   <td colSpan={7} className="p-12 text-center">
                     <p className="text-muted-foreground mb-4">
-                      {search ? "No results found" : "No files or folders yet"}
+                      {search ? 'No results found' : 'No files or folders yet'}
                     </p>
                     {!search && canManageLists && (
-                      <Button size="sm" onClick={() => setCreateType("list")}>
+                      <Button size="sm" onClick={() => setCreateType('list')}>
                         <Plus className="w-4 h-4 mr-1" />
                         Create your first list
                       </Button>
@@ -715,8 +873,8 @@ export default function ListsPage() {
                     className="border-b last:border-b-0 hover:bg-muted/30 transition-colors group"
                     onMouseEnter={() => {
                       // Prefetch folder contents on hover for faster navigation
-                      if (item.type === "folder") {
-                        prefetchFolderLists(item.data.id);
+                      if (item.type === 'folder') {
+                        prefetchFolderLists(item.data.id)
                       }
                     }}
                   >
@@ -724,15 +882,15 @@ export default function ListsPage() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => {
-                          if (item.type === "folder") {
-                            navigateToFolder(item.data.id, item.data.name);
+                          if (item.type === 'folder') {
+                            navigateToFolder(item.data.id, item.data.name)
                           } else {
-                            navigateToList(item.data.id);
+                            navigateToList(item.data.id)
                           }
                         }}
                         className="flex items-center gap-3 text-left min-w-0"
                       >
-                        {item.type === "folder" ? (
+                        {item.type === 'folder' ? (
                           <Folder
                             className="w-5 h-5 flex-shrink-0"
                             style={{ color: FOLDER_COLOR }}
@@ -749,16 +907,26 @@ export default function ListsPage() {
                     {/* Tags (star icon for favorites) */}
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => handleAddToFavorites(item.type, item.data.id, item.data.name)}
+                        onClick={() =>
+                          handleAddToFavorites(
+                            item.type,
+                            item.data.id,
+                            item.data.name,
+                          )
+                        }
                         className="p-1 hover:bg-muted rounded transition-colors"
                       >
-                        <Star className={cn(
-                          "w-4 h-4 transition-colors",
-                          (item.type === "list" && favoriteListIds.has(item.data.id)) ||
-                          (item.type === "folder" && favoriteFolderIds.has(item.data.id))
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-muted-foreground hover:text-yellow-500"
-                        )} />
+                        <Star
+                          className={cn(
+                            'w-4 h-4 transition-colors',
+                            (item.type === 'list' &&
+                              favoriteListIds.has(item.data.id)) ||
+                              (item.type === 'folder' &&
+                                favoriteFolderIds.has(item.data.id))
+                              ? 'fill-yellow-400 text-yellow-400'
+                              : 'text-muted-foreground hover:text-yellow-500',
+                          )}
+                        />
                       </button>
                     </td>
 
@@ -769,19 +937,22 @@ export default function ListsPage() {
 
                     {/* Last opened by me */}
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {item.openedAt ? formatDate(item.openedAt) : "—"}
+                      {item.openedAt ? formatDate(item.openedAt) : '—'}
                     </td>
 
                     {/* Owner */}
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {item.type === "list" && (item.data as ListWithCreator).createdById
-                        ? userMap.get((item.data as ListWithCreator).createdById!) ?? "—"
-                        : "—"}
+                      {item.type === 'list' &&
+                      (item.data as ListWithCreator).createdById
+                        ? (userMap.get(
+                            (item.data as ListWithCreator).createdById!,
+                          ) ?? '—')
+                        : '—'}
                     </td>
 
                     {/* Access */}
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {canManageLists ? "Edit" : "View"}
+                      {canManageLists ? 'Edit' : 'View'}
                     </td>
 
                     {/* Actions - Always visible with border */}
@@ -795,7 +966,9 @@ export default function ListsPage() {
                         <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuItem onClick={() => openDetails(item)}>
                             <Info className="w-4 h-4 mr-2" />
-                            {item.type === "folder" ? "Folder details" : "List details"}
+                            {item.type === 'folder'
+                              ? 'Folder details'
+                              : 'List details'}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {canManageLists && (
@@ -805,51 +978,80 @@ export default function ListsPage() {
                                   type: item.type,
                                   id: item.data.id,
                                   name: item.data.name,
-                                });
-                                setRenameValue(item.data.name);
+                                })
+                                setRenameValue(item.data.name)
                               }}
                             >
                               <Pencil className="w-4 h-4 mr-2" />
                               Rename
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => handleAddToFavorites(item.type, item.data.id, item.data.name)}>
-                            <Star className={cn(
-                              "w-4 h-4 mr-2",
-                              (item.type === "list" && favoriteListIds.has(item.data.id)) ||
-                              (item.type === "folder" && favoriteFolderIds.has(item.data.id))
-                                ? "fill-yellow-400 text-yellow-400"
-                                : ""
-                            )} />
-                            {(item.type === "list" && favoriteListIds.has(item.data.id)) ||
-                             (item.type === "folder" && favoriteFolderIds.has(item.data.id))
-                              ? "Remove from favorites"
-                              : "Add to favorites"}
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleAddToFavorites(
+                                item.type,
+                                item.data.id,
+                                item.data.name,
+                              )
+                            }
+                          >
+                            <Star
+                              className={cn(
+                                'w-4 h-4 mr-2',
+                                (item.type === 'list' &&
+                                  favoriteListIds.has(item.data.id)) ||
+                                  (item.type === 'folder' &&
+                                    favoriteFolderIds.has(item.data.id))
+                                  ? 'fill-yellow-400 text-yellow-400'
+                                  : '',
+                              )}
+                            />
+                            {(item.type === 'list' &&
+                              favoriteListIds.has(item.data.id)) ||
+                            (item.type === 'folder' &&
+                              favoriteFolderIds.has(item.data.id))
+                              ? 'Remove from favorites'
+                              : 'Add to favorites'}
                           </DropdownMenuItem>
-                          {canManageLists && item.type === "list" && (
+                          {canManageLists && item.type === 'list' && (
                             <>
-                              <DropdownMenuItem
-                                onClick={async () => {
-                                  toast.info(`Enriching all leads in "${item.data.name}"...`);
-                                  try {
-                                    const result = await enrichListMutation.mutateAsync({ listId: item.data.id });
-                                    toast.success(`Enriched ${result.totalEnriched} leads (${result.totalCredits} credits used)`);
-                                  } catch {
-                                    toast.error("Enrichment failed");
-                                  }
-                                }}
-                                disabled={enrichListMutation.isPending}
-                              >
-                                <Sparkles className="w-4 h-4 mr-2" />
-                                {enrichListMutation.isPending ? "Enriching..." : "Enrich All Leads"}
-                              </DropdownMenuItem>
+                              {activeEnrichmentVendors.length > 0 ? (
+                                activeEnrichmentVendors.map((vendor) => (
+                                  <DropdownMenuItem
+                                    key={vendor.id}
+                                    onClick={() =>
+                                      openListEnrichment(
+                                        item.data.id,
+                                        item.data.name,
+                                        vendor.provider,
+                                      )
+                                    }
+                                    disabled={enrichListMutation.isPending}
+                                  >
+                                    <span className="mr-2 flex h-4 w-4 items-center justify-center">
+                                      <BrandLogo
+                                        provider={vendor.provider}
+                                        size={16}
+                                      />
+                                    </span>
+                                    {getEnrichmentProviderLabel(
+                                      vendor.provider,
+                                    )}
+                                  </DropdownMenuItem>
+                                ))
+                              ) : (
+                                <DropdownMenuItem disabled>
+                                  <Sparkles className="w-4 h-4 mr-2" />
+                                  No enrichment providers
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => {
                                   setAddToCampaignList({
                                     id: item.data.id,
                                     name: item.data.name,
-                                  });
-                                  setCampaignSearchQuery("");
+                                  })
+                                  setCampaignSearchQuery('')
                                 }}
                               >
                                 <PlusCircle className="w-4 h-4 mr-2" />
@@ -861,8 +1063,8 @@ export default function ListsPage() {
                                     id: item.data.id,
                                     name: item.data.name,
                                     folderId: item.data.folderId,
-                                  });
-                                  setFolderSearchQuery("");
+                                  })
+                                  setFolderSearchQuery('')
                                 }}
                               >
                                 <FolderInput className="w-4 h-4 mr-2" />
@@ -875,7 +1077,9 @@ export default function ListsPage() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive"
-                                onClick={() => handleDelete(item.type, item.data.id)}
+                                onClick={() =>
+                                  handleDelete(item.type, item.data.id)
+                                }
                               >
                                 <Trash2 className="w-4 h-4 mr-2" />
                                 Delete
@@ -899,8 +1103,11 @@ export default function ListsPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              {detailsItem.type === "folder" ? (
-                <Folder className="w-5 h-5 flex-shrink-0" style={{ color: FOLDER_COLOR }} />
+              {detailsItem.type === 'folder' ? (
+                <Folder
+                  className="w-5 h-5 flex-shrink-0"
+                  style={{ color: FOLDER_COLOR }}
+                />
               ) : (
                 <FileSpreadsheet className="w-5 h-5 flex-shrink-0 text-muted-foreground" />
               )}
@@ -921,30 +1128,40 @@ export default function ListsPage() {
             <div>
               <Label className="text-sm font-medium">Description</Label>
               <p className="text-sm text-muted-foreground mt-1">
-                {detailsItem.description || "No description"}
+                {detailsItem.description || 'No description'}
               </p>
             </div>
 
             {/* Contents (for folders) or Lead count (for lists) */}
             <div className="border-t pt-4">
-              {detailsItem.type === "folder" ? (
+              {detailsItem.type === 'folder' ? (
                 <>
-                  <Label className="text-sm font-medium mb-2 block">Contents</Label>
-                  {subfoldersInFolder.length === 0 && listsInFolder.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">This folder is empty</p>
+                  <Label className="text-sm font-medium mb-2 block">
+                    Contents
+                  </Label>
+                  {subfoldersInFolder.length === 0 &&
+                  listsInFolder.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      This folder is empty
+                    </p>
                   ) : (
                     <div className="space-y-2">
                       {subfoldersInFolder.map((folder) => (
                         <button
                           key={folder.id}
                           onClick={() => {
-                            navigateToFolder(folder.id, folder.name);
-                            setDetailsItem(null);
+                            navigateToFolder(folder.id, folder.name)
+                            setDetailsItem(null)
                           }}
                           className="flex items-center gap-2 w-full p-2 rounded-lg border hover:bg-muted/50 transition-colors text-left"
                         >
-                          <Folder className="w-4 h-4" style={{ color: FOLDER_COLOR }} />
-                          <span className="text-sm truncate">{folder.name}</span>
+                          <Folder
+                            className="w-4 h-4"
+                            style={{ color: FOLDER_COLOR }}
+                          />
+                          <span className="text-sm truncate">
+                            {folder.name}
+                          </span>
                         </button>
                       ))}
                       {listsInFolder.map((list) => (
@@ -962,11 +1179,15 @@ export default function ListsPage() {
                 </>
               ) : (
                 <>
-                  <Label className="text-sm font-medium mb-2 block">Details</Label>
+                  <Label className="text-sm font-medium mb-2 block">
+                    Details
+                  </Label>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Lead count</span>
-                      <span>{detailsItem.leadCount?.toLocaleString() ?? 0}</span>
+                      <span>
+                        {detailsItem.leadCount?.toLocaleString() ?? 0}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Created</span>
@@ -985,16 +1206,16 @@ export default function ListsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {createType === "list" ? "Create New List" : "Create New Folder"}
+              {createType === 'list' ? 'Create New List' : 'Create New Folder'}
             </DialogTitle>
             <DialogDescription>
-              {createType === "list"
+              {createType === 'list'
                 ? currentFolderId
                   ? `Will be created in "${currentFolderName}"`
-                  : "Will be created at root level"
+                  : 'Will be created at root level'
                 : currentFolderId
                   ? `Will be created in "${currentFolderName}"`
-                  : "Will be created at root level"}
+                  : 'Will be created at root level'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
@@ -1003,11 +1224,15 @@ export default function ListsPage() {
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder={createType === "list" ? "e.g., January Leads" : "e.g., Q1 Campaigns"}
+                placeholder={
+                  createType === 'list'
+                    ? 'e.g., January Leads'
+                    : 'e.g., Q1 Campaigns'
+                }
                 autoFocus
               />
             </div>
-            {createType === "list" && (
+            {createType === 'list' && (
               <div className="space-y-2">
                 <Label>Description (optional)</Label>
                 <Textarea
@@ -1024,9 +1249,13 @@ export default function ListsPage() {
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={createListMutation.isPending || createFolderMutation.isPending}
+                disabled={
+                  createListMutation.isPending || createFolderMutation.isPending
+                }
               >
-                {createListMutation.isPending || createFolderMutation.isPending ? "Creating..." : "Create"}
+                {createListMutation.isPending || createFolderMutation.isPending
+                  ? 'Creating...'
+                  : 'Create'}
               </Button>
             </div>
           </div>
@@ -1047,7 +1276,7 @@ export default function ListsPage() {
                 onChange={(e) => setRenameValue(e.target.value)}
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRename();
+                  if (e.key === 'Enter') handleRename()
                 }}
               />
             </div>
@@ -1057,9 +1286,13 @@ export default function ListsPage() {
               </Button>
               <Button
                 onClick={handleRename}
-                disabled={updateFolderMutation.isPending || updateListMutation.isPending}
+                disabled={
+                  updateFolderMutation.isPending || updateListMutation.isPending
+                }
               >
-                {updateFolderMutation.isPending || updateListMutation.isPending ? "Saving..." : "Save"}
+                {updateFolderMutation.isPending || updateListMutation.isPending
+                  ? 'Saving...'
+                  : 'Save'}
               </Button>
             </div>
           </div>
@@ -1089,11 +1322,14 @@ export default function ListsPage() {
               {!folderSearchQuery && (
                 <button
                   onClick={() => handleMoveList(null)}
-                  disabled={!movingList?.folderId || updateListMutation.isPending}
+                  disabled={
+                    !movingList?.folderId || updateListMutation.isPending
+                  }
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 border-b",
-                    !movingList?.folderId && "bg-primary/5",
-                    (!movingList?.folderId || updateListMutation.isPending) && "opacity-50"
+                    'w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 border-b',
+                    !movingList?.folderId && 'bg-primary/5',
+                    (!movingList?.folderId || updateListMutation.isPending) &&
+                      'opacity-50',
                   )}
                 >
                   <Folder className="w-4 h-4 text-muted-foreground" />
@@ -1102,21 +1338,32 @@ export default function ListsPage() {
               )}
               {filteredFoldersForMove.length === 0 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">
-                  {folderSearchQuery ? "No folders match" : "No folders created"}
+                  {folderSearchQuery
+                    ? 'No folders match'
+                    : 'No folders created'}
                 </div>
               ) : (
                 filteredFoldersForMove.map((folder) => (
                   <button
                     key={folder.id}
                     onClick={() => handleMoveList(folder.id)}
-                    disabled={folder.id === movingList?.folderId || updateListMutation.isPending}
+                    disabled={
+                      folder.id === movingList?.folderId ||
+                      updateListMutation.isPending
+                    }
                     className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 border-b last:border-0",
-                      folder.id === movingList?.folderId && "bg-primary/5 opacity-50"
+                      'w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 border-b last:border-0',
+                      folder.id === movingList?.folderId &&
+                        'bg-primary/5 opacity-50',
                     )}
                   >
-                    <Folder className="w-4 h-4" style={{ color: FOLDER_COLOR }} />
-                    <span className="text-sm font-medium truncate">{folder.name}</span>
+                    <Folder
+                      className="w-4 h-4"
+                      style={{ color: FOLDER_COLOR }}
+                    />
+                    <span className="text-sm font-medium truncate">
+                      {folder.name}
+                    </span>
                   </button>
                 ))
               )}
@@ -1132,7 +1379,10 @@ export default function ListsPage() {
       </Dialog>
 
       {/* Add to Campaign Dialog */}
-      <Dialog open={!!addToCampaignList} onOpenChange={() => setAddToCampaignList(null)}>
+      <Dialog
+        open={!!addToCampaignList}
+        onOpenChange={() => setAddToCampaignList(null)}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add to Campaign</DialogTitle>
@@ -1153,20 +1403,28 @@ export default function ListsPage() {
             <div className="border rounded-lg max-h-64 overflow-y-auto">
               {filteredCampaignsForAdd.length === 0 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">
-                  {campaignSearchQuery ? "No campaigns match" : "No campaigns created"}
+                  {campaignSearchQuery
+                    ? 'No campaigns match'
+                    : 'No campaigns created'}
                 </div>
               ) : (
-                filteredCampaignsForAdd.map((campaign: { id: string; name: string }) => (
-                  <button
-                    key={campaign.id}
-                    onClick={() => handleAddToCampaign(campaign.id, campaign.name)}
-                    disabled={addListToCampaignMutation.isPending}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 border-b last:border-0"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm font-medium truncate">{campaign.name}</span>
-                  </button>
-                ))
+                filteredCampaignsForAdd.map(
+                  (campaign: { id: string; name: string }) => (
+                    <button
+                      key={campaign.id}
+                      onClick={() =>
+                        handleAddToCampaign(campaign.id, campaign.name)
+                      }
+                      disabled={addListToCampaignMutation.isPending}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 border-b last:border-0"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium truncate">
+                        {campaign.name}
+                      </span>
+                    </button>
+                  ),
+                )
               )}
             </div>
             {addListToCampaignMutation.isPending && (
@@ -1185,6 +1443,71 @@ export default function ListsPage() {
         onSuccess={handleHubSpotImportSuccess}
       />
 
+      <Dialog
+        open={!!listEnrichmentRequest}
+        onOpenChange={(open) => {
+          if (!open) setListEnrichmentRequest(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {listEnrichmentRequest && (
+                <BrandLogo
+                  provider={listEnrichmentRequest.provider}
+                  size={20}
+                />
+              )}
+              {listEnrichmentRequest
+                ? getEnrichmentProviderLabel(listEnrichmentRequest.provider)
+                : 'Enrichment'}
+            </DialogTitle>
+            <DialogDescription>
+              Choose which missing fields to enrich for this list.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {(['phone', 'email'] as ContactEnrichmentField[]).map((field) => (
+              <label
+                key={field}
+                className="flex items-center gap-3 rounded-md border border-border px-3 py-2"
+              >
+                <Checkbox
+                  checked={listEnrichmentFields.includes(field)}
+                  onCheckedChange={(checked) =>
+                    toggleListEnrichmentField(field, checked === true)
+                  }
+                />
+                <span className="text-sm font-medium">
+                  {field === 'phone' ? 'Phone number' : 'Email'}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setListEnrichmentRequest(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleListEnrichment}
+              disabled={
+                enrichListMutation.isPending ||
+                listEnrichmentFields.length === 0
+              }
+            >
+              {enrichListMutation.isPending && (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              )}
+              Run enrichment
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
-  );
+  )
 }

@@ -1,63 +1,63 @@
-"use client";
+'use client'
 
-import { Loader2, RefreshCw, Sparkles } from "lucide-react";
-import { LeadCallHistory } from "@/components/leads/LeadCallHistory";
-import { LeadCoachingHistory } from "@/components/leads/LeadCoachingHistory";
-import { LeadIntelligenceHistory } from "@/components/intelligence";
-import { CompanySummaryCard } from "@/components/leads/CompanySummaryCard";
-import { NotesList } from "@/components/crm/NotesList";
-import { TaskList } from "@/components/crm/TaskList";
-import { ActivityTimeline } from "@/components/crm/ActivityTimeline";
-import { ContactCard } from "./ContactCard";
-import { LeadEnrichmentPanel } from "@/components/enrichment/LeadEnrichmentPanel";
-import { LeadContactInfoList } from "@/components/enrichment/LeadContactInfoList";
-import type { TabType } from "./LeadTabSidebar";
+import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { LeadCallHistory } from '@/components/leads/LeadCallHistory'
+import { LeadCoachingHistory } from '@/components/leads/LeadCoachingHistory'
+import { LeadIntelligenceHistory } from '@/components/intelligence'
+import { CompanySummaryCard } from '@/components/leads/CompanySummaryCard'
+import { NotesList } from '@/components/crm/NotesList'
+import { TaskList } from '@/components/crm/TaskList'
+import { ActivityTimeline } from '@/components/crm/ActivityTimeline'
+import { ContactCard } from './ContactCard'
+import { LeadEnrichmentPanel } from '@/components/enrichment/LeadEnrichmentPanel'
+import { LeadContactInfoList } from '@/components/enrichment/LeadContactInfoList'
+import type { TabType } from './LeadTabSidebar'
 
 interface LeadTabContentProps {
-  activeTab: TabType;
-  leadId: string;
+  activeTab: TabType
+  leadId: string
   // Contact card props
-  fullName: string;
-  firstName: string | null;
-  lastName: string | null;
-  title: string | null;
-  email: string | null;
-  phone: string;
-  company: string | null;
-  linkedInUrl: string | null;
-  website: string | null;
-  dealValue: string | null;
-  customFields: unknown;
-  isEditing: boolean;
+  fullName: string
+  firstName: string | null
+  lastName: string | null
+  title: string | null
+  email: string | null
+  phone: string
+  company: string | null
+  linkedInUrl: string | null
+  website: string | null
+  dealValue: string | null
+  customFields: unknown
+  isEditing: boolean
   formData: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    company: string;
-    title: string;
-    linkedInUrl: string;
-    website: string;
-    dealValue: string;
-    pipelineStageId: string;
-  };
-  onFormChange: (data: Partial<LeadTabContentProps["formData"]>) => void;
-  onCall: () => void;
+    firstName: string
+    lastName: string
+    email: string
+    phone: string
+    company: string
+    title: string
+    linkedInUrl: string
+    website: string
+    dealValue: string
+    pipelineStageId: string
+  }
+  onFormChange: (data: Partial<LeadTabContentProps['formData']>) => void
+  onCall: () => void
   // Intel tab props
-  aiCompanySummary: string | null;
-  aiCompanyOverview: string | null;
-  aiSalesTalkingPoints: string[] | null;
-  aiBusinessContext: Record<string, unknown> | null;
-  isGeneratingSummary: boolean;
-  onGenerateSummary: (forceRegenerate?: boolean) => void;
+  aiCompanySummary: string | null
+  aiCompanyOverview: string | null
+  aiSalesTalkingPoints: string[] | null
+  aiBusinessContext: Record<string, unknown> | null
+  isGeneratingSummary: boolean
+  onGenerateSummary: (forceRegenerate?: boolean) => void
   // Enrichment
-  enrichmentStatus?: string | null;
-  enrichmentSources?: string[] | null;
+  enrichmentStatus?: string | null
+  enrichmentSources?: string[] | null
   // Pipeline (mobile)
-  pipelineStageId: string | null;
-  stages: { id: string; label: string; color: string }[];
-  currentStage: { id: string; label: string; color: string } | undefined;
-  onStageChange: (stageId: string) => void;
+  pipelineStageId: string | null
+  stages: { id: string; label: string; color: string }[]
+  currentStage: { id: string; label: string; color: string } | undefined
+  onStageChange: (stageId: string) => void
 }
 
 export function LeadTabContent({
@@ -98,7 +98,7 @@ export function LeadTabContent({
       id={`tabpanel-${activeTab}`}
       aria-label={activeTab}
     >
-      {activeTab === "overview" && (
+      {activeTab === 'overview' && (
         <div className="space-y-6">
           <ContactCard
             fullName={fullName}
@@ -120,12 +120,14 @@ export function LeadTabContent({
 
           <LeadEnrichmentPanel
             leadId={leadId}
+            email={email}
+            phone={phone}
             enrichmentStatus={
-              enrichmentStatus === "enriched"
-                ? "complete"
-                : enrichmentStatus === "failed"
-                  ? "failed"
-                  : "none"
+              enrichmentStatus === 'enriched'
+                ? 'complete'
+                : enrichmentStatus === 'failed'
+                  ? 'failed'
+                  : 'none'
             }
             enrichmentSources={enrichmentSources || []}
           />
@@ -133,11 +135,16 @@ export function LeadTabContent({
 
           {/* Mobile: Pipeline Stage */}
           <div className="lg:hidden p-4 rounded-xl border border-border bg-card">
-            <h3 id="mobile-stage-label" className="text-sm font-medium text-foreground mb-3">
+            <h3
+              id="mobile-stage-label"
+              className="text-sm font-medium text-foreground mb-3"
+            >
               Pipeline Stage
             </h3>
             <select
-              value={isEditing ? formData.pipelineStageId : pipelineStageId || ""}
+              value={
+                isEditing ? formData.pipelineStageId : pipelineStageId || ''
+              }
               onChange={(e) => onStageChange(e.target.value)}
               aria-labelledby="mobile-stage-label"
               className="w-full p-3 rounded-md border border-input bg-background text-sm h-12 touch-manipulation"
@@ -164,26 +171,28 @@ export function LeadTabContent({
         </div>
       )}
 
-      {activeTab === "activity" && (
+      {activeTab === 'activity' && (
         <div className="p-4 sm:p-6 rounded-xl border border-border bg-card">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Activity Timeline</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">
+            Activity Timeline
+          </h3>
           <ActivityTimeline leadId={leadId} />
         </div>
       )}
 
-      {activeTab === "notes" && (
+      {activeTab === 'notes' && (
         <div className="p-4 sm:p-6 rounded-xl border border-border bg-card">
           <NotesList leadId={leadId} />
         </div>
       )}
 
-      {activeTab === "tasks" && (
+      {activeTab === 'tasks' && (
         <div className="p-4 sm:p-6 rounded-xl border border-border bg-card">
           <TaskList leadId={leadId} />
         </div>
       )}
 
-      {activeTab === "calls" && (
+      {activeTab === 'calls' && (
         <LeadCallHistory
           leadId={leadId}
           leadName={fullName}
@@ -192,11 +201,9 @@ export function LeadTabContent({
         />
       )}
 
-      {activeTab === "coaching" && (
-        <LeadCoachingHistory leadId={leadId} />
-      )}
+      {activeTab === 'coaching' && <LeadCoachingHistory leadId={leadId} />}
 
-      {activeTab === "intel" && (
+      {activeTab === 'intel' && (
         <div className="space-y-6">
           <LeadIntelligenceHistory leadId={leadId} />
 
@@ -208,20 +215,24 @@ export function LeadTabContent({
                   <Sparkles className="w-4 h-4 text-primary" />
                   AI Company Summary
                 </h3>
-                {aiCompanySummary && aiCompanySummary !== "NO_INFO_AVAILABLE" && (
-                  <button
-                    onClick={() => onGenerateSummary(true)}
-                    disabled={isGeneratingSummary}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                    aria-label="Regenerate AI summary"
-                  >
-                    {isGeneratingSummary ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-                    )}
-                  </button>
-                )}
+                {aiCompanySummary &&
+                  aiCompanySummary !== 'NO_INFO_AVAILABLE' && (
+                    <button
+                      onClick={() => onGenerateSummary(true)}
+                      disabled={isGeneratingSummary}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                      aria-label="Regenerate AI summary"
+                    >
+                      {isGeneratingSummary ? (
+                        <Loader2
+                          className="w-3.5 h-3.5 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
               </div>
               <CompanySummaryCard
                 summary={aiCompanySummary}
@@ -244,5 +255,5 @@ export function LeadTabContent({
         </div>
       )}
     </div>
-  );
+  )
 }

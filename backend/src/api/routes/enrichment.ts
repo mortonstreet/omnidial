@@ -154,6 +154,7 @@ router.post(
         data.leadId,
         {
           providers: data.providers,
+          dataTypes: data.dataTypes,
           forceRefresh: data.forceRefresh,
         },
       )
@@ -182,6 +183,7 @@ router.post(
         data.leadIds,
         {
           providers: data.providers,
+          dataTypes: data.dataTypes,
           forceRefresh: data.forceRefresh,
         },
       )

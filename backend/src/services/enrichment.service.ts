@@ -10,6 +10,7 @@ import type {
   EnrichmentHistoryRecordResponse,
   DataVendorProvider,
   ContactInfoType,
+  VendorDataType,
   VendorEnrichmentResult,
 } from '@shared/types/src/requests/enrichment'
 import * as prospeoClient from '@/clients/prospeo.client'
@@ -215,11 +216,110 @@ export const testVendorConnection = async (
 
 // === Lead Enrichment ===
 
+type LeadContactCoverage = {
+  hasPhone: boolean
+  hasEmail: boolean
+}
+
+const LINKEDIN_ENRICHMENT_PROVIDERS = new Set<DataVendorProvider>([
+  'prospeo',
+  'forager',
+  'leadmagic',
+])
+
+const CONTACT_DATA_TYPES: VendorDataType[] = ['phone', 'email']
+const DEFAULT_DATA_TYPES: VendorDataType[] = ['phone', 'email', 'profile']
+
+const normalizeRequestedDataTypes = (
+  dataTypes?: VendorDataType[],
+): VendorDataType[] => {
+  if (!dataTypes || dataTypes.length === 0) {
+    return DEFAULT_DATA_TYPES
+  }
+  return Array.from(new Set(dataTypes))
+}
+
+const isValidEmailValue = (value?: string | null): boolean =>
+  !!value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+
+const hasTenDigitPhoneValue = (value?: string | null): boolean => {
+  if (!value) return false
+  if (validateAndNormalizePhone(value)) return true
+  const digits = value.replace(/\D/g, '')
+  return (
+    digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))
+  )
+}
+
+const getLeadContactCoverage = async (lead: {
+  id: string
+  email: string | null
+  phone: string | null
+  normalizedPhone: string | null
+}): Promise<LeadContactCoverage> => {
+  let hasPhone =
+    hasTenDigitPhoneValue(lead.normalizedPhone) ||
+    hasTenDigitPhoneValue(lead.phone)
+  let hasEmail = isValidEmailValue(lead.email)
+
+  if (hasPhone && hasEmail) {
+    return { hasPhone, hasEmail }
+  }
+
+  const contacts = await db
+    .selectFrom('lead_contact_info')
+    .where('leadId', '=', lead.id)
+    .select(['type', 'value'])
+    .execute()
+
+  for (const contact of contacts) {
+    if (
+      !hasPhone &&
+      ['mobile', 'direct_dial', 'office'].includes(contact.type) &&
+      hasTenDigitPhoneValue(contact.value)
+    ) {
+      hasPhone = true
+    }
+
+    if (
+      !hasEmail &&
+      ['work_email', 'personal_email'].includes(contact.type) &&
+      isValidEmailValue(contact.value)
+    ) {
+      hasEmail = true
+    }
+  }
+
+  return { hasPhone, hasEmail }
+}
+
+const missingRequestedContactTypes = (
+  requestedDataTypes: VendorDataType[],
+  coverage: LeadContactCoverage,
+): VendorDataType[] =>
+  requestedDataTypes.filter((type) => {
+    if (type === 'phone') return !coverage.hasPhone
+    if (type === 'email') return !coverage.hasEmail
+    return true
+  })
+
+const buildAlreadyHasRequestedDataResponse = (
+  leadId: string,
+): EnrichLeadResponse => ({
+  leadId,
+  success: true,
+  providersUsed: [],
+  fieldsEnriched: [],
+  creditsUsed: 0,
+  errorMessage: 'Lead already has the requested contact data.',
+})
+
 export const enrichLead = async (
   organizationId: string,
   leadId: string,
   options: {
     providers?: DataVendorProvider[]
+    dataTypes?: VendorDataType[]
     forceRefresh?: boolean
     requestMode?: 'interactive' | 'bulk'
   },
@@ -237,8 +337,26 @@ export const enrichLead = async (
     throw new Error('Lead not found')
   }
 
+  const requestedDataTypes = normalizeRequestedDataTypes(options.dataTypes)
+  const explicitDataTypes = !!options.dataTypes?.length
+  const contactOnlyRequest =
+    explicitDataTypes &&
+    requestedDataTypes.every((type) => CONTACT_DATA_TYPES.includes(type))
+  const contactCoverage = await getLeadContactCoverage(lead)
+  const effectiveDataTypes = contactOnlyRequest
+    ? missingRequestedContactTypes(requestedDataTypes, contactCoverage)
+    : requestedDataTypes
+
+  if (contactOnlyRequest && effectiveDataTypes.length === 0) {
+    return buildAlreadyHasRequestedDataResponse(leadId)
+  }
+
   // Check if already enriched and not forcing refresh
-  if (lead.enrichmentStatus === 'enriched' && !options.forceRefresh) {
+  if (
+    lead.enrichmentStatus === 'enriched' &&
+    !options.forceRefresh &&
+    !explicitDataTypes
+  ) {
     return {
       leadId,
       success: true,
@@ -247,6 +365,22 @@ export const enrichLead = async (
       creditsUsed: 0,
       errorMessage: 'Lead already enriched. Use forceRefresh to re-enrich.',
     }
+  }
+
+  if (
+    lead.linkedInUrl &&
+    (!options.providers?.length ||
+      options.providers.some((provider) =>
+        LINKEDIN_ENRICHMENT_PROVIDERS.has(provider),
+      ))
+  ) {
+    return enrichLeadFromLinkedIn(organizationId, leadId, lead.linkedInUrl, {
+      providers: options.providers,
+      dataTypes: effectiveDataTypes,
+      forceRefresh: options.forceRefresh,
+      requestMode: options.requestMode,
+      contactCoverage,
+    })
   }
 
   // === Cache check ===
@@ -271,122 +405,165 @@ export const enrichLead = async (
             : cached.normalizedData
         ) as Record<string, any>
 
-        const updateData: Record<string, any> = {}
-        const fieldsEnriched: EnrichLeadResponse['fieldsEnriched'] = []
-
-        if (data.firstName && !lead.firstName) {
-          updateData.firstName = data.firstName
-          fieldsEnriched.push({
-            field: 'firstName',
-            previousValue: lead.firstName,
-            newValue: data.firstName,
-            source: cached.provider as DataVendorProvider,
-            confidence: null,
-          })
-        }
-        if (data.lastName && !lead.lastName) {
-          updateData.lastName = data.lastName
-          fieldsEnriched.push({
-            field: 'lastName',
-            previousValue: lead.lastName,
-            newValue: data.lastName,
-            source: cached.provider as DataVendorProvider,
-            confidence: null,
-          })
-        }
-        if (data.email && !lead.email) {
-          updateData.email = data.email
-          fieldsEnriched.push({
-            field: 'email',
-            previousValue: lead.email,
-            newValue: data.email,
-            source: cached.provider as DataVendorProvider,
-            confidence: null,
-          })
-        }
-        if (data.company && !lead.company) {
-          updateData.company = data.company
-          fieldsEnriched.push({
-            field: 'company',
-            previousValue: lead.company,
-            newValue: data.company,
-            source: cached.provider as DataVendorProvider,
-            confidence: null,
-          })
-        }
-        if (data.title && !lead.title) {
-          updateData.title = data.title
-          fieldsEnriched.push({
-            field: 'title',
-            previousValue: lead.title,
-            newValue: data.title,
-            source: cached.provider as DataVendorProvider,
-            confidence: null,
-          })
-        }
-        if (data.phone && !lead.phone) {
-          updateData.phone = data.phone
-          fieldsEnriched.push({
-            field: 'phone',
-            previousValue: lead.phone,
-            newValue: data.phone,
-            source: cached.provider as DataVendorProvider,
-            confidence: null,
-          })
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          updateData.enrichmentStatus = 'enriched'
-          updateData.enrichmentSources = [
-            ...(lead.enrichmentSources || []),
-            cached.provider,
-          ]
-          updateData.updatedAt = new Date()
-          await db
-            .updateTable('lead')
-            .set(updateData)
-            .where('id', '=', leadId)
-            .execute()
-        }
-
-        await enrichmentCacheRepo.recordHit(cached.id)
-
-        await recordEnrichmentHistory(
-          organizationId,
-          leadId,
-          null,
-          cached.provider as DataVendorProvider,
-          'person',
-          ['firstName', 'lastName', 'email', 'company', 'title', 'phone'],
-          fieldsEnriched.map((f) => f.field),
-          0,
-          true,
-          null,
-          0,
-        )
-
-        console.log('[Enrichment] Cache HIT for enrichLead:', {
-          leadId,
-          lookupKey,
-          provider: cached.provider,
+        const cachedHasRequestedData = effectiveDataTypes.some((type) => {
+          if (type === 'phone') {
+            return !!(
+              data.phone ||
+              data.mobilePhone ||
+              data.phoneNumbers?.length
+            )
+          }
+          if (type === 'email') return !!data.email
+          return !!(
+            data.firstName ||
+            data.lastName ||
+            data.company ||
+            data.title
+          )
         })
 
-        // Fire-and-forget auto CRM sync
-        crmService
-          .autoSyncAfterEnrichment(organizationId, leadId)
-          .catch((err) =>
-            console.error('[Enrichment] Auto CRM sync failed:', err),
+        if (cachedHasRequestedData) {
+          const updateData: Record<string, any> = {}
+          const fieldsEnriched: EnrichLeadResponse['fieldsEnriched'] = []
+
+          if (
+            effectiveDataTypes.includes('profile') &&
+            data.firstName &&
+            !lead.firstName
+          ) {
+            updateData.firstName = data.firstName
+            fieldsEnriched.push({
+              field: 'firstName',
+              previousValue: lead.firstName,
+              newValue: data.firstName,
+              source: cached.provider as DataVendorProvider,
+              confidence: null,
+            })
+          }
+          if (
+            effectiveDataTypes.includes('profile') &&
+            data.lastName &&
+            !lead.lastName
+          ) {
+            updateData.lastName = data.lastName
+            fieldsEnriched.push({
+              field: 'lastName',
+              previousValue: lead.lastName,
+              newValue: data.lastName,
+              source: cached.provider as DataVendorProvider,
+              confidence: null,
+            })
+          }
+          if (
+            effectiveDataTypes.includes('email') &&
+            data.email &&
+            !contactCoverage.hasEmail
+          ) {
+            updateData.email = data.email
+            fieldsEnriched.push({
+              field: 'email',
+              previousValue: lead.email,
+              newValue: data.email,
+              source: cached.provider as DataVendorProvider,
+              confidence: null,
+            })
+          }
+          if (
+            effectiveDataTypes.includes('profile') &&
+            data.company &&
+            !lead.company
+          ) {
+            updateData.company = data.company
+            fieldsEnriched.push({
+              field: 'company',
+              previousValue: lead.company,
+              newValue: data.company,
+              source: cached.provider as DataVendorProvider,
+              confidence: null,
+            })
+          }
+          if (
+            effectiveDataTypes.includes('profile') &&
+            data.title &&
+            !lead.title
+          ) {
+            updateData.title = data.title
+            fieldsEnriched.push({
+              field: 'title',
+              previousValue: lead.title,
+              newValue: data.title,
+              source: cached.provider as DataVendorProvider,
+              confidence: null,
+            })
+          }
+          if (
+            effectiveDataTypes.includes('phone') &&
+            data.phone &&
+            !contactCoverage.hasPhone
+          ) {
+            updateData.phone = data.phone
+            fieldsEnriched.push({
+              field: 'phone',
+              previousValue: lead.phone,
+              newValue: data.phone,
+              source: cached.provider as DataVendorProvider,
+              confidence: null,
+            })
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            updateData.enrichmentStatus = 'enriched'
+            updateData.enrichmentSources = [
+              ...(lead.enrichmentSources || []),
+              cached.provider,
+            ]
+            updateData.updatedAt = new Date()
+            await db
+              .updateTable('lead')
+              .set(updateData)
+              .where('id', '=', leadId)
+              .execute()
+          }
+
+          await enrichmentCacheRepo.recordHit(cached.id)
+
+          await recordEnrichmentHistory(
+            organizationId,
+            leadId,
+            null,
+            cached.provider as DataVendorProvider,
+            'person',
+            effectiveDataTypes,
+            fieldsEnriched.map((f) => f.field),
+            0,
+            true,
+            null,
+            0,
           )
 
-        return {
-          leadId,
-          success: true,
-          providersUsed: [cached.provider as DataVendorProvider],
-          fieldsEnriched,
-          creditsUsed: 0,
-          cacheHit: true,
-          creditsSaved: 1,
-          errorMessage: null,
+          console.log('[Enrichment] Cache HIT for enrichLead:', {
+            leadId,
+            lookupKey,
+            provider: cached.provider,
+          })
+
+          // Fire-and-forget auto CRM sync
+          crmService
+            .autoSyncAfterEnrichment(organizationId, leadId)
+            .catch((err) =>
+              console.error('[Enrichment] Auto CRM sync failed:', err),
+            )
+
+          return {
+            leadId,
+            success: true,
+            providersUsed: [cached.provider as DataVendorProvider],
+            fieldsEnriched,
+            creditsUsed: 0,
+            cacheHit: true,
+            creditsSaved: 1,
+            errorMessage: null,
+          }
         }
       }
     }
@@ -534,7 +711,11 @@ export const enrichLead = async (
     const updateData: Record<string, any> = {}
     const enrichedFields: string[] = []
 
-    if (result.data.firstName && !lead.firstName) {
+    if (
+      effectiveDataTypes.includes('profile') &&
+      result.data.firstName &&
+      !lead.firstName
+    ) {
       updateData.firstName = result.data.firstName
       fieldsEnriched.push({
         field: 'firstName',
@@ -545,7 +726,11 @@ export const enrichLead = async (
       })
       enrichedFields.push('firstName')
     }
-    if (result.data.lastName && !lead.lastName) {
+    if (
+      effectiveDataTypes.includes('profile') &&
+      result.data.lastName &&
+      !lead.lastName
+    ) {
       updateData.lastName = result.data.lastName
       fieldsEnriched.push({
         field: 'lastName',
@@ -556,7 +741,11 @@ export const enrichLead = async (
       })
       enrichedFields.push('lastName')
     }
-    if (result.data.email && !lead.email) {
+    if (
+      effectiveDataTypes.includes('email') &&
+      result.data.email &&
+      !contactCoverage.hasEmail
+    ) {
       updateData.email = result.data.email
       fieldsEnriched.push({
         field: 'email',
@@ -567,7 +756,11 @@ export const enrichLead = async (
       })
       enrichedFields.push('email')
     }
-    if (result.data.company && !lead.company) {
+    if (
+      effectiveDataTypes.includes('profile') &&
+      result.data.company &&
+      !lead.company
+    ) {
       updateData.company = result.data.company
       fieldsEnriched.push({
         field: 'company',
@@ -578,7 +771,11 @@ export const enrichLead = async (
       })
       enrichedFields.push('company')
     }
-    if (result.data.title && !lead.title) {
+    if (
+      effectiveDataTypes.includes('profile') &&
+      result.data.title &&
+      !lead.title
+    ) {
       updateData.title = result.data.title
       fieldsEnriched.push({
         field: 'title',
@@ -589,7 +786,11 @@ export const enrichLead = async (
       })
       enrichedFields.push('title')
     }
-    if (result.data.linkedInUrl && !lead.linkedInUrl) {
+    if (
+      effectiveDataTypes.includes('profile') &&
+      result.data.linkedInUrl &&
+      !lead.linkedInUrl
+    ) {
       updateData.linkedInUrl = result.data.linkedInUrl
       fieldsEnriched.push({
         field: 'linkedInUrl',
@@ -602,15 +803,38 @@ export const enrichLead = async (
     }
 
     // Store additional contact info
-    if (result.data.additionalEmails) {
+    if (effectiveDataTypes.includes('email') && result.data.additionalEmails) {
       for (const email of result.data.additionalEmails) {
         await addContactInfo(leadId, 'work_email', email, connection.provider)
       }
     }
-    if (result.data.mobilePhone) {
-      await addContactInfo(leadId, 'mobile', result.data.mobilePhone, provider)
+    const primaryPhoneCandidate = result.data.mobilePhone || result.data.phone
+    if (
+      effectiveDataTypes.includes('phone') &&
+      primaryPhoneCandidate &&
+      !contactCoverage.hasPhone
+    ) {
+      await addContactInfo(leadId, 'mobile', primaryPhoneCandidate, provider)
+      if (!lead.phone && !updateData.phone) {
+        const normalizedPhone = validateAndNormalizePhone(primaryPhoneCandidate)
+        if (normalizedPhone) {
+          updateData.phone = normalizedPhone
+          fieldsEnriched.push({
+            field: 'phone',
+            previousValue: lead.phone,
+            newValue: normalizedPhone,
+            source: provider,
+            confidence: null,
+          })
+          enrichedFields.push('phone')
+        }
+      }
     }
-    if (result.data.directDial) {
+    if (
+      effectiveDataTypes.includes('phone') &&
+      result.data.directDial &&
+      !contactCoverage.hasPhone
+    ) {
       await addContactInfo(
         leadId,
         'direct_dial',
@@ -653,7 +877,7 @@ export const enrichLead = async (
       connection.id,
       provider,
       'person',
-      ['firstName', 'lastName', 'email', 'company', 'title', 'linkedInUrl'],
+      effectiveDataTypes,
       enrichedFields,
       result.creditsCost,
       true,
@@ -725,6 +949,7 @@ export const bulkEnrich = async (
   leadIds: string[],
   options: {
     providers?: DataVendorProvider[]
+    dataTypes?: VendorDataType[]
     forceRefresh?: boolean
   },
 ): Promise<BulkEnrichResponse> => {
@@ -742,7 +967,7 @@ export const bulkEnrich = async (
       results.push(result)
       if (result.success && result.fieldsEnriched.length > 0) {
         totalEnriched++
-      } else {
+      } else if (!result.success) {
         totalFailed++
       }
       totalCreditsUsed += result.creditsUsed
@@ -1316,6 +1541,13 @@ export async function enrichLeadFromLinkedIn(
   organizationId: string,
   leadId: string,
   linkedInUrl: string,
+  options: {
+    providers?: DataVendorProvider[]
+    dataTypes?: VendorDataType[]
+    forceRefresh?: boolean
+    requestMode?: 'interactive' | 'bulk'
+    contactCoverage?: LeadContactCoverage
+  } = {},
 ): Promise<EnrichLeadResponse & { phoneNumbers?: EnrichedPhoneNumber[] }> {
   const lead = await db
     .selectFrom('lead')
@@ -1329,12 +1561,42 @@ export async function enrichLeadFromLinkedIn(
     throw new Error('Lead not found')
   }
 
+  const requestedDataTypes = normalizeRequestedDataTypes(options.dataTypes)
+  const explicitDataTypes = !!options.dataTypes?.length
+  const contactOnlyRequest =
+    explicitDataTypes &&
+    requestedDataTypes.every((type) => CONTACT_DATA_TYPES.includes(type))
+  const contactCoverage =
+    options.contactCoverage ?? (await getLeadContactCoverage(lead))
+  const effectiveDataTypes = contactOnlyRequest
+    ? missingRequestedContactTypes(requestedDataTypes, contactCoverage)
+    : requestedDataTypes
+
+  if (contactOnlyRequest && effectiveDataTypes.length === 0) {
+    return {
+      ...buildAlreadyHasRequestedDataResponse(leadId),
+      phoneNumbers: [],
+    }
+  }
+
   // Get all active enrichment vendor connections, ordered by priority
-  const connections = await db
+  let connectionsQuery = db
     .selectFrom('data_vendor_connection')
     .where('organizationId', '=', organizationId)
     .where('isActive', '=', true)
     .where('provider', 'in', ['prospeo', 'forager', 'leadmagic'])
+
+  if (options.providers?.length) {
+    connectionsQuery = connectionsQuery.where(
+      'provider',
+      'in',
+      options.providers.filter((provider) =>
+        LINKEDIN_ENRICHMENT_PROVIDERS.has(provider),
+      ),
+    )
+  }
+
+  const connections = await connectionsQuery
     .selectAll()
     .orderBy('priority', 'asc')
     .execute()
@@ -1367,8 +1629,9 @@ export async function enrichLeadFromLinkedIn(
 
   // === Cache check: split connections into cached and uncached ===
   const lookupKey = buildLinkedInLookupKey(linkedInUrl)
-  const cachedEntries =
-    await enrichmentCacheRepo.findValidByLookupKey(lookupKey)
+  const cachedEntries = options.forceRefresh
+    ? []
+    : await enrichmentCacheRepo.findValidByLookupKey(lookupKey)
   const cachedByProvider = new Map(cachedEntries.map((e) => [e.provider, e]))
 
   type VendorResult = {
@@ -1402,6 +1665,17 @@ export async function enrichLeadFromLinkedIn(
           : cached.normalizedData
       ) as Record<string, any>
 
+      const cachedHasRequestedData = effectiveDataTypes.some((type) => {
+        if (type === 'phone') return !!(data.phone || data.phoneNumbers?.length)
+        if (type === 'email') return !!data.email
+        return !!(data.firstName || data.lastName || data.company || data.title)
+      })
+
+      if (!cachedHasRequestedData) {
+        uncachedConnections.push(connection)
+        continue
+      }
+
       const enabledTypes = (connection.enabledDataTypes as string[]) ?? [
         'phone',
         'email',
@@ -1433,8 +1707,14 @@ export async function enrichLeadFromLinkedIn(
         connection.id,
         connection.provider as DataVendorProvider,
         'person',
-        ['phone', 'email', 'firstName', 'lastName', 'company', 'title'],
-        Object.keys(data).filter((k) => data[k]),
+        effectiveDataTypes,
+        Object.keys(data).filter(
+          (key) =>
+            data[key] &&
+            (effectiveDataTypes.includes(key as VendorDataType) ||
+              (effectiveDataTypes.includes('profile') &&
+                ['firstName', 'lastName', 'company', 'title'].includes(key))),
+        ),
         0,
         true,
         null,
@@ -1478,7 +1758,7 @@ export async function enrichLeadFromLinkedIn(
         result = await executeWithVendorPolicy({
           organizationId,
           provider,
-          requestMode: 'interactive',
+          requestMode: options.requestMode ?? 'interactive',
           estimatedCredits: 1,
           operation: async () => {
             if (provider === 'prospeo') {
@@ -1553,13 +1833,21 @@ export async function enrichLeadFromLinkedIn(
 
         // Record history and update credits
         const enrichedFields: string[] = []
-        if (result.phone || result.phoneNumbers?.length)
+        if (
+          effectiveDataTypes.includes('phone') &&
+          (result.phone || result.phoneNumbers?.length)
+        ) {
           enrichedFields.push('phone')
-        if (result.email) enrichedFields.push('email')
-        if (result.firstName) enrichedFields.push('firstName')
-        if (result.lastName) enrichedFields.push('lastName')
-        if (result.company) enrichedFields.push('company')
-        if (result.title) enrichedFields.push('title')
+        }
+        if (effectiveDataTypes.includes('email') && result.email) {
+          enrichedFields.push('email')
+        }
+        if (effectiveDataTypes.includes('profile')) {
+          if (result.firstName) enrichedFields.push('firstName')
+          if (result.lastName) enrichedFields.push('lastName')
+          if (result.company) enrichedFields.push('company')
+          if (result.title) enrichedFields.push('title')
+        }
 
         await recordEnrichmentHistory(
           organizationId,
@@ -1567,7 +1855,7 @@ export async function enrichLeadFromLinkedIn(
           connection.id,
           provider,
           'person',
-          ['phone', 'email', 'firstName', 'lastName', 'company', 'title'],
+          effectiveDataTypes,
           enrichedFields,
           result.creditsUsed ?? 1,
           true,
@@ -1655,9 +1943,16 @@ export async function enrichLeadFromLinkedIn(
     totalCredits += result.creditsUsed ?? 1
     enrichmentSourcesSet.add(connection.provider)
 
-    const phoneEnabled = enabledTypes.includes('phone')
-    const emailEnabled = enabledTypes.includes('email')
-    const profileEnabled = enabledTypes.includes('profile')
+    const phoneEnabled =
+      enabledTypes.includes('phone') &&
+      effectiveDataTypes.includes('phone') &&
+      !contactCoverage.hasPhone
+    const emailEnabled =
+      enabledTypes.includes('email') &&
+      effectiveDataTypes.includes('email') &&
+      !contactCoverage.hasEmail
+    const profileEnabled =
+      enabledTypes.includes('profile') && effectiveDataTypes.includes('profile')
 
     // Collect phone numbers (if phone data type is enabled)
     if (phoneEnabled) {
@@ -1683,7 +1978,7 @@ export async function enrichLeadFromLinkedIn(
     }
 
     // Collect email (if email data type is enabled)
-    if (emailEnabled && result.email && !lead.email && !updateData.email) {
+    if (emailEnabled && result.email && !updateData.email) {
       updateData.email = result.email
       fieldsEnriched.push({
         field: 'email',

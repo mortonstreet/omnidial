@@ -684,8 +684,7 @@ const newestTelephonyCredential = (
       : true,
   )
   return matches.sort(
-    (a, b) =>
-      telephonyCredentialTimestamp(b) - telephonyCredentialTimestamp(a),
+    (a, b) => telephonyCredentialTimestamp(b) - telephonyCredentialTimestamp(a),
   )[0]
 }
 
