@@ -57,12 +57,13 @@ export interface ProspeoEnrichResult {
 
 interface ProspeoEnrichOptions {
   includeMobile?: boolean
+  requireEmail?: boolean
+  requireMobile?: boolean
   onlyVerifiedEmail?: boolean
   onlyVerifiedMobile?: boolean
 }
 
-const parseProspeoError = async (response: Response): Promise<string> => {
-  const errorText = await response.text()
+const parseProspeoError = (response: Response, errorText: string): string => {
   console.error('[Prospeo] API error response:', errorText)
 
   try {
@@ -72,6 +73,9 @@ const parseProspeoError = async (response: Response): Promise<string> => {
     }
     if (typeof errorJson.message === 'string') {
       return `Prospeo API error: ${errorJson.message}`
+    }
+    if (typeof errorJson.error_code === 'string') {
+      return `Prospeo API error: ${errorJson.error_code}`
     }
   } catch {
     // Not JSON, fall back to the raw response.
@@ -118,6 +122,16 @@ const compactPhones = (data: ProspeoEnrichPersonResponse): string[] => {
   )
 }
 
+const parseProspeoPayload = (
+  text: string,
+): ProspeoEnrichPersonResponse | null => {
+  try {
+    return JSON.parse(text) as ProspeoEnrichPersonResponse
+  } catch {
+    return null
+  }
+}
+
 /**
  * Enrich a lead using their LinkedIn URL
  */
@@ -129,6 +143,12 @@ export async function enrichFromLinkedIn(
   console.log('[Prospeo] Calling enrich-person API with URL:', linkedInUrl)
   console.log('[Prospeo] API key present:', !!apiKey, 'length:', apiKey?.length)
 
+  const requireMobile =
+    options.requireMobile ?? options.onlyVerifiedMobile ?? false
+  const requireEmail =
+    options.requireEmail ?? options.onlyVerifiedEmail ?? false
+  const includeMobile = requireMobile || (options.includeMobile ?? true)
+
   const response = await fetch(`${PROSPEO_BASE_URL}/enrich-person`, {
     method: 'POST',
     headers: {
@@ -139,25 +159,45 @@ export async function enrichFromLinkedIn(
       data: {
         linkedin_url: linkedInUrl,
       },
-      enrich_mobile: options.includeMobile ?? true,
-      only_verified_email: options.onlyVerifiedEmail ?? false,
-      only_verified_mobile: options.onlyVerifiedMobile ?? false,
+      enrich_mobile: includeMobile,
+      only_verified_email: requireEmail,
+      only_verified_mobile: requireMobile,
     }),
   })
 
   console.log('[Prospeo] API response status:', response.status)
 
   if (!response.ok) {
+    const errorText = await response.text()
+    const errorData = parseProspeoPayload(errorText)
+    if (errorData?.error_code === 'NO_MATCH') {
+      return {
+        success: true,
+        creditsRemaining: errorData.credits_remaining ?? 0,
+        creditsUsed: 0,
+        errorMessage: 'No requested Prospeo contact data found for this lead.',
+      }
+    }
+
     return {
       success: false,
       creditsRemaining: 0,
-      errorMessage: await parseProspeoError(response),
+      errorMessage: parseProspeoError(response, errorText),
     }
   }
 
   const data: ProspeoEnrichPersonResponse = await response.json()
 
   if (data.error) {
+    if (data.error_code === 'NO_MATCH') {
+      return {
+        success: true,
+        creditsRemaining: data.credits_remaining ?? 0,
+        creditsUsed: 0,
+        errorMessage: 'No requested Prospeo contact data found for this lead.',
+      }
+    }
+
     return {
       success: false,
       creditsRemaining: data.credits_remaining ?? 0,
@@ -180,7 +220,7 @@ export async function enrichFromLinkedIn(
     title: data.person?.current_job_title ?? undefined,
     location: locationToString(data.person?.location),
     creditsRemaining: data.credits_remaining ?? 0,
-    creditsUsed: data.free_enrichment ? 0 : options.includeMobile ? 10 : 1,
+    creditsUsed: data.free_enrichment ? 0 : includeMobile ? 10 : 1,
   }
 }
 

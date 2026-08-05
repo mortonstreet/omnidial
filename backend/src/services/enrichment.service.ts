@@ -1650,6 +1650,7 @@ export async function enrichLeadFromLinkedIn(
     } | null
     success: boolean
     enabledTypes: string[]
+    errorMessage?: string
   }
 
   const cachedResults: VendorResult[] = []
@@ -1767,14 +1768,22 @@ export async function enrichLeadFromLinkedIn(
               : 1,
           operation: async () => {
             if (provider === 'prospeo') {
-              const includeMobile =
+              const phoneRequested =
                 enabledTypes.includes('phone') &&
                 effectiveDataTypes.includes('phone') &&
                 !contactCoverage.hasPhone
+              const emailRequested =
+                enabledTypes.includes('email') &&
+                effectiveDataTypes.includes('email') &&
+                !contactCoverage.hasEmail
               const prospeoResult = await prospeoClient.enrichFromLinkedIn(
                 apiKey,
                 linkedInUrl,
-                { includeMobile },
+                {
+                  includeMobile: phoneRequested,
+                  requireMobile: phoneRequested,
+                  requireEmail: emailRequested && !phoneRequested,
+                },
               )
               return {
                 success: prospeoResult.success,
@@ -1840,7 +1849,13 @@ export async function enrichLeadFromLinkedIn(
             result.errorMessage ?? 'Unknown error',
             responseTimeMs,
           )
-          return { connection, result, success: false as const, enabledTypes }
+          return {
+            connection,
+            result,
+            success: false as const,
+            enabledTypes,
+            errorMessage: result.errorMessage ?? 'Unknown vendor error',
+          }
         }
 
         // Record history and update credits
@@ -1927,6 +1942,7 @@ export async function enrichLeadFromLinkedIn(
           result: null,
           success: false as const,
           enabledTypes,
+          errorMessage: formatVendorErrorForHistory(error),
         }
       }
     }),
@@ -1941,15 +1957,32 @@ export async function enrichLeadFromLinkedIn(
   // Collect results from all vendors (cached + fresh)
   const fieldsEnriched: EnrichLeadResponse['fieldsEnriched'] = []
   const providersUsed: DataVendorProvider[] = []
+  const vendorErrors: string[] = []
   let totalCredits = 0
   const allPhones: CollectedPhoneNumber[] = []
   const updateData: Record<string, any> = {}
   const enrichmentSourcesSet = new Set(lead.enrichmentSources || [])
 
   for (const settled of allSettled) {
-    if (settled.status === 'rejected') continue
+    if (settled.status === 'rejected') {
+      vendorErrors.push(
+        settled.reason instanceof Error
+          ? settled.reason.message
+          : 'Vendor request failed',
+      )
+      continue
+    }
     const { connection, result, success, enabledTypes } = settled.value
-    if (!success || !result) continue
+    if (!success || !result) {
+      vendorErrors.push(
+        `${connection.provider}: ${
+          settled.value.errorMessage ??
+          result?.errorMessage ??
+          'Vendor request failed'
+        }`,
+      )
+      continue
+    }
 
     providersUsed.push(connection.provider as DataVendorProvider)
     totalCredits += result.creditsUsed ?? 1
@@ -2100,7 +2133,9 @@ export async function enrichLeadFromLinkedIn(
   if (fieldsEnriched.length === 0) {
     if (providersUsed.length === 0) {
       errorMessage =
-        'All data vendors failed to respond. Check your API keys in Settings > Data Vendors.'
+        vendorErrors.length > 0
+          ? vendorErrors.join('; ')
+          : 'All data vendors failed to respond. Check your API keys in Settings > Data Vendors.'
     } else {
       errorMessage = `No phone or email found for this profile. Tried: ${providersUsed.join(', ')}`
     }
