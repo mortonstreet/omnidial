@@ -61,10 +61,10 @@ function SettingsPageContent() {
   const currentUserMember = members.find(
     (m) => m.userId === session?.user?.id
   );
+  const isSuperAdmin = useSuperAdmin();
   const isAdmin = currentUserMember?.role === "admin";
   const isOwner = currentUserMember?.role === "owner";
-  const canAccessAdminTabs = isAdmin || isOwner;
-  const isSuperAdmin = useSuperAdmin();
+  const canAccessAdminTabs = isSuperAdmin || isAdmin || isOwner;
 
   return (
     <Page

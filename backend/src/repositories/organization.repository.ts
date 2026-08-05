@@ -8,6 +8,15 @@ export const findById = async (id: string) => {
     .executeTakeFirstOrThrow()
 }
 
+export const updateName = async (id: string, name: string) => {
+  return await db
+    .updateTable('organization')
+    .set({ name })
+    .where('id', '=', id)
+    .returningAll()
+    .executeTakeFirst()
+}
+
 export const findMember = async (organizationId: string, userId: string) => {
   return await db
     .selectFrom('member')

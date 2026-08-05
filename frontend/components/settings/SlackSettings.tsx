@@ -93,7 +93,12 @@ export function SlackSettings() {
     acc[rule.eventType] = rule.enabled;
     return acc;
   }, {} as Record<string, boolean>) ?? {};
-  const enabledRules = enabledRulesOverride ?? serverRules;
+  const hasServerRules = (status?.notificationRules?.length ?? 0) > 0;
+  const enabledRules =
+    enabledRulesOverride ??
+    (hasServerRules
+      ? serverRules
+      : ({ inbound_call: true } as Record<string, boolean>));
 
   const handleConnect = () => {
     if (status?.installUrl) {
@@ -122,7 +127,7 @@ export function SlackSettings() {
     // Save rules for this channel
     const rules = CORE_EVENT_TYPES.map((eventType) => ({
       eventType,
-      enabled: enabledRules[eventType] ?? false,
+      enabled: enabledRules[eventType] ?? eventType === "inbound_call",
     }));
 
     updateRulesMutation.mutate(

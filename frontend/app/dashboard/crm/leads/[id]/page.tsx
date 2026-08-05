@@ -3,6 +3,7 @@
 import { use } from "react";
 import { useLead, useUpdateLead, useDeleteLead, useGenerateCompanySummary } from "@/hooks/api/useLeads";
 import { usePipelineStages } from "@/hooks/api/usePipeline";
+import { useConnectedCrms, useCrmPushLead } from "@/hooks/api/useCrmSync";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -30,6 +31,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   const updateLead = useUpdateLead();
   const deleteLead = useDeleteLead();
   const generateSummary = useGenerateCompanySummary();
+  const { data: connectedCrmsData } = useConnectedCrms();
+  const syncLeadToCrm = useCrmPushLead();
 
   const { quickCall } = useQuickCall();
 
@@ -50,6 +53,32 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
   const stages = stagesData?.data || [];
   const isLoading = leadLoading || stagesLoading;
+  const isHubSpotConnected =
+    connectedCrmsData?.data?.some((crm) => crm.provider === "hubspot") ?? false;
+
+  const getSyncErrorMessage = (error: unknown) =>
+    error instanceof Error && error.message
+      ? error.message
+      : "Failed to sync to HubSpot";
+
+  const handleHubSpotSync = async (successMessage = "Synced to HubSpot") => {
+    if (!lead) return false;
+
+    try {
+      await syncLeadToCrm.mutateAsync({
+        leadId: lead.id,
+        provider: "hubspot",
+      });
+      refetch();
+      toast.success(successMessage);
+      return true;
+    } catch (error) {
+      toast.error("HubSpot sync failed", {
+        description: getSyncErrorMessage(error),
+      });
+      return false;
+    }
+  };
 
   const initializeForm = () => {
     if (lead) {
@@ -120,7 +149,11 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
           pipelineStageId: stageId || null,
         });
         refetch();
-        toast.success("Stage updated");
+        if (isHubSpotConnected) {
+          await handleHubSpotSync("Stage updated and synced to HubSpot");
+        } else {
+          toast.success("Stage updated");
+        }
       } catch {
         toast.error("Failed to update stage");
       }
@@ -293,6 +326,9 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         enrichmentStatus={lead.enrichmentStatus}
         backUrl="/dashboard/crm"
         backLabel="Back to Pipeline"
+        isHubSpotConnected={isHubSpotConnected}
+        isHubSpotSyncing={syncLeadToCrm.isPending}
+        onHubSpotSync={() => { void handleHubSpotSync(); }}
       />
 
       {/* Main content: sidebar + tab content */}

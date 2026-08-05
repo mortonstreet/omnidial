@@ -1,10 +1,14 @@
 import { AuthRequestHandler } from '@/types/handlers'
-import { GetCreditBalanceRequest } from '@shared/types/src'
+import {
+  GetCreditBalanceRequest,
+  UpdateOrganizationRequest,
+} from '@shared/types/src'
 import {
   getOrganizationCreditBalance as getOrganizationCreditBalanceRepository,
   getSubscriptionByReferenceId,
 } from '@/repositories/subscription.repository'
 import { getTierFromPlanName } from '@shared/types/src/stripe'
+import { updateOrganizationName } from '@/services/organization.service'
 
 export const getOrganizationCreditBalanceController: AuthRequestHandler<
   GetCreditBalanceRequest
@@ -34,4 +38,17 @@ export const getOrganizationSubscriptionController: AuthRequestHandler<
     tier,
     isTrialing,
   })
+}
+
+export const updateOrganizationController: AuthRequestHandler<
+  UpdateOrganizationRequest
+> = async (req, res) => {
+  const { organizationId, name } = req.validated
+
+  try {
+    const organization = await updateOrganizationName(organizationId, name)
+    return res.json(organization)
+  } catch (error) {
+    return res.status(404).json({ error: 'Organization not found' })
+  }
 }

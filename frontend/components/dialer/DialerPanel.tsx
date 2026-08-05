@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Phone,
   PhoneOff,
@@ -11,12 +11,16 @@ import {
   ShieldCheck,
   ShieldAlert,
   Building2,
+  Search,
+  UserRound,
+  X,
 } from 'lucide-react'
 import { DispositionSelector } from './DispositionSelector'
 import { VoicemailDropButton } from './VoicemailDropButton'
 import { useTwilioPhoneNumbers } from '@/hooks/api/useDialer'
 import { useDialablePhoneNumbers } from '@/hooks/api/usePhoneNumberAssignments'
 import { useDispositions } from '@/hooks/api/useCalls'
+import { useLeads } from '@/hooks/api/useLeads'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useDialerContext } from '@/components/providers/DialerProvider'
 import { toast } from 'sonner'
@@ -24,6 +28,15 @@ import { toast } from 'sonner'
 interface DialerClient {
   id: string
   name: string
+}
+
+interface DialerLeadMatch {
+  id: string
+  firstName: string | null
+  lastName: string | null
+  company: string | null
+  phone: string | null
+  normalizedPhone: string | null
 }
 
 interface DialerPanelProps {
@@ -37,6 +50,39 @@ interface DialerPanelProps {
   dialTrigger?: number // Counter that triggers auto-dial when incremented (separate from display)
 }
 
+const getDigits = (value: string) => value.replace(/\D/g, '')
+
+const looksLikePhoneInput = (value: string) => {
+  const trimmed = value.trim()
+  return /\d/.test(trimmed) && !/[a-z]/i.test(trimmed)
+}
+
+const getLeadName = (lead: DialerLeadMatch) => {
+  const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(' ')
+  return fullName || lead.company || 'Unnamed contact'
+}
+
+const getLeadPhone = (lead: DialerLeadMatch) =>
+  lead.normalizedPhone || lead.phone || ''
+
+const phonesMatch = (input: string, phone: string) => {
+  const inputDigits = getDigits(input)
+  const phoneDigits = getDigits(phone)
+
+  if (!inputDigits || !phoneDigits) return false
+  if (inputDigits === phoneDigits) return true
+
+  const inputLast10 = inputDigits.slice(-10)
+  const phoneLast10 = phoneDigits.slice(-10)
+  return inputLast10.length >= 7 && inputLast10 === phoneLast10
+}
+
+const formatLeadInputValue = (lead: DialerLeadMatch) => {
+  const phone = getLeadPhone(lead)
+  const name = getLeadName(lead)
+  return phone ? `${name} - ${phone}` : name
+}
+
 export function DialerPanel({
   phoneNumber,
   leadId,
@@ -47,13 +93,18 @@ export function DialerPanel({
   onCallEnd,
   dialTrigger,
 }: DialerPanelProps) {
+  const [dialQuery, setDialQuery] = useState(phoneNumber || '')
   const [dialNumber, setDialNumber] = useState(phoneNumber || '')
+  const [debouncedDialQuery, setDebouncedDialQuery] = useState(phoneNumber || '')
+  const [selectedLeadMatch, setSelectedLeadMatch] =
+    useState<DialerLeadMatch | null>(null)
   const [selectedFromNumber, setSelectedFromNumber] = useState<string>('')
   const [isMuted, setIsMuted] = useState(false)
   const [callDuration, setCallDuration] = useState(0)
   const [showDisposition, setShowDisposition] = useState(false)
   const [showNumberSelector, setShowNumberSelector] = useState(false)
   const [showClientSelector, setShowClientSelector] = useState(false)
+  const [showLeadSuggestions, setShowLeadSuggestions] = useState(false)
   const [showDtmfKeypad, setShowDtmfKeypad] = useState(false)
   const [shouldAutoDial, setShouldAutoDial] = useState(false)
   const [isDialing, setIsDialing] = useState(false) // Prevent rapid dialing
@@ -91,6 +142,75 @@ export function DialerPanel({
   const phoneNumbersLoading = clientId
     ? dialableNumbersLoading
     : allNumbersLoading
+  const isCallActive = callState === 'ringing' || callState === 'in-progress'
+  const trimmedDialQuery = dialQuery.trim()
+  const dialQueryLooksLikePhone = looksLikePhoneInput(trimmedDialQuery)
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedDialQuery(trimmedDialQuery)
+    }, 250)
+
+    return () => clearTimeout(timeout)
+  }, [trimmedDialQuery])
+
+  const shouldSearchLeads =
+    !isCallActive && debouncedDialQuery.length >= 2 && !!organizationId
+  const { data: leadSearchData, isFetching: isSearchingLeads } = useLeads({
+    search: debouncedDialQuery,
+    includeClient: true,
+    limit: 6,
+    enabled: shouldSearchLeads,
+  })
+  const leadSuggestions = useMemo(
+    () => (leadSearchData?.data || []) as DialerLeadMatch[],
+    [leadSearchData?.data],
+  )
+
+  useEffect(() => {
+    if (!shouldSearchLeads || selectedLeadMatch || !trimmedDialQuery) {
+      return
+    }
+
+    const dialableSuggestions = leadSuggestions.filter((lead) =>
+      Boolean(getLeadPhone(lead)),
+    )
+
+    if (dialQueryLooksLikePhone) {
+      const phoneMatch = dialableSuggestions.find((lead) =>
+        phonesMatch(trimmedDialQuery, getLeadPhone(lead)),
+      )
+
+      if (phoneMatch) {
+        setSelectedLeadMatch(phoneMatch)
+        setDialNumber(getLeadPhone(phoneMatch))
+      } else {
+        setDialNumber(trimmedDialQuery)
+      }
+      return
+    }
+
+    const normalizedQuery = trimmedDialQuery.toLowerCase()
+    const exactNameMatch = dialableSuggestions.find(
+      (lead) => getLeadName(lead).toLowerCase() === normalizedQuery,
+    )
+    const onlyDialableMatch =
+      dialableSuggestions.length === 1 ? dialableSuggestions[0] : null
+    const nextMatch = exactNameMatch || onlyDialableMatch
+
+    if (nextMatch) {
+      setSelectedLeadMatch(nextMatch)
+      setDialNumber(getLeadPhone(nextMatch))
+    } else {
+      setDialNumber('')
+    }
+  }, [
+    dialQueryLooksLikePhone,
+    leadSuggestions,
+    selectedLeadMatch,
+    shouldSearchLeads,
+    trimmedDialQuery,
+  ])
 
   // Reset selected number when clientId changes (different numbers available)
   useEffect(() => {
@@ -108,7 +228,9 @@ export function DialerPanel({
   useEffect(() => {
     if (phoneNumber !== undefined && phoneNumber !== dialNumber) {
       queueMicrotask(() => {
+        setDialQuery(phoneNumber)
         setDialNumber(phoneNumber)
+        setSelectedLeadMatch(null)
         // Don't auto-dial here - wait for dialTrigger
       })
     }
@@ -168,7 +290,12 @@ export function DialerPanel({
         await new Promise((resolve) => setTimeout(resolve, 100))
 
         console.log('Auto-dial: Making call to', dialNumber)
-        await makeCall(dialNumber, leadId, campaignId, selectedFromNumber)
+        await makeCall(
+          dialNumber,
+          leadId || selectedLeadMatch?.id,
+          campaignId,
+          selectedFromNumber,
+        )
       } catch (err) {
         console.error('Auto-dial failed:', err)
         const message = err instanceof Error ? err.message : 'Unknown error'
@@ -187,6 +314,7 @@ export function DialerPanel({
     isReady,
     device,
     leadId,
+    selectedLeadMatch?.id,
     campaignId,
     selectedFromNumber,
     makeCall,
@@ -252,7 +380,14 @@ export function DialerPanel({
   }
 
   const handleCall = useCallback(async () => {
-    if (callState === 'idle' && dialNumber && !isDialing) {
+    if (callState === 'idle' && trimmedDialQuery && !isDialing) {
+      const callTarget = dialNumber.trim()
+
+      if (!callTarget) {
+        toast.error('No number found')
+        return
+      }
+
       // Reset disposition state before starting a new call
       setShowDisposition(false)
       setIsDialing(true)
@@ -295,7 +430,12 @@ export function DialerPanel({
       }
 
       try {
-        await makeCall(dialNumber, leadId, campaignId, selectedFromNumber)
+        await makeCall(
+          callTarget,
+          leadId || selectedLeadMatch?.id,
+          campaignId,
+          selectedFromNumber,
+        )
       } catch (err) {
         console.error('Failed to make call:', err)
         const message = err instanceof Error ? err.message : 'Unknown error'
@@ -309,7 +449,9 @@ export function DialerPanel({
   }, [
     callState,
     dialNumber,
+    trimmedDialQuery,
     leadId,
+    selectedLeadMatch?.id,
     campaignId,
     makeCall,
     selectedFromNumber,
@@ -348,12 +490,60 @@ export function DialerPanel({
       connection.dtmf(digit)
     } else {
       setDialNumber((prev) => prev + digit)
+      setDialQuery((prev) => prev + digit)
+      setSelectedLeadMatch(null)
     }
   }
 
-  const isCallActive = callState === 'ringing' || callState === 'in-progress'
+  const handleDialQueryChange = (value: string) => {
+    setDialQuery(value)
+    setSelectedLeadMatch(null)
+    setShowLeadSuggestions(true)
+
+    if (looksLikePhoneInput(value)) {
+      setDialNumber(value.trim())
+    } else {
+      setDialNumber('')
+    }
+  }
+
+  const handleSelectLead = (lead: DialerLeadMatch) => {
+    const phone = getLeadPhone(lead)
+    setSelectedLeadMatch(lead)
+    setDialQuery(formatLeadInputValue(lead))
+    setDialNumber(phone)
+    setShowLeadSuggestions(false)
+
+    if (!phone) {
+      toast.error('No number found')
+    }
+  }
+
+  const handleClearDialQuery = () => {
+    setDialQuery('')
+    setDialNumber('')
+    setSelectedLeadMatch(null)
+    setShowLeadSuggestions(false)
+  }
+
   const selectedClient = clients?.find((c) => c.id === clientId)
   const hasClients = clients && clients.length > 0
+  const showNoNumberFound =
+    !isCallActive &&
+    !dialQueryLooksLikePhone &&
+    trimmedDialQuery.length >= 2 &&
+    debouncedDialQuery === trimmedDialQuery &&
+    !isSearchingLeads &&
+    !dialNumber &&
+    leadSuggestions.length > 0
+  const showNoLeadMatch =
+    !isCallActive &&
+    !dialQueryLooksLikePhone &&
+    trimmedDialQuery.length >= 2 &&
+    debouncedDialQuery === trimmedDialQuery &&
+    !isSearchingLeads &&
+    !dialNumber &&
+    leadSuggestions.length === 0
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -540,47 +730,91 @@ export function DialerPanel({
           </div>
         )}
 
-        {/* Phone number input with integrated call button */}
+        {/* Lead or phone input with integrated call button */}
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2">
-              {isCallActive ? 'Connected to' : 'Phone number'}
+              {isCallActive ? 'Connected to' : 'Name or phone number'}
             </label>
             <div className="relative">
+              {!isCallActive && (
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              )}
               <input
-                type="tel"
-                value={dialNumber}
-                onChange={(e) => setDialNumber(e.target.value)}
+                type="text"
+                value={dialQuery}
+                onChange={(e) => handleDialQueryChange(e.target.value)}
+                onFocus={() => setShowLeadSuggestions(true)}
+                onBlur={() =>
+                  setTimeout(() => setShowLeadSuggestions(false), 150)
+                }
                 disabled={isCallActive}
-                placeholder="+1 (555) 123-4567"
-                aria-label="Phone number to dial"
-                className="w-full h-14 sm:h-12 text-center text-xl sm:text-lg font-mono tracking-wide px-4 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 disabled:opacity-50 transition-all"
+                placeholder="Search lead or enter number"
+                aria-label="Lead name or phone number to dial"
+                className={`w-full h-14 sm:h-12 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 disabled:opacity-50 transition-all ${
+                  isCallActive || dialQueryLooksLikePhone
+                    ? 'px-4 text-center text-xl sm:text-lg font-mono tracking-wide'
+                    : 'pl-10 pr-10 text-base sm:text-sm font-medium'
+                }`}
               />
-              {!isCallActive && dialNumber && (
+              {!isCallActive && dialQuery && (
                 <button
-                  onClick={() => setDialNumber('')}
+                  onClick={handleClearDialQuery}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
-                  aria-label="Clear phone number"
+                  aria-label="Clear lead or phone number"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="15" y1="9" x2="9" y2="15"></line>
-                    <line x1="9" y1="9" x2="15" y2="15"></line>
-                  </svg>
+                  <X className="h-4 w-4" />
                 </button>
               )}
+
+              {!isCallActive &&
+                showLeadSuggestions &&
+                trimmedDialQuery.length >= 2 &&
+                (leadSuggestions.length > 0 || isSearchingLeads) && (
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
+                    {isSearchingLeads && leadSuggestions.length === 0 ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Searching...
+                      </div>
+                    ) : (
+                      leadSuggestions.map((lead) => {
+                        const phone = getLeadPhone(lead)
+                        return (
+                          <button
+                            key={lead.id}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSelectLead(lead)}
+                            className="flex w-full items-start gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
+                          >
+                            <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">
+                                {getLeadName(lead)}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {phone || 'No number found'}
+                                {lead.company && phone
+                                  ? ` - ${lead.company}`
+                                  : ''}
+                              </span>
+                            </span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
             </div>
+            {selectedLeadMatch && dialNumber && !isCallActive && (
+              <p className="mt-2 text-xs text-emerald-400">
+                Matched {getLeadName(selectedLeadMatch)} - {dialNumber}
+              </p>
+            )}
+            {(showNoNumberFound || showNoLeadMatch) && (
+              <p className="mt-2 text-xs text-amber-400">No number found</p>
+            )}
           </div>
 
           {/* Call action button - full width emerald style matching Start Session */}
@@ -658,7 +892,7 @@ export function DialerPanel({
           ) : (
             <button
               onClick={handleCall}
-              disabled={!dialNumber || !selectedFromNumber || isDialing}
+              disabled={!trimmedDialQuery || !selectedFromNumber || isDialing}
               aria-label={isDialing ? 'Dialing...' : 'Start call'}
               className="w-full flex items-center justify-center gap-2 px-4 py-4 sm:py-3 min-h-[56px] sm:min-h-0 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >

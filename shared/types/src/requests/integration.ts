@@ -379,6 +379,7 @@ export interface HubSpotContact {
   phone: string | null;
   company: string | null;
   jobTitle: string | null;
+  linkedInUrl: string | null;
 }
 
 export interface HubSpotContactsResponse {

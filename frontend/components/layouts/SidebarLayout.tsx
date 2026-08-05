@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { PanelLeft, PanelLeftClose, ChevronDown, Plus, Check, LogOut } from "lucide-react";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { MobileNavigation } from "@/components/layouts/MobileNavigation";
+import { Button } from "@/components/ui/button";
 import { useSession, useActiveOrganization } from "@/lib/auth-client";
 import { useOrganizations, useSetActiveOrganizationMutation } from "@/hooks/api/useOrganization";
 import { toast } from "sonner";
@@ -99,21 +100,25 @@ export function SidebarLayout({ children, onLogout, onOpenCreateOrg, canCreateOr
         {/* Content Header with Toggle + Page Name + User Menu */}
         <div className="hidden sm:flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 hover:bg-muted rounded-lg transition text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground"
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {sidebarCollapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-            </button>
+            </Button>
             <span className="text-lg font-medium text-foreground">{pageName}</span>
           </div>
 
           {/* User Menu */}
           <div className="relative" ref={userMenuRef}>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2 p-1.5 pr-3 hover:bg-muted rounded-lg transition"
+              className="h-11 gap-2 px-2 pr-3"
             >
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                 <span className="text-primary-foreground font-semibold text-sm">
@@ -121,7 +126,7 @@ export function SidebarLayout({ children, onLogout, onOpenCreateOrg, canCreateOr
                 </span>
               </div>
               <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
-            </button>
+            </Button>
 
             {/* User Dropdown */}
             {userMenuOpen && (

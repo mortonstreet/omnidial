@@ -12,8 +12,10 @@ import {
   Mail,
   ChevronDown,
   Check,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +51,9 @@ interface LeadDetailHeaderProps {
   enrichmentStatus?: string | null;
   backUrl?: string;
   backLabel?: string;
+  isHubSpotConnected?: boolean;
+  isHubSpotSyncing?: boolean;
+  onHubSpotSync?: () => void;
 }
 
 export function LeadDetailHeader({
@@ -71,6 +76,9 @@ export function LeadDetailHeader({
   onStageChange,
   backUrl = "/dashboard/leads",
   backLabel = "Back to Leads",
+  isHubSpotConnected = false,
+  isHubSpotSyncing = false,
+  onHubSpotSync,
 }: LeadDetailHeaderProps) {
   const formattedDate = new Date(createdAt).toLocaleDateString("en-US", {
     year: "numeric",
@@ -176,6 +184,21 @@ export function LeadDetailHeader({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    {isHubSpotConnected && onHubSpotSync && (
+                      <DropdownMenuItem
+                        onClick={onHubSpotSync}
+                        disabled={isHubSpotSyncing}
+                      >
+                        {isHubSpotSyncing ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <span className="mr-2 flex h-4 w-4 items-center justify-center">
+                            <BrandLogo provider="hubspot" size={16} />
+                          </span>
+                        )}
+                        Sync to HubSpot
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={onEdit}>
                       <Pencil className="w-4 h-4 mr-2" />
                       Edit Lead
@@ -283,6 +306,20 @@ export function LeadDetailHeader({
                   <PhoneOutgoing className="w-4 h-4" />
                   Call
                 </Button>
+                {isHubSpotConnected && onHubSpotSync && (
+                  <Button
+                    variant="outline"
+                    onClick={onHubSpotSync}
+                    disabled={isHubSpotSyncing}
+                  >
+                    {isHubSpotSyncing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <BrandLogo provider="hubspot" size={16} />
+                    )}
+                    Sync to HubSpot
+                  </Button>
+                )}
                 <EnrichButton leadId={leadId} enrichmentStatus={enrichmentStatus} variant="outline" />
                 <AddToCampaignDropdown leadIds={[leadId]} />
                 <Button variant="outline" onClick={onEdit}>

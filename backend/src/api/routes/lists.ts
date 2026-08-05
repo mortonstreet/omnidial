@@ -5,7 +5,9 @@ import { authenticatedRoute } from './utils'
 import {
   withBetterAuth,
   validateMemberOfOrganization,
+  validateMemberOfOrganizationIs,
 } from '../middlewares/auth'
+import { OrganizationRole } from '@shared/types/src/organization'
 import {
   ListFoldersRequestSchema,
   CreateFolderRequestSchema,
@@ -62,6 +64,7 @@ import {
 } from '@/api/controllers/list.controller'
 
 const router = Router()
+const adminRoles = [OrganizationRole.OWNER, OrganizationRole.ADMIN]
 
 // Configure multer for CSV uploads (10MB limit)
 const upload = multer({
@@ -83,7 +86,7 @@ router.post(
   '/folders',
   withBetterAuth,
   validateAndMerge(CreateFolderRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(createFolder),
 )
 
@@ -91,7 +94,7 @@ router.patch(
   '/folders/:id',
   withBetterAuth,
   validateAndMerge(UpdateFolderRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(updateFolder),
 )
 
@@ -99,7 +102,7 @@ router.delete(
   '/folders/:id',
   withBetterAuth,
   validateAndMerge(DeleteFolderRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(deleteFolder),
 )
 
@@ -107,7 +110,7 @@ router.post(
   '/folders/reorder',
   withBetterAuth,
   validateAndMerge(ReorderFoldersRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(reorderFolders),
 )
 
@@ -135,7 +138,7 @@ router.post(
   '/campaigns/:campaignId',
   withBetterAuth,
   validateAndMerge(AddListToCampaignRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(addListToCampaign),
 )
 
@@ -143,7 +146,7 @@ router.delete(
   '/campaigns/:campaignId/:listId',
   withBetterAuth,
   validateAndMerge(RemoveListFromCampaignRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(removeListFromCampaign),
 )
 
@@ -199,7 +202,7 @@ router.post(
   '/',
   withBetterAuth,
   validateAndMerge(CreateListRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(createList),
 )
 
@@ -218,7 +221,7 @@ router.patch(
   '/:id',
   withBetterAuth,
   validateAndMerge(UpdateListRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(updateList),
 )
 
@@ -226,7 +229,7 @@ router.delete(
   '/:id',
   withBetterAuth,
   validateAndMerge(DeleteListRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(deleteList),
 )
 
@@ -236,7 +239,7 @@ router.post(
   withBetterAuth,
   upload.single('file'),
   validateAndMerge(UploadListCsvRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(uploadListCsv),
 )
 
@@ -272,7 +275,7 @@ router.post(
   '/:id/leads',
   withBetterAuth,
   validateAndMerge(AddLeadsToListRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(addLeadsToList),
 )
 
@@ -280,7 +283,7 @@ router.delete(
   '/:id/leads',
   withBetterAuth,
   validateAndMerge(RemoveLeadsFromListRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(removeLeadsFromList),
 )
 
@@ -289,7 +292,7 @@ router.delete(
   '/:id/leads/:leadId',
   withBetterAuth,
   validateAndMerge(SoftRemoveLeadFromListRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(softRemoveLeadFromList),
 )
 

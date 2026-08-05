@@ -1,4 +1,9 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
+
+const isDev = process.env.NODE_ENV !== 'production'
+const devConnectSources = isDev
+  ? ' http://localhost:3000 http://localhost:3001 http://localhost:8000 http://localhost:8010 ws://localhost:3000 ws://localhost:3001'
+  : ''
 
 const nextConfig: NextConfig = {
   images: {
@@ -29,16 +34,16 @@ const nextConfig: NextConfig = {
               // img.logo.dev serves the company logos rendered by CompanyLogo
               "img-src 'self' data: blob: img.logo.dev lh3.googleusercontent.com www.google-analytics.com",
               "font-src 'self' data:",
-              "connect-src 'self' https://api.omnidial.io https://app.omnidial.io https://www.omnidial.io *.omnidial.io *.pusher.com wss://*.pusher.com *.telnyx.com wss://*.telnyx.com api.stripe.com www.google-analytics.com *.google-analytics.com vitals.vercel-insights.com",
-              "frame-src js.stripe.com",
+              `connect-src 'self' https://api.omnidial.io https://app.omnidial.io https://www.omnidial.io *.omnidial.io *.pusher.com wss://*.pusher.com *.telnyx.com wss://*.telnyx.com api.stripe.com www.google-analytics.com *.google-analytics.com vitals.vercel-insights.com${devConnectSources}`,
+              'frame-src js.stripe.com',
               "media-src 'self' https://api.omnidial.io *.telnyx.com blob:",
               "worker-src 'self' blob:",
             ].join('; '),
           },
         ],
       },
-    ];
+    ]
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

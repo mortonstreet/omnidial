@@ -17,7 +17,10 @@ import { LeadTable } from "@/components/leads/LeadTable";
 import { MobileLeadCard } from "@/components/leads/MobileLeadCard";
 import { BulkActionBar } from "@/components/leads/BulkActionBar";
 import { SmartQueryModal } from "@/components/leads/SmartQueryModal";
+import { HubSpotContactImporter } from "@/components/settings/HubSpotContactImporter";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useLeads, useCreateLead, useDeleteLead } from "@/hooks/api/useLeads";
+import { useConnectedCrms } from "@/hooks/api/useCrmSync";
 import { useLeadSelection } from "@/hooks/useLeadSelection";
 import { toast } from "sonner";
 
@@ -26,6 +29,7 @@ export default function LeadsPage() {
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSmartQueryOpen, setIsSmartQueryOpen] = useState(false);
+  const [isHubSpotImportOpen, setIsHubSpotImportOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<{
     filters: Record<string, unknown>;
     humanReadable: string;
@@ -62,6 +66,9 @@ export default function LeadsPage() {
 
   const createMutation = useCreateLead();
   const deleteMutation = useDeleteLead();
+  const { data: connectedCrmsData } = useConnectedCrms();
+  const isHubSpotConnected =
+    connectedCrmsData?.data?.some((crm) => crm.provider === "hubspot") ?? false;
 
   const handleCreate = async () => {
     if (!newLead.phone.trim()) {
@@ -121,6 +128,15 @@ export default function LeadsPage() {
     setPage(1);
   };
 
+  const handleHubSpotImportSuccess = (
+    _listId: string,
+    listName: string,
+    leadsImported: number
+  ) => {
+    refetch();
+    toast.success(`Imported ${leadsImported} leads to "${listName}"`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -130,132 +146,144 @@ export default function LeadsPage() {
           </h1>
         </div>
 
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Lead
+        <div className="flex items-center gap-2">
+          {isHubSpotConnected && (
+            <Button
+              variant="outline"
+              onClick={() => setIsHubSpotImportOpen(true)}
+            >
+              <BrandLogo provider="hubspot" size={16} />
+              Import HubSpot
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Lead</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div className="grid grid-cols-2 gap-4">
+          )}
+
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Lead
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Lead</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      value={newLead.firstName}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, firstName: e.target.value })
+                      }
+                      placeholder="John"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      value={newLead.lastName}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, lastName: e.target.value })
+                      }
+                      placeholder="Doe"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
+                  <Label htmlFor="phone">
+                    Phone <span className="text-destructive">*</span>
+                  </Label>
                   <Input
-                    id="firstName"
-                    value={newLead.firstName}
+                    id="phone"
+                    value={newLead.phone}
                     onChange={(e) =>
-                      setNewLead({ ...newLead, firstName: e.target.value })
+                      setNewLead({ ...newLead, phone: e.target.value })
                     }
-                    placeholder="John"
+                    placeholder="+1 555 123 4567"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label htmlFor="email">Email</Label>
                   <Input
-                    id="lastName"
-                    value={newLead.lastName}
+                    id="email"
+                    type="email"
+                    value={newLead.email}
                     onChange={(e) =>
-                      setNewLead({ ...newLead, lastName: e.target.value })
+                      setNewLead({ ...newLead, email: e.target.value })
                     }
-                    placeholder="Doe"
+                    placeholder="john@example.com"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">
-                  Phone <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="phone"
-                  value={newLead.phone}
-                  onChange={(e) =>
-                    setNewLead({ ...newLead, phone: e.target.value })
-                  }
-                  placeholder="+1 555 123 4567"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newLead.email}
-                  onChange={(e) =>
-                    setNewLead({ ...newLead, email: e.target.value })
-                  }
-                  placeholder="john@example.com"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="company">Company</Label>
-                  <Input
-                    id="company"
-                    value={newLead.company}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, company: e.target.value })
-                    }
-                    placeholder="Acme Corp"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="company">Company</Label>
+                    <Input
+                      id="company"
+                      value={newLead.company}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, company: e.target.value })
+                      }
+                      placeholder="Acme Corp"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                      id="title"
+                      value={newLead.title}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, title: e.target.value })
+                      }
+                      placeholder="VP of Sales"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={newLead.title}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, title: e.target.value })
-                    }
-                    placeholder="VP of Sales"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="linkedInUrl">LinkedIn URL</Label>
+                    <Input
+                      id="linkedInUrl"
+                      value={newLead.linkedInUrl}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, linkedInUrl: e.target.value })
+                      }
+                      placeholder="https://linkedin.com/in/johndoe"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website">Website</Label>
+                    <Input
+                      id="website"
+                      value={newLead.website}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, website: e.target.value })
+                      }
+                      placeholder="https://example.com"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="linkedInUrl">LinkedIn URL</Label>
-                  <Input
-                    id="linkedInUrl"
-                    value={newLead.linkedInUrl}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, linkedInUrl: e.target.value })
-                    }
-                    placeholder="https://linkedin.com/in/johndoe"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    value={newLead.website}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, website: e.target.value })
-                    }
-                    placeholder="https://example.com"
-                  />
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCreateOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreate}
+                    disabled={createMutation.isPending}
+                  >
+                    Add Lead
+                  </Button>
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCreateOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreate}
-                  disabled={createMutation.isPending}
-                >
-                  Add Lead
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Search and Filter Bar */}
@@ -333,12 +361,23 @@ export default function LeadsPage() {
             No leads yet
           </h3>
           <p className="text-muted-foreground mb-4">
-            Add leads manually or upload a CSV to a campaign.
+            Add leads manually, import from HubSpot, or upload a CSV to a campaign.
           </p>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Lead
-          </Button>
+          <div className="flex justify-center gap-2">
+            {isHubSpotConnected && (
+              <Button
+                variant="outline"
+                onClick={() => setIsHubSpotImportOpen(true)}
+              >
+                <BrandLogo provider="hubspot" size={16} />
+                Import HubSpot
+              </Button>
+            )}
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Lead
+            </Button>
+          </div>
         </div>
       ) : (
         <>
@@ -402,6 +441,12 @@ export default function LeadsPage() {
         open={isSmartQueryOpen}
         onOpenChange={setIsSmartQueryOpen}
         onApply={handleApplySmartQuery}
+      />
+
+      <HubSpotContactImporter
+        isOpen={isHubSpotImportOpen}
+        onClose={() => setIsHubSpotImportOpen(false)}
+        onSuccess={handleHubSpotImportSuccess}
       />
     </div>
   );

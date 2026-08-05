@@ -2,10 +2,30 @@
 
 import { env } from './config';
 
+async function getErrorMessage(response: Response): Promise<string> {
+  const fallback = response.statusText || `Request failed with status ${response.status}`;
+
+  try {
+    const text = await response.text();
+    if (!text) return fallback;
+
+    try {
+      const data = JSON.parse(text);
+      if (typeof data?.error === 'string') return data.error;
+      if (typeof data?.message === 'string') return data.message;
+      return text;
+    } catch {
+      return text;
+    }
+  } catch {
+    return fallback;
+  }
+}
+
 export const get = <T>(url: string, options?: RequestInit): Promise<T> =>
-  fetch(`${env.API_URL.toString()}${url}`, { ...options, method: 'GET', credentials: 'include' }).then(response => {
+  fetch(`${env.API_URL.toString()}${url}`, { ...options, method: 'GET', credentials: 'include' }).then(async response => {
     if (!response.ok) {
-      throw new Error(response.statusText || `Request failed with status ${response.status}`);
+      throw new Error(await getErrorMessage(response));
     }
     return response.json();
   });
@@ -20,9 +40,9 @@ export const post = <T>(url: string, data?: any, options?: RequestInit): Promise
       'Content-Type': 'application/json',
       ...options?.headers,
     },
-  }).then(response => {
+  }).then(async response => {
     if (!response.ok) {
-      throw new Error(response.statusText);
+      throw new Error(await getErrorMessage(response));
     }
     return response.json();
   });
@@ -37,9 +57,9 @@ export const put = <T>(url: string, data?: any, options?: RequestInit): Promise<
       'Content-Type': 'application/json',
       ...options?.headers,
     },
-  }).then(response => {
+  }).then(async response => {
     if (!response.ok) {
-      throw new Error(response.statusText);
+      throw new Error(await getErrorMessage(response));
     }
     return response.json();
   });
@@ -54,9 +74,9 @@ export const patch = <T>(url: string, data?: any, options?: RequestInit): Promis
       'Content-Type': 'application/json',
       ...options?.headers,
     },
-  }).then(response => {
+  }).then(async response => {
     if (!response.ok) {
-      throw new Error(response.statusText);
+      throw new Error(await getErrorMessage(response));
     }
     return response.json();
   });
@@ -64,7 +84,7 @@ export const patch = <T>(url: string, data?: any, options?: RequestInit): Promis
 export const del = <T>(url: string, options?: RequestInit): Promise<T> =>
   fetch(`${env.API_URL.toString()}${url}`, { ...options, method: 'DELETE', credentials: 'include' }).then(async response => {
     if (!response.ok) {
-      throw new Error(response.statusText || `Request failed with status ${response.status}`);
+      throw new Error(await getErrorMessage(response));
     }
     // Handle 204 No Content or empty responses
     const text = await response.text();

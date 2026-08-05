@@ -75,6 +75,7 @@ import { toast } from "sonner";
 import { useActiveOrganization } from "@/lib/auth-client";
 import { ENDPOINTS, env } from "@/lib/config";
 import { useQuickCall } from "@/hooks/useQuickCall";
+import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
 
 export default function ListDetailPage() {
   const params = useParams();
@@ -107,6 +108,7 @@ export default function ListDetailPage() {
   const deleteMutation = useDeleteList();
   const linkCampaignMutation = useAddListToCampaign();
   const updateLeadMutation = useUpdateLead(listId);
+  const canManageLists = useOrganizationAdmin();
 
   const leads = leadsData?.data ?? [];
   const pagination = leadsData?.pagination;
@@ -357,42 +359,48 @@ export default function ListDetailPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsLinkCampaignOpen(true)}
-          >
-            <Link2 className="w-4 h-4 mr-2" />
-            Add to Campaign
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={openEditDialog}>
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={handleDelete}
+          {canManageLists && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsLinkCampaignOpen(true)}
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <Link2 className="w-4 h-4 mr-2" />
+                Add to Campaign
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={openEditDialog}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={handleDelete}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </div>
       </div>
 
       {/* CSV Upload Section */}
-      <div className="bg-card border rounded-xl p-6">
-        <h2 className="font-semibold mb-4">Upload Leads</h2>
-        <CsvUploader listId={listId} onUploadComplete={() => refetch()} />
-      </div>
+      {canManageLists && (
+        <div className="bg-card border rounded-xl p-6">
+          <h2 className="font-semibold mb-4">Upload Leads</h2>
+          <CsvUploader listId={listId} onUploadComplete={() => refetch()} />
+        </div>
+      )}
 
       {/* Import Error */}
       {list.importStatus === "failed" && list.importError && (
@@ -431,7 +439,9 @@ export default function ListDetailPage() {
           <div className="text-center py-12 text-muted-foreground">
             {search
               ? "No leads match your search"
-              : "No leads yet. Upload a CSV to add leads."}
+              : canManageLists
+              ? "No leads yet. Upload a CSV to add leads."
+              : "No leads yet."}
           </div>
         ) : (
           <>

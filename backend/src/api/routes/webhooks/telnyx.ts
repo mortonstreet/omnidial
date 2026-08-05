@@ -4,6 +4,7 @@ import { VoiceResponse } from '@/lib/texml'
 import * as dialerService from '@/services/dialer.service'
 import * as parallelDialerService from '@/services/parallelDialer.service'
 import * as slackClickToCallService from '@/services/slackClickToCall.service'
+import * as slackService from '@/services/slack.service'
 import * as agentSmsService from '@/services/agentSms.service'
 import * as callRepository from '@/repositories/call.repository'
 import * as webhookEventReceiptRepository from '@/repositories/webhookEventReceipt.repository'
@@ -50,6 +51,25 @@ const recordCallUsage = async (callId: string, duration: number) => {
   } catch (err) {
     logger.warn({ err, callId, duration }, 'Failed to record call usage')
   }
+}
+
+const sendInboundSlackNotification = (
+  organizationId: string,
+  call: {
+    id: string
+    fromNumber: string
+    toNumber: string
+    leadId?: string | null
+  },
+) => {
+  void slackService
+    .sendInboundCallNotification(organizationId, call)
+    .catch((error) => {
+      logger.error(
+        { error, organizationId, callId: call.id },
+        'Failed to send inbound Slack notification',
+      )
+    })
 }
 
 const router = Router()
@@ -627,6 +647,15 @@ router.post('/voice', async (req: Request, res: Response) => {
         'Resolved inbound call record',
       )
 
+      if (!existingCall) {
+        sendInboundSlackNotification(telnyxConfig.organizationId, {
+          id: callRecord.id,
+          fromNumber: callRecord.fromNumber,
+          toNumber: callRecord.toNumber,
+          leadId: callRecord.leadId,
+        })
+      }
+
       const dial = response.dial({
         callerId: From,
         timeout: 30,
@@ -727,6 +756,15 @@ router.post('/voice/inbound', async (req: Request, res: Response) => {
       },
       'Resolved inbound call record',
     )
+
+    if (!existingCall) {
+      sendInboundSlackNotification(telnyxConfig.organizationId, {
+        id: callRecord.id,
+        fromNumber: callRecord.fromNumber,
+        toNumber: callRecord.toNumber,
+        leadId: callRecord.leadId,
+      })
+    }
 
     const dial = response.dial({
       callerId: From,

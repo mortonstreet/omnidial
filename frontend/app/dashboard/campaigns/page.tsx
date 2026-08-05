@@ -28,6 +28,7 @@ import {
 } from "@/hooks/api/useCampaigns";
 import { useClients, useCreateClient } from "@/hooks/api/useClients";
 import { useLists } from "@/hooks/api/useLists";
+import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
 import { toast } from "sonner";
 
 type CreateStep = "info" | "leads";
@@ -60,6 +61,7 @@ export default function CampaignsPage() {
   const createMutation = useCreateCampaign();
   const deleteMutation = useDeleteCampaign();
   const createClientMutation = useCreateClient();
+  const canManageCampaigns = useOrganizationAdmin();
 
   const resetCreateDialog = () => {
     setCreateStep("info");
@@ -144,20 +146,21 @@ export default function CampaignsPage() {
           </p>
         </div>
 
-        <Dialog
-          open={isCreateOpen}
-          onOpenChange={(open) => {
-            setIsCreateOpen(open);
-            if (!open) resetCreateDialog();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              New Campaign
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
+        {canManageCampaigns && (
+          <Dialog
+            open={isCreateOpen}
+            onOpenChange={(open) => {
+              setIsCreateOpen(open);
+              if (!open) resetCreateDialog();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                New Campaign
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
             {createStep === "info" ? (
               <>
                 <DialogHeader>
@@ -293,8 +296,9 @@ export default function CampaignsPage() {
                 </div>
               </>
             )}
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4">
@@ -354,10 +358,12 @@ export default function CampaignsPage() {
           <p className="text-muted-foreground mb-4">
             Create your first campaign to start reaching out to leads.
           </p>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Create Campaign
-          </Button>
+          {canManageCampaigns && (
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Campaign
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -365,7 +371,7 @@ export default function CampaignsPage() {
             <CampaignCard
               key={campaign.id}
               campaign={campaign}
-              onDelete={handleDelete}
+              onDelete={canManageCampaigns ? handleDelete : undefined}
             />
           ))}
         </div>

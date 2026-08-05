@@ -2,6 +2,7 @@ import { getCrmAdapter } from '@/clients/crm'
 import * as crmSyncRecordRepository from '@/repositories/crmSyncRecord.repository'
 import * as integrationRepository from '@/repositories/integration.repository'
 import * as leadRepository from '@/repositories/lead.repository'
+import * as pipelineRepository from '@/repositories/pipeline.repository'
 
 export const pushLeadToCrm = async (
   organizationId: string,
@@ -24,10 +25,28 @@ export const pushLeadToCrm = async (
   }
 
   const adapter = getCrmAdapter(provider, organizationId)
+  const pipelineStage = lead.pipelineStageId
+    ? await pipelineRepository.findById(lead.pipelineStageId)
+    : undefined
+  const stageLabel =
+    pipelineStage?.organizationId === organizationId
+      ? pipelineStage.label
+      : undefined
+  const existingSyncRecord =
+    await crmSyncRecordRepository.findByOrgLeadProvider(
+      organizationId,
+      leadId,
+      provider,
+    )
+  const existingExternalId =
+    existingSyncRecord?.syncStatus === 'synced'
+      ? existingSyncRecord.externalId
+      : undefined
 
   try {
     const result = await adapter.pushContact({
       internalLeadId: lead.id,
+      externalId: existingExternalId,
       firstName: lead.firstName ?? undefined,
       lastName: lead.lastName ?? undefined,
       email: lead.email ?? undefined,
@@ -35,6 +54,8 @@ export const pushLeadToCrm = async (
       company: lead.company ?? undefined,
       title: lead.title ?? undefined,
       linkedInUrl: lead.linkedInUrl ?? undefined,
+      dealValue: lead.dealValue,
+      pipelineStageLabel: stageLabel,
     })
 
     // Create/update sync record
@@ -60,7 +81,8 @@ export const pushLeadToCrm = async (
       organizationId,
       leadId,
       provider,
-      externalId: '',
+      externalId: existingSyncRecord?.externalId || '',
+      externalUrl: existingSyncRecord?.externalUrl || undefined,
       syncDirection: 'push',
       syncStatus: 'failed',
       lastSyncedAt: new Date(),

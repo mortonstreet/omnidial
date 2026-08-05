@@ -1,4 +1,8 @@
-import { findMember } from '@/repositories/organization.repository'
+import {
+  findById,
+  findMember,
+  updateName,
+} from '@/repositories/organization.repository'
 import { getUserById } from '@/repositories/auth.repository'
 import { OrganizationRole } from '@shared/types/src/organization'
 
@@ -34,4 +38,16 @@ export const doesMemberHaveRole = async (
     return false
   }
   return roles.includes(member.role as OrganizationRole)
+}
+
+export const updateOrganizationName = async (
+  organizationId: string,
+  name: string,
+) => {
+  await findById(organizationId)
+  const organization = await updateName(organizationId, name)
+  if (!organization) {
+    throw new Error('Organization not found')
+  }
+  return organization
 }

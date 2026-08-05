@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import Card from "@/components/ui/card";
 import { FormInput } from "@/components/ui/form-input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import Modal from "@/components/ui/modal";
 import { toast } from "sonner";
 import { useSession, useActiveOrganization } from "@/lib/auth-client";
@@ -14,7 +16,14 @@ import {
   useListOrganizationInvitations,
   useCancelOrganizationInvitation,
   useRemoveOrganizationMember,
+  useUpdateOrganization,
 } from "@/hooks/api/useOrganization";
+import {
+  useClients,
+  useCreateClient,
+  useDeleteClient,
+  useUpdateClient,
+} from "@/hooks/api/useClients";
 
 interface OrgMember {
   id: string;
@@ -57,9 +66,29 @@ export function OrganizationSettings({ isAdmin }: OrganizationSettingsProps) {
   const inviteMemberMutation = useInviteMember();
   const cancelInvitationMutation = useCancelOrganizationInvitation();
   const removeMemberMutation = useRemoveOrganizationMember();
+  const updateOrganizationMutation = useUpdateOrganization();
+  const { data: clients = [], isLoading: clientsLoading } = useClients();
+  const createClientMutation = useCreateClient();
+  const updateClientMutation = useUpdateClient();
+  const deleteClientMutation = useDeleteClient();
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
+  const [organizationName, setOrganizationName] = useState(
+    activeOrganization?.name ?? ""
+  );
+  const [isEditingOrganizationName, setIsEditingOrganizationName] =
+    useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [editingClient, setEditingClient] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<{
+    id: string;
+    name: string;
+    campaignCount: number;
+  } | null>(null);
 
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [invitationToCancel, setInvitationToCancel] = useState<string | null>(null);
@@ -72,6 +101,93 @@ export function OrganizationSettings({ isAdmin }: OrganizationSettingsProps) {
 
   const currentUserMember = members.find((m) => m.userId === user?.id);
   const isOwner = currentUserMember?.role === "owner";
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setOrganizationName(activeOrganization?.name ?? "");
+      setIsEditingOrganizationName(false);
+    });
+  }, [activeOrganization?.id, activeOrganization?.name]);
+
+  const handleRenameOrganization = async () => {
+    if (!activeOrganization?.id) {
+      toast.error("No active organization selected");
+      return;
+    }
+
+    const nextName = organizationName.trim();
+    if (!nextName) {
+      toast.error("Please enter an organization name");
+      return;
+    }
+
+    try {
+      await updateOrganizationMutation.mutateAsync({
+        organizationId: activeOrganization.id,
+        name: nextName,
+      });
+      toast.success("Organization renamed");
+      setIsEditingOrganizationName(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to rename organization"
+      );
+    }
+  };
+
+  const handleCreateClient = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const name = newClientName.trim();
+    if (!name) {
+      toast.error("Please enter a client name");
+      return;
+    }
+
+    try {
+      await createClientMutation.mutateAsync({ name });
+      toast.success("Client created");
+      setNewClientName("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create client"
+      );
+    }
+  };
+
+  const handleUpdateClient = async () => {
+    if (!editingClient) return;
+
+    const name = editingClient.name.trim();
+    if (!name) {
+      toast.error("Please enter a client name");
+      return;
+    }
+
+    try {
+      await updateClientMutation.mutateAsync({ id: editingClient.id, name });
+      toast.success("Client renamed");
+      setEditingClient(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to rename client"
+      );
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    if (!clientToDelete) return;
+
+    try {
+      await deleteClientMutation.mutateAsync(clientToDelete.id);
+      toast.success("Client deleted");
+      setClientToDelete(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete client"
+      );
+    }
+  };
 
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,13 +289,190 @@ export function OrganizationSettings({ isAdmin }: OrganizationSettingsProps) {
       {activeOrganization && (
         <Card title="Organization">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-foreground mb-1">
                   Organization Name
                 </label>
-                <p className="text-foreground">{activeOrganization.name}</p>
+                {isEditingOrganizationName ? (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={organizationName}
+                      onChange={(event) =>
+                        setOrganizationName(event.target.value)
+                      }
+                      className="sm:max-w-sm"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleRenameOrganization}
+                        disabled={updateOrganizationMutation.isPending}
+                      >
+                        <Check className="h-4 w-4" />
+                        Save
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setOrganizationName(activeOrganization.name);
+                          setIsEditingOrganizationName(false);
+                        }}
+                        disabled={updateOrganizationMutation.isPending}
+                      >
+                        <X className="h-4 w-4" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-foreground">{activeOrganization.name}</p>
+                    {isAdmin && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsEditingOrganizationName(true)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Rename
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card title="Clients">
+          <div className="space-y-4">
+            <form
+              onSubmit={handleCreateClient}
+              className="flex flex-col gap-2 sm:flex-row"
+            >
+              <Input
+                value={newClientName}
+                onChange={(event) => setNewClientName(event.target.value)}
+                placeholder="New client name"
+                className="sm:max-w-sm"
+              />
+              <Button type="submit" disabled={createClientMutation.isPending}>
+                <Plus className="h-4 w-4" />
+                Add Client
+              </Button>
+            </form>
+
+            <div className="rounded-lg border border-border overflow-hidden">
+              {clientsLoading ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Loading clients...
+                </div>
+              ) : clients.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  No clients yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {clients.map((client) => {
+                    const isEditing = editingClient?.id === client.id;
+
+                    return (
+                      <div
+                        key={client.id}
+                        className="flex items-center justify-between gap-3 p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          {isEditing && editingClient ? (
+                            <Input
+                              value={editingClient.name}
+                              onChange={(event) =>
+                                setEditingClient({
+                                  id: client.id,
+                                  name: event.target.value,
+                                })
+                              }
+                              className="max-w-sm"
+                            />
+                          ) : (
+                            <>
+                              <div className="font-medium text-foreground truncate">
+                                {client.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {client.campaignCount} campaign
+                                {client.campaignCount === 1 ? "" : "s"}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {isEditing ? (
+                          <div className="flex gap-2">
+                            <Button
+                              size="icon-sm"
+                              type="button"
+                              onClick={handleUpdateClient}
+                              disabled={updateClientMutation.isPending}
+                              aria-label="Save client"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              type="button"
+                              onClick={() => setEditingClient(null)}
+                              disabled={updateClientMutation.isPending}
+                              aria-label="Cancel client edit"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              type="button"
+                              onClick={() =>
+                                setEditingClient({
+                                  id: client.id,
+                                  name: client.name,
+                                })
+                              }
+                              aria-label="Rename client"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              type="button"
+                              onClick={() =>
+                                setClientToDelete({
+                                  id: client.id,
+                                  name: client.name,
+                                  campaignCount: client.campaignCount,
+                                })
+                              }
+                              aria-label="Delete client"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -358,6 +651,40 @@ export function OrganizationSettings({ isAdmin }: OrganizationSettingsProps) {
           )}
         </Card>
       )}
+
+      <Modal
+        isOpen={!!clientToDelete}
+        onClose={() => setClientToDelete(null)}
+        title="Delete Client"
+        subtitle={
+          clientToDelete
+            ? `Are you sure you want to delete ${clientToDelete.name}?`
+            : undefined
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {clientToDelete?.campaignCount
+              ? "Clients with campaigns cannot be deleted until those campaigns are reassigned or deleted."
+              : "This action cannot be undone."}
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setClientToDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteClient}
+              disabled={
+                deleteClientMutation.isPending ||
+                !!clientToDelete?.campaignCount
+              }
+            >
+              Delete Client
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isCancelModalOpen}

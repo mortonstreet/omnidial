@@ -16,6 +16,7 @@ import {
   Trash2,
   X,
   Loader2,
+  ChevronDown,
   ChevronRight,
   Sparkles,
 } from "lucide-react";
@@ -38,6 +39,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { HubSpotContactImporter } from "@/components/settings/HubSpotContactImporter";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   useLists,
   useFolders,
@@ -57,8 +60,10 @@ import {
   useAddListToCampaign,
 } from "@/hooks/api/useLists";
 import { useCampaigns } from "@/hooks/api/useCampaigns";
+import { useConnectedCrms } from "@/hooks/api/useCrmSync";
 import { useListOrganizationMembers } from "@/hooks/api/useOrganization";
 import { useEnrichList } from "@/hooks/api/useEnrichment";
+import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -123,6 +128,7 @@ export default function ListsPage() {
   // Add to Campaign dialog
   const [addToCampaignList, setAddToCampaignList] = useState<{ id: string; name: string } | null>(null);
   const [campaignSearchQuery, setCampaignSearchQuery] = useState("");
+  const [isHubSpotImportOpen, setIsHubSpotImportOpen] = useState(false);
 
   // Data fetching
   const { data: listsData, isLoading: isLoadingLists } = useLists({
@@ -139,6 +145,7 @@ export default function ListsPage() {
   const deleteListMutation = useDeleteList();
   const addListToCampaignMutation = useAddListToCampaign();
   const enrichListMutation = useEnrichList();
+  const canManageLists = useOrganizationAdmin();
 
   // Fetch campaigns for "Add to Campaign" dialog
   const { data: campaignsData } = useCampaigns();
@@ -147,6 +154,7 @@ export default function ListsPage() {
   const { data: favoritesData } = useFavorites();
   const { data: favoriteIdsData } = useFavoriteIds();
   const { data: recentsData } = useRecents();
+  const { data: connectedCrmsData } = useConnectedCrms();
   const toggleFavoriteMutation = useToggleFavorite();
   const recordListOpenMutation = useRecordListOpen();
   const recordFolderOpenMutation = useRecordFolderOpen();
@@ -302,6 +310,8 @@ export default function ListsPage() {
   }, [search, currentFolderId, allFolders, allLists, activeTab, favoritesData, recentsData, ownerFilter, openedAtMap]);
 
   const isLoading = isLoadingLists || isLoadingFolders;
+  const isHubSpotConnected =
+    connectedCrmsData?.data?.some((crm) => crm.provider === "hubspot") ?? false;
 
   // Filtered folders for move dialog
   const filteredFoldersForMove = useMemo(() => {
@@ -471,6 +481,15 @@ export default function ListsPage() {
     }
   };
 
+  const handleHubSpotImportSuccess = (
+    listId: string,
+    listName: string,
+    leadsImported: number
+  ) => {
+    toast.success(`Imported ${leadsImported} leads to "${listName}"`);
+    navigateToList(listId);
+  };
+
   const handleAddToFavorites = async (type: "folder" | "list", itemId: string, name: string) => {
     try {
       const result = await toggleFavoriteMutation.mutateAsync({ itemId, type });
@@ -585,7 +604,7 @@ export default function ListsPage() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9">
                   Owner: {ownerFilter ? userMap.get(ownerFilter) ?? "Unknown" : "All"}
-                  <ChevronRight className="w-4 h-4 ml-1 rotate-90" />
+                  <ChevronDown className="w-4 h-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
@@ -615,25 +634,40 @@ export default function ListsPage() {
               />
             </div>
 
+            {canManageLists && isHubSpotConnected && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => setIsHubSpotImportOpen(true)}
+              >
+                <BrandLogo provider="hubspot" size={16} />
+                Import HubSpot
+              </Button>
+            )}
+
             {/* + New Button */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90">
-                  <Plus className="w-4 h-4 mr-1" />
-                  New
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setCreateType("list")}>
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
-                  New List
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCreateType("folder")}>
-                  <Folder className="w-4 h-4 mr-2" />
-                  New Folder
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {canManageLists && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="bg-primary hover:bg-primary/90">
+                    <Plus className="w-4 h-4 mr-1" />
+                    New
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCreateType("list")}>
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                    New List
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCreateType("folder")}>
+                    <Folder className="w-4 h-4 mr-2" />
+                    New Folder
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
 
@@ -666,7 +700,7 @@ export default function ListsPage() {
                     <p className="text-muted-foreground mb-4">
                       {search ? "No results found" : "No files or folders yet"}
                     </p>
-                    {!search && (
+                    {!search && canManageLists && (
                       <Button size="sm" onClick={() => setCreateType("list")}>
                         <Plus className="w-4 h-4 mr-1" />
                         Create your first list
@@ -747,7 +781,7 @@ export default function ListsPage() {
 
                     {/* Access */}
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      Edit
+                      {canManageLists ? "Edit" : "View"}
                     </td>
 
                     {/* Actions - Always visible with border */}
@@ -764,19 +798,21 @@ export default function ListsPage() {
                             {item.type === "folder" ? "Folder details" : "List details"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setRenamingItem({
-                                type: item.type,
-                                id: item.data.id,
-                                name: item.data.name,
-                              });
-                              setRenameValue(item.data.name);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
+                          {canManageLists && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setRenamingItem({
+                                  type: item.type,
+                                  id: item.data.id,
+                                  name: item.data.name,
+                                });
+                                setRenameValue(item.data.name);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => handleAddToFavorites(item.type, item.data.id, item.data.name)}>
                             <Star className={cn(
                               "w-4 h-4 mr-2",
@@ -790,7 +826,7 @@ export default function ListsPage() {
                               ? "Remove from favorites"
                               : "Add to favorites"}
                           </DropdownMenuItem>
-                          {item.type === "list" && (
+                          {canManageLists && item.type === "list" && (
                             <>
                               <DropdownMenuItem
                                 onClick={async () => {
@@ -834,14 +870,18 @@ export default function ListsPage() {
                               </DropdownMenuItem>
                             </>
                           )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDelete(item.type, item.data.id)}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {canManageLists && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => handleDelete(item.type, item.data.id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -1138,6 +1178,12 @@ export default function ListsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <HubSpotContactImporter
+        isOpen={isHubSpotImportOpen}
+        onClose={() => setIsHubSpotImportOpen(false)}
+        onSuccess={handleHubSpotImportSuccess}
+      />
 
     </div>
   );

@@ -4,7 +4,9 @@ import { authenticatedRoute } from './utils'
 import {
   withBetterAuth,
   validateMemberOfOrganization,
+  validateMemberOfOrganizationIs,
 } from '../middlewares/auth'
+import { OrganizationRole } from '@shared/types/src/organization'
 import {
   ListClientsRequestSchema,
   GetClientRequestSchema,
@@ -21,6 +23,7 @@ import {
 } from '@/api/controllers/client.controller'
 
 const router = Router()
+const adminRoles = [OrganizationRole.OWNER, OrganizationRole.ADMIN]
 
 // List clients for an organization
 router.get(
@@ -45,7 +48,7 @@ router.post(
   '/',
   withBetterAuth,
   validateAndMerge(CreateClientRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(createClient),
 )
 
@@ -54,7 +57,7 @@ router.patch(
   '/:id',
   withBetterAuth,
   validateAndMerge(UpdateClientRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(updateClient),
 )
 
@@ -63,7 +66,7 @@ router.delete(
   '/:id',
   withBetterAuth,
   validateAndMerge(DeleteClientRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(deleteClient),
 )
 

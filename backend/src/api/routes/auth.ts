@@ -1,4 +1,4 @@
-import { toNodeHandler } from 'better-auth/node'
+import { fromNodeHeaders, toNodeHandler } from 'better-auth/node'
 import { auth } from '@/lib/better-auth'
 import { Router } from 'express'
 import logger from '@/lib/logger'
@@ -28,6 +28,62 @@ router.use((req, res, next) => {
 router.use(authCallbackGuard)
 router.use(magicLinkAbuseProtection)
 router.use(magicLinkVerifyHardening)
+
+router.post('/sign-in/magic-link', async (req, res) => {
+  const getCorrelationId = () => {
+    const responseHeader = res.getHeader('x-request-id')
+    if (typeof responseHeader === 'string' && responseHeader.length > 0) {
+      return responseHeader
+    }
+    const requestHeader = req.headers['x-request-id']
+    if (typeof requestHeader === 'string' && requestHeader.length > 0) {
+      return requestHeader
+    }
+    return randomUUID()
+  }
+
+  const correlationId = getCorrelationId()
+  logger.info(
+    {
+      event: 'auth.magic.direct_handler_entry',
+      correlationId,
+      method: req.method,
+      path: req.path,
+    },
+    'Magic link request reached direct auth handler',
+  )
+
+  try {
+    const result = await auth.api.signInMagicLink({
+      body: req.body,
+      headers: fromNodeHeaders(req.headers),
+    })
+    return res.json(result)
+  } catch (error) {
+    logger.error(
+      {
+        event: 'auth.magic.direct_handler_failed',
+        correlationId,
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      'Failed to send magic link from direct auth handler',
+    )
+
+    return res.status(503).json({
+      error: 'AUTH_FAILURE_TRANSIENT',
+      code: 'AUTH_FAILURE_TRANSIENT',
+      retryable: true,
+      userMessage:
+        'Unable to send sign-in email right now. Please try again shortly.',
+      message:
+        'Unable to send sign-in email right now. Please try again shortly.',
+      correlationId,
+    })
+  }
+})
+
 router.all('/*splat', async (req, res, next) => {
   const getCorrelationId = () => {
     const responseHeader = res.getHeader('x-request-id')

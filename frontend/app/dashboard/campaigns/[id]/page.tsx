@@ -48,6 +48,7 @@ import {
   useCampaignLists,
   useAddListToCampaign,
 } from "@/hooks/api/useLists";
+import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
 import { toast } from "sonner";
 export default function CampaignDetailPage() {
   const params = useParams();
@@ -69,6 +70,7 @@ export default function CampaignDetailPage() {
   const { data: listsData, isLoading: listsLoading } = useLists({ search: listSearch, limit: 100 });
   const { data: campaignListsData } = useCampaignLists(campaignId);
   const addListToCampaign = useAddListToCampaign();
+  const canManageCampaigns = useOrganizationAdmin();
 
   const alreadyAddedListIds = new Set(
     campaignListsData?.data?.map((cl) => cl.listId) ?? []
@@ -169,24 +171,25 @@ export default function CampaignDetailPage() {
             </Badge>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Dialog
-            open={isAddListsOpen}
-            onOpenChange={(open) => {
-              setIsAddListsOpen(open);
-              if (!open) {
-                setSelectedListIds(new Set());
-                setListSearch("");
-              }
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <ListPlus className="w-4 h-4 mr-2" />
-                + Add List
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
+        {canManageCampaigns && (
+          <div className="flex gap-2">
+            <Dialog
+              open={isAddListsOpen}
+              onOpenChange={(open) => {
+                setIsAddListsOpen(open);
+                if (!open) {
+                  setSelectedListIds(new Set());
+                  setListSearch("");
+                }
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <ListPlus className="w-4 h-4 mr-2" />
+                  + Add List
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Add Lists to Campaign</DialogTitle>
               </DialogHeader>
@@ -270,27 +273,28 @@ export default function CampaignDetailPage() {
                   )}
                 </Button>
               </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Upload className="w-4 h-4 mr-2" />
-                Upload CSV
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Upload Leads CSV</DialogTitle>
-              </DialogHeader>
-              <CsvUploader
-                campaignId={campaignId}
-                onSuccess={() => setIsUploadOpen(false)}
-              />
-            </DialogContent>
-          </Dialog>
-{/* Campaign pause/resume not yet implemented */}
-        </div>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload CSV
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Upload Leads CSV</DialogTitle>
+                </DialogHeader>
+                <CsvUploader
+                  campaignId={campaignId}
+                  onSuccess={() => setIsUploadOpen(false)}
+                />
+              </DialogContent>
+            </Dialog>
+            {/* Campaign pause/resume not yet implemented */}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -346,18 +350,22 @@ export default function CampaignDetailPage() {
                 No leads in this campaign
               </h3>
               <p className="text-muted-foreground mb-4">
-                Add leads from your lists or upload a CSV file.
+                {canManageCampaigns
+                  ? "Add leads from your lists or upload a CSV file."
+                  : "No leads have been added to this campaign yet."}
               </p>
-              <div className="flex gap-2 justify-center">
-                <Button onClick={() => setIsAddListsOpen(true)}>
-                  <ListPlus className="w-4 h-4 mr-2" />
-                  + Add List
-                </Button>
-                <Button variant="outline" onClick={() => setIsUploadOpen(true)}>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload CSV
-                </Button>
-              </div>
+              {canManageCampaigns && (
+                <div className="flex gap-2 justify-center">
+                  <Button onClick={() => setIsAddListsOpen(true)}>
+                    <ListPlus className="w-4 h-4 mr-2" />
+                    + Add List
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsUploadOpen(true)}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload CSV
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="border rounded-xl overflow-hidden">

@@ -69,7 +69,7 @@ const INTEGRATION_METADATA: Record<
   },
   hubspot: {
     name: 'HubSpot',
-    description: 'Import contacts from your HubSpot CRM',
+    description: 'Import contacts and sync deal stages with HubSpot CRM',
     category: 'crm',
     authType: 'oauth',
   },

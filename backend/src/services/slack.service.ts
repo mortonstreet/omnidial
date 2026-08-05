@@ -940,7 +940,20 @@ export async function sendInboundCallNotification(
       workspace.id,
       'inbound_call',
     )
-    if (rules.length === 0) continue
+    const configuredRules =
+      rules.length > 0
+        ? rules
+        : await notificationRuleRepo.findByWorkspaceAndEventType(
+            workspace.id,
+            'inbound_call',
+          )
+    const targets =
+      rules.length > 0
+        ? rules.map((rule) => ({ channelId: rule.channelId }))
+        : configuredRules.length === 0 && workspace.defaultChannelId
+          ? [{ channelId: workspace.defaultChannelId }]
+          : []
+    if (targets.length === 0) continue
 
     // Get lead info if available
     let lead: {
@@ -961,17 +974,17 @@ export async function sendInboundCallNotification(
     const client = new SlackClient(workspace.botToken)
     const blocks = buildInboundCallBlocks(callData, lead)
 
-    for (const rule of rules) {
+    for (const target of targets) {
       try {
         const result = await client.postMessage({
-          channel: rule.channelId,
+          channel: target.channelId,
           blocks,
           text: `Incoming call from ${lead ? `${lead.firstName} ${lead.lastName}` : callData.fromNumber}`,
         })
 
         await messageLogRepo.create({
           workspaceId: workspace.id,
-          channelId: rule.channelId,
+          channelId: target.channelId,
           messageTs: result.ts,
           eventType: 'inbound_call',
           payload: { callId: callData.id },
@@ -979,12 +992,12 @@ export async function sendInboundCallNotification(
         })
       } catch (error) {
         logger.error(
-          { error, workspaceId: workspace.id, channelId: rule.channelId },
+          { error, workspaceId: workspace.id, channelId: target.channelId },
           'Failed to send inbound call notification',
         )
         await messageLogRepo.create({
           workspaceId: workspace.id,
-          channelId: rule.channelId,
+          channelId: target.channelId,
           eventType: 'inbound_call',
           payload: { callId: callData.id },
           success: false,

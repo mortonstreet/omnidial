@@ -27,6 +27,7 @@ const SCOPES = [
   'crm.objects.companies.write',
   'crm.objects.deals.read',
   'crm.objects.deals.write',
+  'crm.schemas.deals.read',
   'oauth',
 ]
 
@@ -177,7 +178,8 @@ export const fetchAllContacts = async (
   do {
     const params = new URLSearchParams({
       limit: String(limit),
-      properties: 'firstname,lastname,email,phone,company,jobtitle',
+      properties:
+        'firstname,lastname,email,phone,company,jobtitle,hs_linkedin_url',
     })
     if (after) {
       params.set('after', after)
@@ -205,6 +207,7 @@ export const fetchAllContacts = async (
         phone: result.properties?.phone || null,
         company: result.properties?.company || null,
         jobTitle: result.properties?.jobtitle || null,
+        linkedInUrl: result.properties?.hs_linkedin_url || null,
       })
 
       if (maxContacts && contacts.length >= maxContacts) {
@@ -228,7 +231,8 @@ export const getContactsSummary = async (
 
   const params = new URLSearchParams({
     limit: '100',
-    properties: 'firstname,lastname,email,phone,company,jobtitle',
+    properties:
+      'firstname,lastname,email,phone,company,jobtitle,hs_linkedin_url',
   })
 
   const response = await fetch(
@@ -252,6 +256,7 @@ export const getContactsSummary = async (
       phone: result.properties?.phone || null,
       company: result.properties?.company || null,
       jobTitle: result.properties?.jobtitle || null,
+      linkedInUrl: result.properties?.hs_linkedin_url || null,
     }),
   )
 

@@ -16,7 +16,6 @@ import {
   LogOut,
   Activity,
   Sparkles,
-  Bot,
   Lock,
 } from "lucide-react";
 import { Logo } from "@/components/brand";
@@ -44,7 +43,6 @@ const nav: NavItem[] = [
   { href: "/dashboard/dialer", label: "Dialer", icon: Phone },
   { href: "/dashboard/sales-floor", label: "Sales Floor", icon: Activity },
   { href: "/dashboard/coaching", label: "Coaching", icon: Sparkles, feature: "coaching", proOnly: true },
-  { href: "/dashboard/agents", label: "AI Agents", icon: Bot, experimental: true },
 ];
 
 const bottom: NavItem[] = [

@@ -8,6 +8,8 @@ export interface CrmContact {
   company?: string
   title?: string
   linkedInUrl?: string
+  dealValue?: number | string | null
+  pipelineStageLabel?: string
 }
 
 export interface CrmPushResult {
@@ -19,6 +21,8 @@ export interface CrmPushResult {
 export interface CrmSearchResult {
   externalId: string
   email?: string
+  phone?: string
+  linkedInUrl?: string
 }
 
 export interface CrmAdapter {

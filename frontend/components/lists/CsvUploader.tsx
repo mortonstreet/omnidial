@@ -130,9 +130,10 @@ export function CsvUploader({ listId, onUploadComplete }: CsvUploaderProps) {
       <div className="text-xs text-muted-foreground space-y-1">
         <p>
           <strong>Supported columns:</strong> first_name, last_name, email,
-          phone (required), company, title, linkedin_url, website
+          phone, company, title, linkedin_url, website
         </p>
-        <p>Additional columns will be saved as custom fields.</p>
+        <p>Each row must include phone or linkedin_url.</p>
+        <p>Rename or remove other columns before uploading.</p>
       </div>
     </div>
   );

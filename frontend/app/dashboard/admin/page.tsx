@@ -22,7 +22,7 @@ import {
   useAdminSwitchOrg,
 } from "@/hooks/api/useAdmin";
 import { useSession } from "@/lib/auth-client";
-import { Users, Building2, Search, ChevronLeft, ChevronRight, Plus, Trash2, UserPlus, Eye, FileText, ArrowRightLeft, Phone, MoreHorizontal } from "lucide-react";
+import { Users, Building2, Search, ChevronLeft, ChevronRight, Plus, Trash2, UserPlus, Eye, FileText, ArrowRightLeft, Phone, MoreHorizontal, Pencil } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,7 @@ import {
   useAdminMarkMainAccount,
   useAdminReleaseNumber,
 } from "@/hooks/api/usePhoneProvisioning";
+import { useUpdateOrganization } from "@/hooks/api/useOrganization";
 
 type Tab = "users" | "organizations" | "logs" | "phone-provisioning";
 
@@ -65,25 +66,27 @@ function Pagination({
         Showing {start} to {end} of {total}
       </p>
       <div className="flex items-center gap-2">
-        <button
+        <Button
+          variant="outline"
+          size="icon-sm"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="p-1.5 rounded border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4 text-foreground" />
-        </button>
+        </Button>
         <span className="text-sm text-foreground px-2">
           Page {page} of {totalPages}
         </span>
-        <button
+        <Button
+          variant="outline"
+          size="icon-sm"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="p-1.5 rounded border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4 text-foreground" />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -310,6 +313,11 @@ export default function AdminPage() {
   const [isDeleteOrgModalOpen, setIsDeleteOrgModalOpen] = useState(false);
   const [orgToDelete, setOrgToDelete] = useState<AdminOrganization | null>(null);
 
+  // Rename Organization Modal
+  const [isRenameOrgModalOpen, setIsRenameOrgModalOpen] = useState(false);
+  const [orgToRename, setOrgToRename] = useState<AdminOrganization | null>(null);
+  const [renameOrgName, setRenameOrgName] = useState("");
+
   // Reassign User Modal
   const [isReassignUserModalOpen, setIsReassignUserModalOpen] = useState(false);
   const [userToReassign, setUserToReassign] = useState<AdminUser | null>(null);
@@ -363,6 +371,7 @@ export default function AdminPage() {
   const createOrgMutation = useCreateOrganization();
   const removeUserFromOrgMutation = useRemoveUserFromOrganization();
   const switchOrgMutation = useAdminSwitchOrg();
+  const updateOrganizationMutation = useUpdateOrganization();
   const router = useRouter();
 
   const handleOpenAddCreditsModal = (org: AdminOrganization) => {
@@ -437,6 +446,28 @@ export default function AdminPage() {
         toast.error(error.message || "Failed to delete organization");
       },
     });
+  };
+
+  const handleRenameOrganization = () => {
+    if (!orgToRename || !renameOrgName.trim()) return;
+
+    updateOrganizationMutation.mutate(
+      {
+        organizationId: orgToRename.id,
+        name: renameOrgName.trim(),
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Organization renamed to "${renameOrgName.trim()}"`);
+          setIsRenameOrgModalOpen(false);
+          setOrgToRename(null);
+          setRenameOrgName("");
+        },
+        onError: (error: Error) => {
+          toast.error(error.message || "Failed to rename organization");
+        },
+      }
+    );
   };
 
   const handleReassignUser = () => {
@@ -514,6 +545,12 @@ export default function AdminPage() {
   const openDeleteOrgModal = (org: AdminOrganization) => {
     setOrgToDelete(org);
     setIsDeleteOrgModalOpen(true);
+  };
+
+  const openRenameOrgModal = (org: AdminOrganization) => {
+    setOrgToRename(org);
+    setRenameOrgName(org.name);
+    setIsRenameOrgModalOpen(true);
   };
 
   const openReassignUserModal = (user: AdminUser) => {
@@ -799,6 +836,10 @@ export default function AdminPage() {
                                 <Plus className="h-4 w-4 mr-2" />
                                 Add Credits
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openRenameOrgModal(org)}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Rename Organization
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 variant="destructive"
@@ -919,6 +960,51 @@ export default function AdminPage() {
               disabled={deleteUserMutation.isPending}
             >
               Delete User
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Rename Organization Modal */}
+      <Modal
+        isOpen={isRenameOrgModalOpen}
+        onClose={() => {
+          setIsRenameOrgModalOpen(false);
+          setOrgToRename(null);
+          setRenameOrgName("");
+        }}
+        title="Rename Organization"
+        subtitle={orgToRename ? `Update the display name for ${orgToRename.slug}` : undefined}
+      >
+        <div className="space-y-4">
+          <FormInput
+            label="Organization Name"
+            value={renameOrgName}
+            onChange={(e) => setRenameOrgName(e.target.value)}
+            placeholder="Organization name"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            This updates the organization display name only. The slug remains unchanged.
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsRenameOrgModalOpen(false);
+                setOrgToRename(null);
+                setRenameOrgName("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameOrganization}
+              disabled={
+                updateOrganizationMutation.isPending || !renameOrgName.trim()
+              }
+            >
+              Rename Organization
             </Button>
           </div>
         </div>

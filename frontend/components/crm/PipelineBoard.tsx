@@ -10,6 +10,7 @@ import {
 } from "@/hooks/api/usePipeline";
 import { PipelineColumn } from "./PipelineColumn";
 import { useMoveLead } from "@/hooks/api/useLeads";
+import { useConnectedCrms, useCrmPushLead } from "@/hooks/api/useCrmSync";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +42,8 @@ interface PipelineBoardProps {
 
 export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: PipelineBoardProps) {
   const moveLead = useMoveLead();
+  const syncLeadToCrm = useCrmPushLead();
+  const { data: connectedCrmsData } = useConnectedCrms();
   const updateStage = useUpdatePipelineStage();
   const deleteStage = useDeletePipelineStage();
   const reorderStages = useReorderPipelineStages();
@@ -61,6 +64,9 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
     setPrevStages(stages);
     setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
   }
+
+  const isHubSpotConnected =
+    connectedCrmsData?.data?.some((crm) => crm.provider === "hubspot") ?? false;
 
   // Group leads by pipeline stage
   const leadsByStage = useMemo(() => {
@@ -114,12 +120,29 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
 
       try {
         await moveLead.mutateAsync({ id: leadId, pipelineStageId: targetStageId });
-        toast.success("Lead moved");
+        if (isHubSpotConnected) {
+          try {
+            await syncLeadToCrm.mutateAsync({
+              leadId,
+              provider: "hubspot",
+            });
+            toast.success("Lead moved and synced to HubSpot");
+          } catch (error) {
+            toast.error("Lead moved, but HubSpot sync failed", {
+              description:
+                error instanceof Error && error.message
+                  ? error.message
+                  : "Failed to sync to HubSpot",
+            });
+          }
+        } else {
+          toast.success("Lead moved");
+        }
       } catch {
         toast.error("Failed to move lead");
       }
     },
-    [moveLead]
+    [isHubSpotConnected, moveLead, syncLeadToCrm]
   );
 
   const handleUpdateStage = useCallback(

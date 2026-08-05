@@ -109,6 +109,7 @@ export const ENDPOINTS = {
     INVITE_MEMBER: '/auth/organization/invite-member',
     CREDIT_BALANCE: (orgId: string) => `/organization/${orgId}/credit-balance`,
     SUBSCRIPTION: (orgId: string) => `/organization/${orgId}/subscription`,
+    UPDATE: (orgId: string) => `/organization/${orgId}`,
   },
   ADMIN: {
     STATS: '/admin/stats',
@@ -181,6 +182,12 @@ export const ENDPOINTS = {
     COMPANY_SUMMARY: (id: string) => `/leads/${id}/company-summary`,
     ENRICH_FROM_WEBSITE: (id: string) => `/leads/${id}/enrich-from-website`,
     RESOLVE_TIMEZONE: (id: string) => `/leads/${id}/resolve-timezone`,
+  },
+  CRM: {
+    CONNECTED: '/crm/connected',
+    PUSH: '/crm/push',
+    PRESENCE: '/crm/presence',
+    TEST: '/crm/test',
   },
   TASKS: {
     LIST: '/tasks',
@@ -600,6 +607,8 @@ export const QUERY_KEYS = {
   leadActivity: (leadId: string) => ['lead', leadId, 'activity'] as const,
   leadCompanySummary: (leadId: string) => ['lead', leadId, 'company-summary'] as const,
   leadTimezone: (leadId: string) => ['lead', leadId, 'timezone'] as const,
+  connectedCrms: (orgId?: string) => ['crm', 'connected', orgId] as const,
+  crmPresence: (orgId?: string, leadId?: string) => ['crm', 'presence', orgId, leadId] as const,
   // Dialer
   dialerToken: () => ['dialer', 'token'] as const,
   dialerConfig: (orgId?: string) => ['dialer', 'config', orgId] as const,

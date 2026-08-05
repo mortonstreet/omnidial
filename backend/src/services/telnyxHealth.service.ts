@@ -103,9 +103,9 @@ const runProbe = async (): Promise<TelnyxHealth> => {
   }
 }
 
-export const getTelnyxHealth = async (
-  { force = false } = {},
-): Promise<TelnyxHealth> => {
+export const getTelnyxHealth = async ({
+  force = false,
+} = {}): Promise<TelnyxHealth> => {
   const fresh = cached && Date.now() - cachedAt < CACHE_TTL_MS
 
   if (!force && fresh && cached) {

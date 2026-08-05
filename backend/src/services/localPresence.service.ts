@@ -47,8 +47,7 @@ export const syncPhonePoolFromTwilio = async (
         .updateTable('phone_number_pool')
         .set({
           friendlyName:
-            (number.customer_reference as string | null) ||
-            number.phone_number,
+            (number.customer_reference as string | null) || number.phone_number,
           twilioSid: number.id,
           capabilities: buildCapabilities({
             voice: true,
@@ -69,8 +68,7 @@ export const syncPhonePoolFromTwilio = async (
           organizationId,
           phoneNumber: number.phone_number,
           friendlyName:
-            (number.customer_reference as string | null) ||
-            number.phone_number,
+            (number.customer_reference as string | null) || number.phone_number,
           areaCode: areaCode || '000',
           region: null,
           country: 'US',

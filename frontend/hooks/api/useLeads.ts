@@ -91,6 +91,7 @@ interface ListLeadsParams {
   emailFilter?: SmartFilterParam;
   companyFilter?: SmartFilterParam;
   createdAtFilter?: SmartFilterParam;
+  enabled?: boolean;
 }
 
 export function useLeads(params: ListLeadsParams = {}) {
@@ -129,7 +130,7 @@ export function useLeads(params: ListLeadsParams = {}) {
         `${ENDPOINTS.LEADS.LIST}?${searchParams.toString()}`
       );
     },
-    enabled: !!orgId,
+    enabled: !!orgId && (params.enabled ?? true),
   });
 }
 

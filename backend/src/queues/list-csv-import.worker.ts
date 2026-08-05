@@ -79,9 +79,13 @@ const FIELD_MAPPINGS: Record<string, CsvMappableField> = {
   role: 'title',
   linkedin: 'linkedInUrl',
   linkedin_url: 'linkedInUrl',
+  linked_in_url: 'linkedInUrl',
   linkedinurl: 'linkedInUrl',
   'linkedin url': 'linkedInUrl',
+  'linked in url': 'linkedInUrl',
   'linkedin profile': 'linkedInUrl',
+  linkedin_profile_url: 'linkedInUrl',
+  'linkedin profile url': 'linkedInUrl',
   website: 'website',
   website_url: 'website',
   websiteurl: 'website',
@@ -91,6 +95,13 @@ const FIELD_MAPPINGS: Record<string, CsvMappableField> = {
   'company website': 'website',
   url: 'website',
   site: 'website',
+}
+
+function normalizeHeader(header: string): string {
+  return header
+    .replace(/^\uFEFF/, '')
+    .toLowerCase()
+    .trim()
 }
 
 function parseCSV(content: string): { headers: string[]; rows: string[][] } {
@@ -143,7 +154,7 @@ function validateHeaders(headers: string[]): {
   const unrecognized: string[] = []
 
   for (const header of headers) {
-    const normalized = header.toLowerCase().trim()
+    const normalized = normalizeHeader(header)
     if (!FIELD_MAPPINGS[normalized]) {
       unrecognized.push(header)
     }
@@ -163,7 +174,7 @@ function mapRowToLead(
   } = {}
 
   for (let i = 0; i < headers.length && i < row.length; i++) {
-    const header = headers[i].toLowerCase().trim()
+    const header = normalizeHeader(headers[i])
     const value = row[i]?.trim()
 
     if (!value) continue

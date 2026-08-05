@@ -5,7 +5,9 @@ import { authenticatedRoute } from './utils'
 import {
   withBetterAuth,
   validateMemberOfOrganization,
+  validateMemberOfOrganizationIs,
 } from '../middlewares/auth'
+import { OrganizationRole } from '@shared/types/src/organization'
 import {
   ListCampaignsRequestSchema,
   GetCampaignRequestSchema,
@@ -28,6 +30,7 @@ import {
 } from '@/api/controllers/campaign.controller'
 
 const router = Router()
+const adminRoles = [OrganizationRole.OWNER, OrganizationRole.ADMIN]
 
 // Configure multer for CSV uploads (10MB limit)
 const upload = multer({
@@ -58,7 +61,7 @@ router.post(
   '/',
   withBetterAuth,
   validateAndMerge(CreateCampaignRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(createCampaign),
 )
 
@@ -67,7 +70,7 @@ router.patch(
   '/:id',
   withBetterAuth,
   validateAndMerge(UpdateCampaignRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(updateCampaign),
 )
 
@@ -76,7 +79,7 @@ router.delete(
   '/:id',
   withBetterAuth,
   validateAndMerge(DeleteCampaignRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(deleteCampaign),
 )
 
@@ -85,7 +88,7 @@ router.post(
   '/:id/assign',
   withBetterAuth,
   validateAndMerge(AssignLeadsRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(assignLeads),
 )
 
@@ -104,7 +107,7 @@ router.post(
   withBetterAuth,
   upload.single('file'),
   validateAndMerge(UploadCsvRequestSchema),
-  validateMemberOfOrganization,
+  validateMemberOfOrganizationIs(adminRoles),
   authenticatedRoute(uploadCsv),
 )
 

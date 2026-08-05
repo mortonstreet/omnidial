@@ -2,6 +2,7 @@ import * as integrationService from '@/services/integration.service'
 import * as enrichEngineService from '@/services/enrichEngine.service'
 import * as leadService from '@/services/lead.service'
 import * as leadListService from '@/services/leadList.service'
+import * as crmSyncRecordRepository from '@/repositories/crmSyncRecord.repository'
 import { AuthRequestHandler } from '@/types/handlers'
 import { config } from '@/config'
 import { Request, Response } from 'express'
@@ -596,18 +597,59 @@ export const importFromHubSpot: AuthRequestHandler<
           continue
         }
 
-        const lead = await leadService.create({
+        const existingLead = await leadService.lookupByPhone(
           organizationId,
-          userId: req.user.id,
-          firstName: contact.firstName || undefined,
-          lastName: contact.lastName || undefined,
-          email: contact.email || undefined,
-          phone: contact.phone,
-          company: contact.company || undefined,
-          title: contact.jobTitle || undefined,
-        })
+          contact.phone,
+        )
+        const lead = existingLead
+          ? await leadService.update({
+              id: existingLead.id,
+              organizationId,
+              firstName: existingLead.firstName
+                ? undefined
+                : contact.firstName || undefined,
+              lastName: existingLead.lastName
+                ? undefined
+                : contact.lastName || undefined,
+              email: existingLead.email
+                ? undefined
+                : contact.email || undefined,
+              company: existingLead.company
+                ? undefined
+                : contact.company || undefined,
+              title: existingLead.title
+                ? undefined
+                : contact.jobTitle || undefined,
+              linkedInUrl: existingLead.linkedInUrl
+                ? undefined
+                : contact.linkedInUrl || undefined,
+            })
+          : await leadService.create({
+              organizationId,
+              userId: req.user.id,
+              firstName: contact.firstName || undefined,
+              lastName: contact.lastName || undefined,
+              email: contact.email || undefined,
+              phone: contact.phone,
+              company: contact.company || undefined,
+              title: contact.jobTitle || undefined,
+              linkedInUrl: contact.linkedInUrl || undefined,
+            })
 
-        leadIds.push(lead.id)
+        if (!leadIds.includes(lead.id)) {
+          leadIds.push(lead.id)
+        }
+
+        await crmSyncRecordRepository.upsert({
+          organizationId,
+          leadId: lead.id,
+          provider: 'hubspot',
+          externalId: contact.id,
+          externalUrl: `https://app.hubspot.com/contacts/${contact.id}`,
+          syncDirection: 'pull',
+          syncStatus: 'synced',
+          lastSyncedAt: new Date(),
+        })
       } catch (error) {
         errors.push(
           `Contact ${contact.firstName || ''} ${contact.lastName || ''}: ${(error as Error).message}`,

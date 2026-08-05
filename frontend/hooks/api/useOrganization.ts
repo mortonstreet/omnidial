@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { organization, useActiveOrganization } from '@/lib/auth-client';
 import { ENDPOINTS, QUERY_KEYS } from '@/lib/config';
-import { get } from '@/lib/api';
+import { get, patch } from '@/lib/api';
 
 export function useOrganizations() {
   
@@ -33,6 +33,23 @@ export function useCreateOrganization() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.organizations() });
+    },
+  });
+}
+
+export function useUpdateOrganization() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: { organizationId: string; name: string }) => {
+      return patch(ENDPOINTS.ORGANIZATION.UPDATE(params.organizationId), params);
+    },
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.organizations() });
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.organizationMembers(variables.organizationId),
+      });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminOrganizations() });
     },
   });
 }
@@ -147,7 +164,7 @@ export const useRemoveOrganizationMember = () => {
 
 /**
  * Resend an organization invitation
- * Cancels the existing invitation and creates a new one with fresh expiration
+ * Refreshes the pending invitation expiration and triggers a new email.
  */
 export function useResendOrganizationInvitation() {
   const queryClient = useQueryClient();
@@ -155,29 +172,20 @@ export function useResendOrganizationInvitation() {
 
   return useMutation({
     mutationFn: async (params: { invitationId: string; email: string; role: "member" | "admin" | "owner" }) => {
-      // First cancel the existing invitation
-      const cancelResult = await organization.cancelInvitation({ invitationId: params.invitationId });
-      if (cancelResult.error) {
-        throw new Error(cancelResult.error.message || 'Failed to cancel existing invitation');
-      }
-
-      // Then create a new invitation
       const inviteResult = await organization.inviteMember({
         email: params.email,
         role: params.role,
         organizationId: activeOrganization?.data?.id || '',
+        resend: true,
       });
 
-      // Check if the invite failed and throw so onSettled still invalidates
       if (inviteResult.error) {
-        throw new Error(inviteResult.error.message || 'Failed to send new invitation');
+        throw new Error(inviteResult.error.message || 'Failed to resend invitation');
       }
 
       return inviteResult;
     },
     onSettled: () => {
-      // Always invalidate to ensure UI reflects current state (especially important
-      // since we cancel first, then invite - if invite fails, old one is gone)
       if (activeOrganization?.data?.id) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.organizationInvitations(activeOrganization.data.id) });
       }
@@ -198,4 +206,3 @@ export function useOrganizationCreditBalance() {
     enabled: !!orgId,
   });
 }
-

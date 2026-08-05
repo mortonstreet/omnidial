@@ -360,13 +360,26 @@ const buildBaseQuery = (filters: LeadFilters) => {
   }
 
   if (filters.search) {
+    const search = filters.search.trim()
+    const searchPattern = `%${search}%`
+    const normalizedSearchPhone = normalizePhone(search)
+    const last10Digits = getLastNDigits(search, 10)
+
     query = query.where((eb) =>
       eb.or([
-        eb('lead.firstName', 'ilike', `%${filters.search}%`),
-        eb('lead.lastName', 'ilike', `%${filters.search}%`),
-        eb('lead.email', 'ilike', `%${filters.search}%`),
-        eb('lead.phone', 'ilike', `%${filters.search}%`),
-        eb('lead.company', 'ilike', `%${filters.search}%`),
+        eb('lead.firstName', 'ilike', searchPattern),
+        eb('lead.lastName', 'ilike', searchPattern),
+        eb('lead.email', 'ilike', searchPattern),
+        eb('lead.phone', 'ilike', searchPattern),
+        eb('lead.company', 'ilike', searchPattern),
+        sql<boolean>`concat_ws(' ', lead."firstName", lead."lastName") ilike ${searchPattern}`,
+        sql<boolean>`concat_ws(' ', lead."lastName", lead."firstName") ilike ${searchPattern}`,
+        ...(normalizedSearchPhone
+          ? [
+              sql<boolean>`regexp_replace(lead.phone, '[^0-9]', '', 'g') = ${normalizedSearchPhone}`,
+              sql<boolean>`RIGHT(regexp_replace(lead.phone, '[^0-9]', '', 'g'), 10) = ${last10Digits}`,
+            ]
+          : []),
       ]),
     )
   }
