@@ -426,6 +426,8 @@ const parseSdkDestination = (
   if (sipMatch) {
     destination = decodeURIComponent(sipMatch[1])
   }
+  // TeXML webhook payloads can omit the `sip:` scheme while keeping the host.
+  destination = destination.split('@')[0]?.split(';')[0]?.trim() || ''
 
   if (destination.startsWith('callid-')) {
     return { callId: destination.slice('callid-'.length) }
