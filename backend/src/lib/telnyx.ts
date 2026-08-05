@@ -624,6 +624,37 @@ export interface TelephonyCredential {
   [key: string]: unknown
 }
 
+export interface CredentialConnection {
+  id: string
+  sip_uri_calling_preference?: string | null
+  [key: string]: unknown
+}
+
+/**
+ * Browser clients authenticated through telephony credentials must be reachable
+ * through internal SIP URI dialing for inbound PSTN calls to ring in-app.
+ */
+export const ensureCredentialConnectionInternalSip = async (
+  apiKey: string,
+  connectionId: string,
+): Promise<void> => {
+  const existing = await jsonRequest<{ data: CredentialConnection }>(
+    apiKey,
+    'GET',
+    `/credential_connections/${encodeURIComponent(connectionId)}`,
+  )
+  if (existing.data?.sip_uri_calling_preference === 'internal') {
+    return
+  }
+
+  await jsonRequest<{ data: CredentialConnection }>(
+    apiKey,
+    'PATCH',
+    `/credential_connections/${encodeURIComponent(connectionId)}`,
+    { sip_uri_calling_preference: 'internal' },
+  )
+}
+
 /**
  * Find or create an on-demand telephony credential for a WebRTC identity.
  * Credentials are named after the identity so TeXML `<Dial><Client>identity`

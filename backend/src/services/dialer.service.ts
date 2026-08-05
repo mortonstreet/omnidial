@@ -19,6 +19,7 @@ import * as callingNotificationService from '@/services/callingNotification.serv
 import * as usageTrackingService from '@/services/usageTracking.service'
 import {
   generateWebRTCToken,
+  ensureCredentialConnectionInternalSip,
   listVerifiedNumbers,
   encryptAuthToken,
   decryptAuthToken,
@@ -26,6 +27,8 @@ import {
 import { phoneNumbersMatch } from '@/lib/phone'
 import { getUserById } from '@/repositories/auth.repository'
 import { DBPagination } from '@shared/db/src/types'
+
+const ensuredCredentialConnectionIds = new Set<string>()
 
 // === Twilio Config ===
 
@@ -433,6 +436,10 @@ export const getCapabilityToken = async (
       'getCapabilityToken: API key missing or suspiciously short (decryption may have failed)',
     )
     throw new Error('Invalid Telnyx API key — check ENCRYPTION_KEY')
+  }
+  if (!ensuredCredentialConnectionIds.has(credentialConnectionId)) {
+    await ensureCredentialConnectionInternalSip(apiKey, credentialConnectionId)
+    ensuredCredentialConnectionIds.add(credentialConnectionId)
   }
 
   logger.info(
