@@ -621,6 +621,7 @@ export interface TelephonyCredential {
   tag?: string
   sip_username?: string
   connection_id?: string
+  resource_id?: string
   [key: string]: unknown
 }
 
@@ -672,7 +673,9 @@ export const findOrCreateTelephonyCredential = async (
     `/telephony_credentials?filter[tag]=${encodeURIComponent(tag)}&page[size]=10`,
   )
   const match = existing.data?.find(
-    (credential) => credential.connection_id === params.connectionId,
+    (credential) =>
+      credential.connection_id === params.connectionId ||
+      credential.resource_id === `connection:${params.connectionId}`,
   )
   if (match) {
     return match
@@ -738,7 +741,11 @@ export const findTelephonyCredentialSipUsername = async (
     `/telephony_credentials?filter[tag]=${encodeURIComponent(tag)}&page[size]=10`,
   )
   const credential = connectionId
-    ? result.data?.find((item) => item.connection_id === connectionId)
+    ? result.data?.find(
+        (item) =>
+          item.connection_id === connectionId ||
+          item.resource_id === `connection:${connectionId}`,
+      )
     : result.data?.[0]
   return credential?.sip_username ?? null
 }
