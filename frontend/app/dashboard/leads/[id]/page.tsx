@@ -113,24 +113,28 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
   const handleSave = async () => {
     try {
+      const trimmedPhone = formData.phone.trim()
       await updateLead.mutateAsync({
         id: lead!.id,
         firstName: formData.firstName || undefined,
         lastName: formData.lastName || undefined,
-        email: formData.email || null,
-        phone: formData.phone,
+        email: formData.email.trim() || null,
+        phone: trimmedPhone || null,
         company: formData.company || null,
         title: formData.title || null,
-        linkedInUrl: formData.linkedInUrl || null,
-        website: formData.website || null,
+        linkedInUrl: formData.linkedInUrl.trim() || null,
+        website: formData.website.trim() || null,
         dealValue: formData.dealValue ? parseFloat(formData.dealValue) : null,
         pipelineStageId: formData.pipelineStageId || null,
       })
       setIsEditing(false)
       refetch()
       toast.success('Lead updated')
-    } catch {
-      toast.error('Failed to update lead')
+    } catch (error) {
+      toast.error('Failed to update lead', {
+        description:
+          error instanceof Error && error.message ? error.message : undefined,
+      })
     }
   }
 
