@@ -211,11 +211,13 @@ export const getCapabilityToken: AuthRequestHandler<
       // Check for specific Telnyx configuration errors
       if (
         error.message.includes('TELNYX_API_KEY') ||
-        error.message.includes('TELNYX_TEXML_APP_ID')
+        error.message.includes('TELNYX_TEXML_APP_ID') ||
+        error.message.includes('TELNYX_CREDENTIAL_CONNECTION_ID') ||
+        error.message.includes('TELNYX_SIP_SUBDOMAIN')
       ) {
         return res.status(500).json({
           error:
-            'Telnyx API key not configured. Please contact your administrator.',
+            'Telnyx browser calling is not configured. Please contact your administrator.',
         })
       }
       if (

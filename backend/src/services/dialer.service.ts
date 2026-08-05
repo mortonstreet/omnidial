@@ -423,6 +423,10 @@ export const getCapabilityToken = async (
   if (!credentialConnectionId) {
     throw new Error('TELNYX_CREDENTIAL_CONNECTION_ID not configured')
   }
+  const sipDomain = process.env.TELNYX_SIP_SUBDOMAIN?.trim()
+  if (!sipDomain) {
+    throw new Error('TELNYX_SIP_SUBDOMAIN not configured')
+  }
   if (!apiKey || apiKey.length < 10) {
     logger.error(
       { organizationId, keyLength: apiKey?.length },
@@ -451,7 +455,7 @@ export const getCapabilityToken = async (
     expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
     // Browser-originated calls dial the TeXML app's SIP subdomain so the
     // voice webhook can route them (e.g. sip:callid-<id>@<subdomain>)
-    sipDomain: process.env.TELNYX_SIP_SUBDOMAIN || null,
+    sipDomain,
   }
 }
 
