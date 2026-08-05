@@ -399,12 +399,14 @@ const dialMembersViaSip = async (
   members: Array<{ userId: string }>,
 ) => {
   const client = await telnyxClient.getClientForOrganization(organizationId)
+  const credentialConnectionId = process.env.TELNYX_CREDENTIAL_CONNECTION_ID
   let targets = 0
   for (const member of members) {
     try {
       const sipUsername = await findTelephonyCredentialSipUsername(
         client.apiKey,
         member.userId,
+        credentialConnectionId,
       )
       if (sipUsername) {
         dial.sip(`sip:${sipUsername}@sip.telnyx.com`)

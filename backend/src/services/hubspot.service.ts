@@ -166,6 +166,78 @@ const getAuthenticatedHeaders = async (
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+const getPhoneDigits = (phone: string) => phone.replace(/\D/g, '')
+
+const phonesMatch = (a: string, b: string) => {
+  const aDigits = getPhoneDigits(a)
+  const bDigits = getPhoneDigits(b)
+  if (!aDigits || !bDigits) return false
+  return (
+    aDigits === bDigits ||
+    (aDigits.length >= 10 &&
+      bDigits.length >= 10 &&
+      aDigits.slice(-10) === bDigits.slice(-10))
+  )
+}
+
+const mapHubSpotContact = (result: {
+  id: string
+  properties?: Record<string, string | null>
+}): HubSpotContact => ({
+  id: result.id,
+  firstName: result.properties?.firstname || null,
+  lastName: result.properties?.lastname || null,
+  email: result.properties?.email || null,
+  phone: result.properties?.phone || null,
+  company: result.properties?.company || null,
+  jobTitle: result.properties?.jobtitle || null,
+  linkedInUrl: result.properties?.hs_linkedin_url || null,
+})
+
+export const findContactByPhone = async (
+  organizationId: string,
+  phone: string,
+): Promise<HubSpotContact | null> => {
+  const digits = getPhoneDigits(phone)
+  const query = digits.length >= 10 ? digits.slice(-10) : digits
+  if (!query) return null
+
+  const headers = await getAuthenticatedHeaders(organizationId)
+  const response = await fetch(
+    `${HUBSPOT_API_BASE}/crm/v3/objects/contacts/search`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        query,
+        properties: [
+          'firstname',
+          'lastname',
+          'email',
+          'phone',
+          'company',
+          'jobtitle',
+          'hs_linkedin_url',
+        ],
+        limit: 10,
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    const errorData = await response.text()
+    throw new Error(`HubSpot contact phone search failed: ${errorData}`)
+  }
+
+  const data = await response.json()
+  const contacts = (data.results || []).map(mapHubSpotContact)
+  return (
+    contacts.find((contact: HubSpotContact) =>
+      contact.phone ? phonesMatch(contact.phone, phone) : false,
+    ) || null
+  )
+}
+
 export const fetchAllContacts = async (
   organizationId: string,
   maxContacts?: number,
@@ -199,16 +271,7 @@ export const fetchAllContacts = async (
     const data = await response.json()
 
     for (const result of data.results || []) {
-      contacts.push({
-        id: result.id,
-        firstName: result.properties?.firstname || null,
-        lastName: result.properties?.lastname || null,
-        email: result.properties?.email || null,
-        phone: result.properties?.phone || null,
-        company: result.properties?.company || null,
-        jobTitle: result.properties?.jobtitle || null,
-        linkedInUrl: result.properties?.hs_linkedin_url || null,
-      })
+      contacts.push(mapHubSpotContact(result))
 
       if (maxContacts && contacts.length >= maxContacts) {
         return contacts.slice(0, maxContacts)

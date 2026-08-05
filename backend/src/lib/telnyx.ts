@@ -729,6 +729,7 @@ export const createTelephonyCredentialToken = async (
 export const findTelephonyCredentialSipUsername = async (
   apiKey: string,
   identity: string,
+  connectionId?: string,
 ): Promise<string | null> => {
   const tag = `omnidial-${identity}`
   const result = await jsonRequest<PaginatedResponse<TelephonyCredential>>(
@@ -736,7 +737,10 @@ export const findTelephonyCredentialSipUsername = async (
     'GET',
     `/telephony_credentials?filter[tag]=${encodeURIComponent(tag)}&page[size]=10`,
   )
-  return result.data?.[0]?.sip_username ?? null
+  const credential = connectionId
+    ? result.data?.find((item) => item.connection_id === connectionId)
+    : result.data?.[0]
+  return credential?.sip_username ?? null
 }
 
 export interface WebRTCTokenOptions {

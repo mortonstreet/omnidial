@@ -178,9 +178,14 @@ const updateNotificationRules: AuthRequestHandler<{
     // Continue without channel name
   }
 
-  // Update or create rules
+  // Notification channel selection is singular in the UI. Replace old channel
+  // rules so notifications cannot continue posting to a previously selected
+  // channel.
+  await notificationRuleRepo.deleteByWorkspaceId(workspace.id)
+
+  // Create rules for the selected channel.
   for (const rule of rules) {
-    await notificationRuleRepo.upsert({
+    await notificationRuleRepo.create({
       workspaceId: workspace.id,
       channelId,
       channelName,

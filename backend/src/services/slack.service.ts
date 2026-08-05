@@ -10,6 +10,7 @@ import * as messageLogRepo from '@/repositories/slackMessageLog.repository'
 import * as slackLinkTokenRepo from '@/repositories/slackLinkToken.repository'
 import * as coachingRepo from '@/repositories/coaching.repository'
 import * as pipelineRepo from '@/repositories/pipeline.repository'
+import * as hubspotService from '@/services/hubspot.service'
 import { encrypt } from '@/lib/encryption'
 import logger from '@/lib/logger'
 import { db } from '@/lib/db'
@@ -940,6 +941,9 @@ export async function sendInboundCallNotification(
       workspace.id,
       'inbound_call',
     )
+    const selectedChannelRules = workspace.defaultChannelId
+      ? rules.filter((rule) => rule.channelId === workspace.defaultChannelId)
+      : []
     const configuredRules =
       rules.length > 0
         ? rules
@@ -947,15 +951,19 @@ export async function sendInboundCallNotification(
             workspace.id,
             'inbound_call',
           )
+    const effectiveRules =
+      selectedChannelRules.length > 0 ? selectedChannelRules : rules
     const targets =
-      rules.length > 0
-        ? rules.map((rule) => ({ channelId: rule.channelId }))
+      effectiveRules.length > 0
+        ? effectiveRules.map((rule) => ({ channelId: rule.channelId }))
         : configuredRules.length === 0 && workspace.defaultChannelId
           ? [{ channelId: workspace.defaultChannelId }]
           : []
     if (targets.length === 0) continue
 
-    // Get lead info if available
+    // Get caller info if available. Prefer OmniDial CRM, then fall back to
+    // HubSpot contact lookup when HubSpot is connected.
+    let callerInfo: InboundCallerInfo | null = null
     let lead: {
       id: string
       firstName: string | null
@@ -969,17 +977,50 @@ export async function sendInboundCallNotification(
         .where('id', '=', callData.leadId)
         .executeTakeFirst()
       lead = leadResult || null
+      if (lead) {
+        callerInfo = {
+          ...lead,
+          source: 'omnidial',
+          phone: callData.fromNumber,
+        }
+      }
+    }
+
+    if (!callerInfo) {
+      try {
+        const hubspotContact = await hubspotService.findContactByPhone(
+          organizationId,
+          callData.fromNumber,
+        )
+        if (hubspotContact) {
+          callerInfo = {
+            id: hubspotContact.id,
+            firstName: hubspotContact.firstName,
+            lastName: hubspotContact.lastName,
+            company: hubspotContact.company,
+            phone: hubspotContact.phone || callData.fromNumber,
+            source: 'hubspot',
+            externalUrl: `https://app.hubspot.com/contacts/${hubspotContact.id}`,
+          }
+        }
+      } catch (error) {
+        logger.warn(
+          { error, organizationId, phone: callData.fromNumber },
+          'Failed to enrich inbound Slack notification from HubSpot',
+        )
+      }
     }
 
     const client = new SlackClient(workspace.botToken)
-    const blocks = buildInboundCallBlocks(callData, lead)
+    const blocks = buildInboundCallBlocks(callData, callerInfo)
+    const callerName = getInboundCallerDisplayName(callerInfo, callData)
 
     for (const target of targets) {
       try {
         const result = await client.postMessage({
           channel: target.channelId,
           blocks,
-          text: `Incoming call from ${lead ? `${lead.firstName} ${lead.lastName}` : callData.fromNumber}`,
+          text: `Incoming call from ${callerName}`,
         })
 
         await messageLogRepo.create({
@@ -1615,19 +1656,47 @@ function buildCallsListBlocks(
   return blocks
 }
 
+interface InboundCallerInfo {
+  id: string
+  firstName: string | null
+  lastName: string | null
+  company: string | null
+  phone?: string | null
+  source: 'omnidial' | 'hubspot'
+  externalUrl?: string | null
+}
+
+function getInboundCallerDisplayName(
+  caller: InboundCallerInfo | null,
+  callData: { fromNumber: string },
+) {
+  if (!caller) return callData.fromNumber
+  return (
+    [caller.firstName, caller.lastName].filter(Boolean).join(' ').trim() ||
+    caller.company ||
+    caller.phone ||
+    callData.fromNumber
+  )
+}
+
 function buildInboundCallBlocks(
   callData: { id: string; fromNumber: string; toNumber: string },
-  lead: {
-    id: string
-    firstName: string | null
-    lastName: string | null
-    company: string | null
-  } | null,
+  caller: InboundCallerInfo | null,
 ): SlackBlocks {
-  const callerName = lead
-    ? [lead.firstName, lead.lastName].filter(Boolean).join(' ') || 'Unknown'
-    : callData.fromNumber
-  const subtitle = lead?.company ? `from *${lead.company}*` : ''
+  const callerName = getInboundCallerDisplayName(caller, callData)
+  const subtitle = caller?.company ? ` from *${caller.company}*` : ''
+  const sourceLabel =
+    caller?.source === 'hubspot'
+      ? 'HubSpot contact'
+      : caller?.source === 'omnidial'
+        ? 'OmniDial lead'
+        : 'Unknown caller'
+  const actionUrl =
+    caller?.source === 'omnidial'
+      ? `${config.frontendUrl}/dashboard/leads/${caller.id}`
+      : caller?.externalUrl
+  const actionLabel =
+    caller?.source === 'hubspot' ? 'View HubSpot Contact' : 'View Lead'
 
   return [
     {
@@ -1638,10 +1707,14 @@ function buildInboundCallBlocks(
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${callerName}* ${subtitle}\n📱 ${callData.fromNumber}`,
+        text:
+          `*${callerName}*${subtitle}\n` +
+          `*Phone:* ${callData.fromNumber}\n` +
+          `*Dialed:* ${callData.toNumber}\n` +
+          `*Source:* ${sourceLabel}`,
       },
     },
-    ...(lead
+    ...(actionUrl
       ? [
           {
             type: 'actions' as const,
@@ -1650,10 +1723,10 @@ function buildInboundCallBlocks(
                 type: 'button' as const,
                 text: {
                   type: 'plain_text' as const,
-                  text: 'View Lead',
+                  text: actionLabel,
                   emoji: true,
                 },
-                url: `${config.frontendUrl}/dashboard/leads/${lead.id}`,
+                url: actionUrl,
                 style: 'primary' as const,
               },
             ],

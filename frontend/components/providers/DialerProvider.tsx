@@ -461,7 +461,6 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         ringbackFile: DIALER_TONE_URL,
       })
       newDevice.remoteElement = REMOTE_AUDIO_ELEMENT_ID
-      await resumeSharedAudioContext()
 
       // Create a promise that resolves when the client is ready (registered)
       setInitStep('registering')
@@ -688,7 +687,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const markInteracted = () => setHasUserInteracted(true)
+    const markInteracted = () => {
+      setHasUserInteracted(true)
+      void resumeSharedAudioContext()
+    }
     window.addEventListener('pointerdown', markInteracted, {
       once: true,
       passive: true,
@@ -701,10 +703,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     }
   }, [hasUserInteracted])
 
-  // Auto-initialize after config is loaded and the user has interacted at least once.
+  // Auto-initialize after config is loaded. Registration does not require a
+  // user gesture; only audio playback does.
   useEffect(() => {
     if (
-      hasUserInteracted &&
       dialerConfig &&
       organizationId &&
       !isReady &&
@@ -713,14 +715,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     ) {
       initializeDevice()
     }
-  }, [
-    dialerConfig,
-    organizationId,
-    isReady,
-    isInitializing,
-    initializeDevice,
-    hasUserInteracted,
-  ])
+  }, [dialerConfig, organizationId, isReady, isInitializing, initializeDevice])
 
   // Initiate call mutation
   const initiateCallMutation = useMutation({
