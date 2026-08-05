@@ -163,12 +163,22 @@ export class SlackClient {
    */
   async listConversations() {
     try {
-      const result = await this.client.conversations.list({
-        types: 'public_channel,private_channel',
-        exclude_archived: true,
-        limit: 200,
-      })
-      return result.channels || []
+      const channels = []
+      let cursor: string | undefined
+
+      do {
+        const result = await this.client.conversations.list({
+          types: 'public_channel,private_channel',
+          exclude_archived: true,
+          limit: 200,
+          cursor,
+        })
+
+        channels.push(...(result.channels || []))
+        cursor = result.response_metadata?.next_cursor || undefined
+      } while (cursor)
+
+      return channels
     } catch (error) {
       logger.error({ error }, 'Failed to list Slack conversations')
       throw error
