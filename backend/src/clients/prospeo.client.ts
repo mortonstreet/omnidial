@@ -8,26 +8,36 @@
 
 const PROSPEO_BASE_URL = 'https://api.prospeo.io'
 
-interface ProspeoLinkedInResponse {
-  response: {
-    email?: {
-      email: string
-      mx_records: boolean
-      smtp_check: boolean
-      accept_all: boolean
-      disposable: boolean
-      free: boolean
-    }
-    phone_numbers?: string[]
-    first_name?: string
-    last_name?: string
-    company?: string
-    job_title?: string
-    location?: string
-  }
-  credits_remaining: number
-  status: string
+interface ProspeoEnrichPersonResponse {
+  error?: boolean
+  error_code?: string
   message?: string
+  free_enrichment?: boolean
+  person?: {
+    first_name?: string | null
+    last_name?: string | null
+    current_job_title?: string | null
+    email?: {
+      email?: string | null
+    } | null
+    mobile?: {
+      mobile?: string | null
+    } | null
+    phones?: Array<{
+      phone?: string | null
+      number?: string | null
+    }>
+    phone_numbers?: string[]
+    location?: {
+      city?: string | null
+      state?: string | null
+      country?: string | null
+    } | null
+  } | null
+  company?: {
+    name?: string | null
+  } | null
+  credits_remaining?: number
 }
 
 export interface ProspeoEnrichResult {
@@ -41,7 +51,71 @@ export interface ProspeoEnrichResult {
   title?: string
   location?: string
   creditsRemaining: number
+  creditsUsed?: number
   errorMessage?: string
+}
+
+interface ProspeoEnrichOptions {
+  includeMobile?: boolean
+  onlyVerifiedEmail?: boolean
+  onlyVerifiedMobile?: boolean
+}
+
+const parseProspeoError = async (response: Response): Promise<string> => {
+  const errorText = await response.text()
+  console.error('[Prospeo] API error response:', errorText)
+
+  try {
+    const errorJson = JSON.parse(errorText)
+    if (errorJson.message === 'INVALID_API_KEY') {
+      return 'Invalid Prospeo API key. Please check your API key in Settings > Data Vendors and ensure it is correct.'
+    }
+    if (typeof errorJson.message === 'string') {
+      return `Prospeo API error: ${errorJson.message}`
+    }
+  } catch {
+    // Not JSON, fall back to the raw response.
+  }
+
+  if (response.status === 401) {
+    return 'Prospeo authentication failed. Please verify your API key is correct and active.'
+  }
+
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('retry-after')
+    return retryAfter
+      ? `Prospeo rate limit reached. Please retry in ${retryAfter} seconds.`
+      : 'Prospeo rate limit reached. Please retry shortly.'
+  }
+
+  return `Prospeo API error: ${response.status} - ${errorText}`
+}
+
+const locationToString = (
+  location?: {
+    city?: string | null
+    state?: string | null
+    country?: string | null
+  } | null,
+): string | undefined => {
+  if (!location) return undefined
+  const parts = [location.city, location.state, location.country].filter(
+    Boolean,
+  )
+  return parts.length > 0 ? parts.join(', ') : undefined
+}
+
+const compactPhones = (data: ProspeoEnrichPersonResponse): string[] => {
+  const person = data.person
+  return Array.from(
+    new Set(
+      [
+        person?.mobile?.mobile,
+        ...(person?.phone_numbers ?? []),
+        ...(person?.phones ?? []).map((phone) => phone.phone ?? phone.number),
+      ].filter((value): value is string => !!value),
+    ),
+  )
 }
 
 /**
@@ -50,81 +124,63 @@ export interface ProspeoEnrichResult {
 export async function enrichFromLinkedIn(
   apiKey: string,
   linkedInUrl: string,
+  options: ProspeoEnrichOptions = {},
 ): Promise<ProspeoEnrichResult> {
-  console.log(
-    '[Prospeo] Calling linkedin-email-finder API with URL:',
-    linkedInUrl,
-  )
+  console.log('[Prospeo] Calling enrich-person API with URL:', linkedInUrl)
   console.log('[Prospeo] API key present:', !!apiKey, 'length:', apiKey?.length)
 
-  const response = await fetch(`${PROSPEO_BASE_URL}/linkedin-email-finder`, {
+  const response = await fetch(`${PROSPEO_BASE_URL}/enrich-person`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-KEY': apiKey,
     },
     body: JSON.stringify({
-      url: linkedInUrl,
+      data: {
+        linkedin_url: linkedInUrl,
+      },
+      enrich_mobile: options.includeMobile ?? true,
+      only_verified_email: options.onlyVerifiedEmail ?? false,
+      only_verified_mobile: options.onlyVerifiedMobile ?? false,
     }),
   })
 
   console.log('[Prospeo] API response status:', response.status)
 
   if (!response.ok) {
-    const errorText = await response.text()
-    console.error('[Prospeo] API error response:', errorText)
-
-    // Parse specific error types
-    if (response.status === 401) {
-      try {
-        const errorJson = JSON.parse(errorText)
-        if (errorJson.message === 'INVALID_API_KEY') {
-          return {
-            success: false,
-            creditsRemaining: 0,
-            errorMessage:
-              'Invalid Prospeo API key. Please check your API key in Settings > Data Vendors and ensure it is correct.',
-          }
-        }
-      } catch {
-        // Not JSON, use default message
-      }
-      return {
-        success: false,
-        creditsRemaining: 0,
-        errorMessage:
-          'Prospeo authentication failed. Please verify your API key is correct and active.',
-      }
-    }
-
     return {
       success: false,
       creditsRemaining: 0,
-      errorMessage: `Prospeo API error: ${response.status} - ${errorText}`,
+      errorMessage: await parseProspeoError(response),
     }
   }
 
-  const data: ProspeoLinkedInResponse = await response.json()
+  const data: ProspeoEnrichPersonResponse = await response.json()
 
-  if (data.status !== 'success') {
+  if (data.error) {
     return {
       success: false,
       creditsRemaining: data.credits_remaining ?? 0,
-      errorMessage: data.message ?? 'Unknown Prospeo error',
+      errorMessage:
+        data.message ?? data.error_code ?? 'Unknown Prospeo enrichment error',
     }
   }
 
+  const phoneNumbers = compactPhones(data)
+  const email = data.person?.email?.email ?? undefined
+
   return {
     success: true,
-    email: data.response.email?.email,
-    phone: data.response.phone_numbers?.[0],
-    phoneNumbers: data.response.phone_numbers ?? [],
-    firstName: data.response.first_name,
-    lastName: data.response.last_name,
-    company: data.response.company,
-    title: data.response.job_title,
-    location: data.response.location,
-    creditsRemaining: data.credits_remaining,
+    email,
+    phone: phoneNumbers[0],
+    phoneNumbers,
+    firstName: data.person?.first_name ?? undefined,
+    lastName: data.person?.last_name ?? undefined,
+    company: data.company?.name ?? undefined,
+    title: data.person?.current_job_title ?? undefined,
+    location: locationToString(data.person?.location),
+    creditsRemaining: data.credits_remaining ?? 0,
+    creditsUsed: data.free_enrichment ? 0 : options.includeMobile ? 10 : 1,
   }
 }
 
@@ -137,18 +193,11 @@ export async function testConnection(apiKey: string): Promise<{
   creditsRemaining: number | null
 }> {
   try {
-    // Prospeo doesn't have a dedicated health/credits endpoint,
-    // so we make a real API call with a known LinkedIn URL to test
-    // This will use 1 credit but confirms the key works
-    const response = await fetch(`${PROSPEO_BASE_URL}/linkedin-email-finder`, {
-      method: 'POST',
+    const response = await fetch(`${PROSPEO_BASE_URL}/account-information`, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'X-KEY': apiKey,
       },
-      body: JSON.stringify({
-        url: 'https://www.linkedin.com/in/williamhgates/', // Bill Gates - a known public profile
-      }),
     })
 
     const data = await response.json()
@@ -172,7 +221,7 @@ export async function testConnection(apiKey: string): Promise<{
     return {
       success: true,
       message: 'Prospeo connection successful',
-      creditsRemaining: data.credits_remaining ?? null,
+      creditsRemaining: data.response?.remaining_credits ?? null,
     }
   } catch (error) {
     return {

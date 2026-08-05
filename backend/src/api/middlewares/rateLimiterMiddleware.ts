@@ -67,3 +67,12 @@ export const expensiveOperationRateLimit = RedisRateLimiter.presets.perUser(
   60,
   10,
 )
+
+// Interactive enrichment should allow normal UI testing while vendor-level
+// policies still protect provider-specific per-second and credit limits.
+export const interactiveEnrichmentRateLimit = RedisRateLimiter.presets.perUser(
+  60,
+  60,
+)
+
+export const bulkEnrichmentRateLimit = RedisRateLimiter.presets.perUser(60, 10)

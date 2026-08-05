@@ -1,8 +1,9 @@
 import { Router, Response, NextFunction } from 'express'
 import { withBetterAuth } from '../middlewares/auth'
 import {
-  expensiveOperationRateLimit,
+  bulkEnrichmentRateLimit,
   generalApiRateLimit,
+  interactiveEnrichmentRateLimit,
 } from '../middlewares/rateLimiterMiddleware'
 import { AuthRequest } from '@/types/handlers'
 import * as enrichmentService from '@/services/enrichment.service'
@@ -138,8 +139,8 @@ router.post(
 
 router.post(
   '/leads/:leadId/enrich',
-  expensiveOperationRateLimit,
   withBetterAuth,
+  interactiveEnrichmentRateLimit,
   async (req, res: Response, next: NextFunction) => {
     try {
       const authReq = req as AuthRequest<unknown>
@@ -168,8 +169,8 @@ router.post(
 
 router.post(
   '/bulk-enrich',
-  expensiveOperationRateLimit,
   withBetterAuth,
+  bulkEnrichmentRateLimit,
   async (req, res: Response, next: NextFunction) => {
     try {
       const authReq = req as AuthRequest<unknown>

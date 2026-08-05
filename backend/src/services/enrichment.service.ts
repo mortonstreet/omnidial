@@ -1759,12 +1759,22 @@ export async function enrichLeadFromLinkedIn(
           organizationId,
           provider,
           requestMode: options.requestMode ?? 'interactive',
-          estimatedCredits: 1,
+          estimatedCredits:
+            provider === 'prospeo' &&
+            effectiveDataTypes.includes('phone') &&
+            !contactCoverage.hasPhone
+              ? 10
+              : 1,
           operation: async () => {
             if (provider === 'prospeo') {
+              const includeMobile =
+                enabledTypes.includes('phone') &&
+                effectiveDataTypes.includes('phone') &&
+                !contactCoverage.hasPhone
               const prospeoResult = await prospeoClient.enrichFromLinkedIn(
                 apiKey,
                 linkedInUrl,
+                { includeMobile },
               )
               return {
                 success: prospeoResult.success,
@@ -1775,7 +1785,9 @@ export async function enrichLeadFromLinkedIn(
                 lastName: prospeoResult.lastName,
                 company: prospeoResult.company,
                 title: prospeoResult.title,
-                creditsUsed: prospeoResult.success ? 1 : 0,
+                creditsUsed: prospeoResult.success
+                  ? (prospeoResult.creditsUsed ?? 1)
+                  : 0,
                 errorMessage: prospeoResult.errorMessage,
               }
             }

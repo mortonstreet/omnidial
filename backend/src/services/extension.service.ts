@@ -777,9 +777,11 @@ async function getVendorProfileData(
       ]
 
       if (connection.provider === 'prospeo') {
+        const includeMobile = enabledTypes.includes('phone')
         const result = await prospeoClient.enrichFromLinkedIn(
           apiKey,
           linkedInUrl,
+          { includeMobile },
         )
         if (!result.success)
           throw new Error(result.errorMessage ?? 'Prospeo failed')
@@ -787,7 +789,7 @@ async function getVendorProfileData(
         await db
           .updateTable('data_vendor_connection')
           .set({
-            creditsUsed: connection.creditsUsed + 1,
+            creditsUsed: connection.creditsUsed + (result.creditsUsed ?? 1),
             lastSyncAt: new Date(),
             updatedAt: new Date(),
           })
