@@ -493,8 +493,6 @@ router.post('/voice', async (req: Request, res: Response) => {
     }
 
     if (isOutboundFromSDK) {
-      const conferenceName = `call-${callId}`
-
       const call = await callRepository.findById(callId)
       if (!call) {
         logger.error({ callId }, 'Call record not found')
@@ -538,51 +536,26 @@ router.post('/voice', async (req: Request, res: Response) => {
       }
 
       const dial = response.dial({
-        action: `${config.backendUrl}/api/webhooks/telnyx/conference-end?callId=${callId}`,
+        callerId: normalizedFromNumber,
+        timeout: 30,
+        record: 'record-from-answer-dual',
+        recordingStatusCallbackMethod: 'POST',
+        recordingStatusCallbackEvent: ['completed'],
+        recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callId}`,
+        action: `${config.backendUrl}/api/webhooks/telnyx/dial-status?callId=${callId}`,
       })
-      dial.conference(
+      dial.number(
         {
-          startConferenceOnEnter: true,
-          endConferenceOnExit: true,
-          beep: 'false',
-          waitUrl: `${config.backendUrl}/api/webhooks/telnyx/ringback`,
-          waitMethod: 'GET',
-          record: 'record-from-start',
-          recordingStatusCallbackMethod: 'POST',
-          recordingStatusCallbackEvent: ['completed'],
-          recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callId}`,
-          statusCallback: `${config.backendUrl}/api/webhooks/telnyx/conference-status?callId=${callId}`,
-          statusCallbackEvent: ['start', 'end', 'join', 'leave'],
+          statusCallback: `${config.backendUrl}/api/webhooks/telnyx/dial-events?callId=${callId}`,
+          statusCallbackEvent: [
+            'initiated',
+            'ringing',
+            'answered',
+            'completed',
+          ],
         },
-        conferenceName,
+        normalizedToNumber,
       )
-
-      setImmediate(async () => {
-        try {
-          const client = await telnyxClient.getClientForOrganization(
-            telnyxConfig.organizationId,
-          )
-
-          logger.debug(
-            { callId, conferenceName },
-            'Dialing lead into conference',
-          )
-          await client.createCall({
-            to: normalizedToNumber,
-            from: normalizedFromNumber,
-            url: `${config.backendUrl}/api/webhooks/telnyx/single-call-bridge?callId=${callId}&conferenceId=${encodeURIComponent(conferenceName)}`,
-            statusCallback: `${config.backendUrl}/api/webhooks/telnyx/dial-events?callId=${callId}`,
-            statusCallbackEvent: [
-              'initiated',
-              'ringing',
-              'answered',
-              'completed',
-            ],
-          })
-        } catch (error) {
-          logger.error({ error, callId }, 'Failed to dial lead into conference')
-        }
-      })
     } else {
       logger.info({ direction: 'inbound' }, 'Routing inbound call')
 
@@ -985,7 +958,9 @@ router.post('/dial-events', async (req: Request, res: Response) => {
       const updateData: callRepository.UpdateCallInput = {
         dialCallSid: CallSid,
       }
-      if (CallStatus === 'in-progress') {
+      if (CallStatus === 'ringing') {
+        updateData.status = 'ringing'
+      } else if (CallStatus === 'in-progress' || CallStatus === 'answered') {
         updateData.status = 'in-progress'
         updateData.answeredAt = new Date()
       }
