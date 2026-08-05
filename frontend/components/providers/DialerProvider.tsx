@@ -12,7 +12,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TelnyxRTC, Call, INotification } from '@telnyx/webrtc'
 import { get, post } from '@/lib/api'
-import { QUERY_KEYS, ENDPOINTS } from '@/lib/config'
+import { QUERY_KEYS, ENDPOINTS, env } from '@/lib/config'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useDialerConfig } from '@/hooks/api/useDialer'
 import type { CapabilityTokenResponse } from '@shared/types/src'
@@ -27,6 +27,15 @@ type CallState =
 type TelnyxConnection = Call
 
 const REMOTE_AUDIO_ELEMENT_ID = 'remote-audio'
+const DIALER_TONE_URL = backendStaticUrl('/static/audio/us-ringback.ogg')
+
+function backendStaticUrl(path: string): string {
+  const url = new URL(env.API_URL)
+  url.pathname = url.pathname.replace(/\/api\/?$/, '')
+  url.pathname = `${url.pathname.replace(/\/$/, '')}${path}`
+  url.search = ''
+  return url.toString()
+}
 
 // Persisted dialer selection state (survives tab switches)
 interface DialerSelection {
@@ -446,7 +455,11 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       }
 
       setInitStep('connecting')
-      const newDevice = new TelnyxRTC({ login_token: token })
+      const newDevice = new TelnyxRTC({
+        login_token: token,
+        ringtoneFile: DIALER_TONE_URL,
+        ringbackFile: DIALER_TONE_URL,
+      })
       newDevice.remoteElement = REMOTE_AUDIO_ELEMENT_ID
       await resumeSharedAudioContext()
 
@@ -845,7 +858,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const answerIncomingCall = useCallback(() => {
     if (incomingCall) {
       resumeSharedAudioContext()
-      incomingCall.answer()
+      incomingCall.answer({ remoteElement: REMOTE_AUDIO_ELEMENT_ID })
     }
   }, [incomingCall])
 

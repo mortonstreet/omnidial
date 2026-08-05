@@ -4,11 +4,21 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TelnyxRTC, Call, INotification } from '@telnyx/webrtc'
 import { get, post, patch } from '@/lib/api'
-import { QUERY_KEYS, ENDPOINTS } from '@/lib/config'
+import { QUERY_KEYS, ENDPOINTS, env } from '@/lib/config'
 import type { CapabilityTokenResponse } from '@shared/types/src'
 
 // SIP domain of the backend's TeXML application (from the token response)
 let telnyxSipDomain: string | null = null
+
+const DIALER_TONE_URL = backendStaticUrl('/static/audio/us-ringback.ogg')
+
+function backendStaticUrl(path: string): string {
+  const url = new URL(env.API_URL)
+  url.pathname = url.pathname.replace(/\/api\/?$/, '')
+  url.pathname = `${url.pathname.replace(/\/$/, '')}${path}`
+  url.search = ''
+  return url.toString()
+}
 
 function requireSipDomain(sipDomain = telnyxSipDomain): string {
   const normalized = sipDomain?.trim()
@@ -184,7 +194,11 @@ export function useDialer(): UseDialerReturn {
         deviceRef.current = null
       }
 
-      const newDevice = new TelnyxRTC({ login_token: data.token })
+      const newDevice = new TelnyxRTC({
+        login_token: data.token,
+        ringtoneFile: DIALER_TONE_URL,
+        ringbackFile: DIALER_TONE_URL,
+      })
       newDevice.remoteElement = REMOTE_AUDIO_ELEMENT_ID
 
       // Create a promise that resolves when the client is ready (registered)
@@ -345,7 +359,7 @@ export function useDialer(): UseDialerReturn {
   // Answer incoming call
   const answerIncomingCall = useCallback(() => {
     if (incomingCall) {
-      incomingCall.answer()
+      incomingCall.answer({ remoteElement: REMOTE_AUDIO_ELEMENT_ID })
     }
   }, [incomingCall])
 
