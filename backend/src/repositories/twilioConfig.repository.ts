@@ -77,20 +77,9 @@ export const findByPhoneNumber = async (phoneNumber: string) => {
     return null
   }
 
-  // Query all configs and check if the phone number is in the array
-  const configs = await db.selectFrom('twilio_config').selectAll().execute()
-
-  // Find the config that contains this phone number
-  for (const config of configs) {
-    const storedNumbers = config.phoneNumbers || []
-    for (const stored of storedNumbers) {
-      if (phoneNumbersMatch(stored, phoneNumber)) {
-        return config
-      }
-    }
-  }
-
-  // Fallback to phone_provisioning for legacy/stale twilio_config.phoneNumbers.
+  // Prefer the authoritative provisioning record. Config phone number arrays
+  // can become stale or duplicated across orgs when a shared Telnyx account is
+  // used, but a provisioned number belongs to exactly one org.
   const provisioningRecords = await db
     .selectFrom('phone_provisioning')
     .select([
@@ -98,6 +87,7 @@ export const findByPhoneNumber = async (phoneNumber: string) => {
       'phoneNumber',
       'twilioSubaccountSid',
       'twilioAuthTokenEncrypted',
+      'usesMainAccount',
     ])
     .where('phoneNumber', 'is not', null)
     .execute()
@@ -109,8 +99,38 @@ export const findByPhoneNumber = async (phoneNumber: string) => {
   )
 
   if (!matchedProvisioning || !matchedProvisioning.phoneNumber) {
-    return null
+    const configs = await db.selectFrom('twilio_config').selectAll().execute()
+    const configMatches = configs.filter((config) =>
+      (config.phoneNumbers || []).some((stored) =>
+        phoneNumbersMatch(stored, phoneNumber),
+      ),
+    )
+
+    if (configMatches.length === 0) {
+      return null
+    }
+
+    if (configMatches.length === 1) {
+      return configMatches[0]
+    }
+
+    const provisioningByOrg = new Map(
+      provisioningRecords.map((record) => [record.organizationId, record]),
+    )
+    const mainAccountConfig = configMatches.find(
+      (config) => provisioningByOrg.get(config.organizationId)?.usesMainAccount,
+    )
+    if (mainAccountConfig) {
+      return mainAccountConfig
+    }
+
+    console.warn(
+      `Multiple Telnyx configs match inbound number ${phoneNumber}; using first match`,
+      configMatches.map((config) => config.organizationId),
+    )
+    return configMatches[0]
   }
+
   const matchedPhoneNumber = matchedProvisioning.phoneNumber
 
   const existingConfig = await findByOrganizationId(

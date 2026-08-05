@@ -65,6 +65,21 @@ const compactDefined = <T extends object>(values: T): Partial<T> =>
     Object.entries(values).filter(([, value]) => value !== undefined),
   ) as Partial<T>
 
+const firstString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value.trim()
+    }
+  }
+  return undefined
+}
+
+const normalizeRecordingUrl = (value: unknown): string | null => {
+  const recordingUrl = firstString(value)
+  if (!recordingUrl) return null
+  return recordingUrl
+}
+
 const getRawBodyString = (req: Request): string | null => {
   const rawBody = (req as Request & { rawBody?: string | Buffer }).rawBody
   if (typeof rawBody === 'string') {
@@ -531,6 +546,8 @@ router.post('/voice', async (req: Request, res: Response) => {
           waitUrl: `${config.backendUrl}/api/webhooks/telnyx/ringback`,
           waitMethod: 'GET',
           record: 'record-from-start',
+          recordingStatusCallbackMethod: 'POST',
+          recordingStatusCallbackEvent: ['completed'],
           recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callId}`,
           statusCallback: `${config.backendUrl}/api/webhooks/telnyx/conference-status?callId=${callId}`,
           statusCallbackEvent: ['start', 'end', 'join', 'leave'],
@@ -638,7 +655,9 @@ router.post('/voice', async (req: Request, res: Response) => {
       const dial = response.dial({
         callerId: From,
         timeout: 30,
-        record: 'record-from-answer',
+        record: 'record-from-answer-dual',
+        recordingStatusCallbackMethod: 'POST',
+        recordingStatusCallbackEvent: ['completed'],
         recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callRecord.id}`,
         action: `${config.backendUrl}/api/webhooks/telnyx/voice/inbound/status?callId=${callRecord.id}`,
       })
@@ -738,7 +757,9 @@ router.post('/voice/inbound', async (req: Request, res: Response) => {
       callerId: From,
       timeout: 30,
       action: `${config.backendUrl}/api/webhooks/telnyx/voice/inbound/status?callId=${callRecord.id}`,
-      record: 'record-from-answer',
+      record: 'record-from-answer-dual',
+      recordingStatusCallbackMethod: 'POST',
+      recordingStatusCallbackEvent: ['completed'],
       recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callRecord.id}`,
     })
 
@@ -1037,13 +1058,21 @@ router.post('/status', async (req: Request, res: Response) => {
  */
 router.post('/recording', async (req: Request, res: Response) => {
   const { callId } = req.query
-  const {
-    CallSid,
-    ConferenceSid,
-    RecordingSid,
-    RecordingUrl,
-    RecordingStatus,
-  } = req.body
+  const CallSid = firstString(req.body.CallSid, req.body.call_sid)
+  const ConferenceSid = firstString(
+    req.body.ConferenceSid,
+    req.body.conference_sid,
+  )
+  const RecordingSid = firstString(
+    req.body.RecordingSid,
+    req.body.recording_sid,
+  )
+  const RecordingStatus =
+    firstString(req.body.RecordingStatus, req.body.recording_status) ||
+    'completed'
+  const recordingUrl = normalizeRecordingUrl(
+    req.body.RecordingUrl ?? req.body.recording_url,
+  )
 
   logger.info(
     { callId, recordingStatus: RecordingStatus },
@@ -1065,35 +1094,35 @@ router.post('/recording', async (req: Request, res: Response) => {
   }
 
   try {
-    if (RecordingStatus === 'completed') {
-      // Telnyx recording URLs already carry their format; only append the
-      // extension when the URL has none (Twilio-style bare recording URLs).
-      const recordingUrlWithFormat = /\.(mp3|wav)(\?|$)/i.test(RecordingUrl)
-        ? RecordingUrl
-        : `${RecordingUrl}.mp3`
-
+    if (RecordingStatus === 'completed' && recordingUrl) {
       let updated = null
 
       if (typeof callId === 'string') {
-        updated = await callRepository.update(callId, {
-          recordingUrl: recordingUrlWithFormat,
-          recordingSid: RecordingSid,
-        })
+        updated = await callRepository.update(
+          callId,
+          compactDefined({
+            recordingUrl,
+            recordingSid: RecordingSid,
+          }) as callRepository.UpdateCallInput,
+        )
       }
 
-      if (!updated) {
+      if (!updated && CallSid) {
         updated = await dialerService.updateCallRecording(
           CallSid,
-          recordingUrlWithFormat,
+          recordingUrl,
           RecordingSid,
         )
       }
 
       if (!updated && ConferenceSid) {
-        updated = await callRepository.updateByConferenceSid(ConferenceSid, {
-          recordingUrl: recordingUrlWithFormat,
-          recordingSid: RecordingSid,
-        })
+        updated = await callRepository.updateByConferenceSid(
+          ConferenceSid,
+          compactDefined({
+            recordingUrl,
+            recordingSid: RecordingSid,
+          }) as callRepository.UpdateCallInput,
+        )
       }
 
       if (!updated) {
@@ -1118,7 +1147,18 @@ router.post('/recording', async (req: Request, res: Response) => {
  */
 router.post('/voicemail', async (req: Request, res: Response) => {
   const { callId } = req.query
-  const { CallSid, RecordingUrl, RecordingSid, RecordingDuration } = req.body
+  const CallSid = firstString(req.body.CallSid, req.body.call_sid)
+  const RecordingSid = firstString(
+    req.body.RecordingSid,
+    req.body.recording_sid,
+  )
+  const RecordingDuration = firstString(
+    req.body.RecordingDuration,
+    req.body.recording_duration,
+  )
+  const recordingUrl = normalizeRecordingUrl(
+    req.body.RecordingUrl ?? req.body.recording_url,
+  )
 
   logger.info({ callId, RecordingDuration }, 'Voicemail webhook received')
 
@@ -1137,33 +1177,36 @@ router.post('/voicemail', async (req: Request, res: Response) => {
   }
 
   try {
-    if (RecordingUrl) {
-      const recordingUrlWithFormat = /\.(mp3|wav)(\?|$)/i.test(RecordingUrl)
-        ? RecordingUrl
-        : `${RecordingUrl}.mp3`
+    if (recordingUrl) {
       const duration = RecordingDuration
         ? parseInt(RecordingDuration, 10)
         : undefined
 
       if (typeof callId === 'string') {
-        await updateCallByIdWithPrecedence(callId, {
-          recordingUrl: recordingUrlWithFormat,
-          recordingSid: RecordingSid || undefined,
-          voicemailLeft: true,
-          status: 'completed',
-          duration,
-          endedAt: new Date(),
-        })
+        await updateCallByIdWithPrecedence(
+          callId,
+          compactDefined({
+            recordingUrl,
+            recordingSid: RecordingSid,
+            voicemailLeft: true,
+            status: 'completed',
+            duration,
+            endedAt: new Date(),
+          }) as callRepository.UpdateCallInput,
+        )
       } else if (CallSid) {
         // Fallback: update by CallSid — still mark as voicemail
-        await updateCallBySidWithPrecedence(CallSid, {
-          recordingUrl: recordingUrlWithFormat,
-          recordingSid: RecordingSid || '',
-          voicemailLeft: true,
-          status: 'completed',
-          duration,
-          endedAt: new Date(),
-        })
+        await updateCallBySidWithPrecedence(
+          CallSid,
+          compactDefined({
+            recordingUrl,
+            recordingSid: RecordingSid,
+            voicemailLeft: true,
+            status: 'completed',
+            duration,
+            endedAt: new Date(),
+          }) as callRepository.UpdateCallInput,
+        )
       }
     }
 
@@ -1307,6 +1350,8 @@ router.post('/parallel-dial-answered', async (req: Request, res: Response) => {
         beep: 'false',
         waitUrl: '',
         record: 'record-from-start',
+        recordingStatusCallbackMethod: 'POST',
+        recordingStatusCallbackEvent: ['completed'],
         recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording`,
       },
       result.conferenceId,
@@ -1627,7 +1672,10 @@ router.post('/conference-end', async (req: Request, res: Response) => {
 router.get('/ringback', async (_req: Request, res: Response) => {
   const response = new VoiceResponse()
 
-  response.play({ loop: 0 }, `${config.backendUrl}/static/audio/us-ringback.ogg`)
+  response.play(
+    { loop: 0 },
+    `${config.backendUrl}/static/audio/us-ringback.ogg`,
+  )
 
   res.type('text/xml')
   res.send(response.toString())
@@ -1636,7 +1684,10 @@ router.get('/ringback', async (_req: Request, res: Response) => {
 router.post('/ringback', async (_req: Request, res: Response) => {
   const response = new VoiceResponse()
 
-  response.play({ loop: 0 }, `${config.backendUrl}/static/audio/us-ringback.ogg`)
+  response.play(
+    { loop: 0 },
+    `${config.backendUrl}/static/audio/us-ringback.ogg`,
+  )
 
   res.type('text/xml')
   res.send(response.toString())

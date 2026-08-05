@@ -87,8 +87,7 @@ const texmlRequest = async <T = Record<string, unknown>>(
 ): Promise<T> => {
   const basePath = `/texml/Accounts/${encodeURIComponent(credentials.accountSid)}${resourcePath}`
   const isGet = method === 'GET'
-  const query =
-    isGet && params ? `?${toFormBody(params)}` : ''
+  const query = isGet && params ? `?${toFormBody(params)}` : ''
 
   const response = await fetch(`${TELNYX_API_BASE}${basePath}${query}`, {
     method,
@@ -104,11 +103,7 @@ const texmlRequest = async <T = Record<string, unknown>>(
 
   const text = await response.text()
   if (!response.ok) {
-    throw new TelnyxApiError(
-      response.status,
-      text,
-      `${method} ${basePath}`,
-    )
+    throw new TelnyxApiError(response.status, text, `${method} ${basePath}`)
   }
   return (text ? JSON.parse(text) : {}) as T
 }
@@ -127,6 +122,7 @@ export interface TexmlCallResource {
 }
 
 export interface InitiateCallParams {
+  applicationSid?: string
   to: string
   from: string
   url: string
@@ -134,7 +130,9 @@ export interface InitiateCallParams {
   statusCallbackEvent?: string[]
   timeout?: number
   record?: boolean
+  recordingChannels?: 'single' | 'dual'
   recordingStatusCallback?: string
+  recordingStatusCallbackEvent?: string[]
   machineDetection?: 'Enable' | 'Disable' | 'DetectMessageEnd'
   machineDetectionTimeout?: number
   asyncAmd?: boolean
@@ -149,6 +147,7 @@ export const initiateCall = async (
   params: InitiateCallParams,
 ): Promise<TexmlCallResource> => {
   return texmlRequest<TexmlCallResource>(credentials, 'POST', '/Calls', {
+    ApplicationSid: params.applicationSid,
     To: params.to,
     From: params.from,
     Url: params.url,
@@ -163,10 +162,16 @@ export const initiateCall = async (
     ],
     Timeout: params.timeout,
     Record: params.record ? 'true' : undefined,
+    RecordingChannels: params.recordingChannels,
     RecordingStatusCallback: params.recordingStatusCallback,
+    RecordingStatusCallbackMethod: params.recordingStatusCallback
+      ? 'POST'
+      : undefined,
+    RecordingStatusCallbackEvent: params.recordingStatusCallbackEvent,
     MachineDetection: params.machineDetection,
     MachineDetectionTimeout: params.machineDetectionTimeout,
-    AsyncAmd: params.asyncAmd === undefined ? undefined : String(params.asyncAmd),
+    AsyncAmd:
+      params.asyncAmd === undefined ? undefined : String(params.asyncAmd),
     AsyncAmdStatusCallback: params.asyncAmdStatusCallback,
     AsyncAmdStatusCallbackMethod: params.asyncAmdStatusCallback
       ? 'POST'
@@ -491,8 +496,24 @@ export const createTexmlApplication = async (
     friendlyName: string
     voiceUrl: string
     statusCallback?: string
+    sipSubdomain?: string
+    outboundVoiceProfileId?: string
   },
 ): Promise<TexmlApplication> => {
+  const inbound =
+    params.sipSubdomain !== undefined
+      ? {
+          sip_subdomain: params.sipSubdomain,
+          sip_subdomain_receive_settings: 'only_my_connections',
+        }
+      : undefined
+  const outbound =
+    params.outboundVoiceProfileId !== undefined
+      ? {
+          outbound_voice_profile_id: params.outboundVoiceProfileId,
+        }
+      : undefined
+
   const result = await jsonRequest<{ data: TexmlApplication }>(
     apiKey,
     'POST',
@@ -505,7 +526,8 @@ export const createTexmlApplication = async (
       status_callback_method: params.statusCallback ? 'post' : undefined,
       active: true,
       anchorsite_override: 'Latency',
-      inbound: { sip_subdomain_receive_settings: 'only_my_connections' },
+      inbound,
+      outbound,
     },
   )
   return result.data
@@ -790,11 +812,25 @@ export const listVerifiedNumbers = async (
 // Recording download
 // ============================================
 
-/**
- * Fetch a recording's audio bytes. TeXML recording URLs live on the Telnyx
- * API and require Bearer auth; public URLs pass through unchanged.
- */
-export const fetchRecordingAudio = async (
+export interface TexmlRecordingResource {
+  sid: string
+  media_url?: string
+  uri?: string
+  [key: string]: unknown
+}
+
+export const getRecordingDetails = async (
+  credentials: TelnyxCredentials,
+  recordingSid: string,
+): Promise<TexmlRecordingResource> => {
+  return texmlRequest<TexmlRecordingResource>(
+    credentials,
+    'GET',
+    `/Recordings/${encodeURIComponent(recordingSid)}.json`,
+  )
+}
+
+const fetchRecordingUrl = async (
   apiKey: string,
   recordingUrl: string,
 ): Promise<Response> => {
@@ -802,6 +838,36 @@ export const fetchRecordingAudio = async (
   return fetch(recordingUrl, {
     headers: isTelnyxUrl ? { Authorization: `Bearer ${apiKey}` } : undefined,
   })
+}
+
+/**
+ * Fetch a recording's audio bytes. Telnyx callback URLs can expire, so when a
+ * recording SID is available we refresh the media URL through the TeXML API.
+ */
+export const fetchRecordingAudio = async (
+  credentials: TelnyxCredentials,
+  recordingUrl: string,
+  recordingSid?: string,
+): Promise<Response> => {
+  const directResponse = await fetchRecordingUrl(
+    credentials.apiKey,
+    recordingUrl,
+  )
+
+  if (directResponse.ok || !recordingSid) {
+    return directResponse
+  }
+
+  try {
+    const recording = await getRecordingDetails(credentials, recordingSid)
+    if (recording.media_url && recording.media_url !== recordingUrl) {
+      return fetchRecordingUrl(credentials.apiKey, recording.media_url)
+    }
+  } catch {
+    // Return the original response so callers preserve the vendor status code.
+  }
+
+  return directResponse
 }
 
 // ============================================

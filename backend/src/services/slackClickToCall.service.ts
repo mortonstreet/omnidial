@@ -219,7 +219,7 @@ export async function handleRepAnswered(params: {
 <Response>
   <Say>Connecting you now. Please wait.</Say>
   <Dial>
-    <Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false" record="record-from-start" recordingStatusCallback="${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callId}">${conferenceId}</Conference>
+    <Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false" record="record-from-start" recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed" recordingStatusCallback="${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callId}">${conferenceId}</Conference>
   </Dial>
 </Response>`
 }

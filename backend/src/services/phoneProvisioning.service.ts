@@ -2,6 +2,7 @@ import * as phoneProvisioningRepo from '@/repositories/phoneProvisioning.reposit
 import * as telnyxConfigRepo from '@/repositories/twilioConfig.repository'
 import * as subscriptionRepo from '@/repositories/subscription.repository'
 import { encrypt } from '@/lib/encryption'
+import { phoneNumbersMatch } from '@/lib/phone'
 import { stripeClient } from '@/lib/stripe'
 import { config } from '@/config'
 import logger from '@/lib/logger'
@@ -21,6 +22,8 @@ import * as telnyx from '@/lib/telnyx'
 const TELNYX_MASTER_API_KEY = process.env.TELNYX_API_KEY
 const TELNYX_ACCOUNT_SID = process.env.TELNYX_ACCOUNT_SID
 const TELNYX_MESSAGING_PROFILE_ID = process.env.TELNYX_MESSAGING_PROFILE_ID
+const TELNYX_OUTBOUND_VOICE_PROFILE_ID =
+  process.env.TELNYX_OUTBOUND_VOICE_PROFILE_ID
 const SHARED_TRIAL_AREA_CODE = process.env.SHARED_TRIAL_AREA_CODE || '415'
 
 if (!TELNYX_MASTER_API_KEY || !TELNYX_ACCOUNT_SID) {
@@ -36,6 +39,24 @@ function getMasterApiKey(): string {
     )
   }
   return TELNYX_MASTER_API_KEY
+}
+
+const mergePhoneNumbers = (
+  existingNumbers: string[] = [],
+  numbersToAdd: string[] = [],
+  previousNumber?: string | null,
+): string[] => {
+  const merged: string[] = []
+
+  for (const number of [...existingNumbers, ...numbersToAdd]) {
+    if (!number) continue
+    if (previousNumber && phoneNumbersMatch(number, previousNumber)) continue
+    if (!merged.some((stored) => phoneNumbersMatch(stored, number))) {
+      merged.push(number)
+    }
+  }
+
+  return merged
 }
 
 async function requirePaymentMethod(organizationId: string): Promise<void> {
@@ -146,6 +167,7 @@ export const setupSubaccountInfrastructure = async (organizationId: string) => {
       friendlyName: `RevCenter Dialer - ${organizationId.slice(0, 8)}`,
       voiceUrl: `${backendUrl}/api/webhooks/telnyx/voice`,
       statusCallback: `${backendUrl}/api/webhooks/telnyx/status`,
+      outboundVoiceProfileId: TELNYX_OUTBOUND_VOICE_PROFILE_ID,
     })
 
     // Store infrastructure in PhoneProvisioning table.
@@ -266,7 +288,14 @@ export const provisionSelectedNumber = async (
     })
 
     // Sync the dialer config so calling works
-    await ensureTelnyxConfig(organizationId, purchased.phone_number)
+    await ensureTelnyxConfig(
+      organizationId,
+      purchased.phone_number,
+      record.phoneNumber &&
+        !phoneNumbersMatch(record.phoneNumber, purchased.phone_number)
+        ? record.phoneNumber
+        : undefined,
+    )
 
     logger.info('Phone number provisioned', {
       organizationId,
@@ -561,6 +590,7 @@ async function waitForOwnedNumber(
 async function ensureTelnyxConfig(
   organizationId: string,
   phoneNumber: string,
+  previousPhoneNumber?: string | null,
 ) {
   if (!TELNYX_ACCOUNT_SID) {
     throw new Error('TELNYX_ACCOUNT_SID not configured')
@@ -571,7 +601,11 @@ async function ensureTelnyxConfig(
     await telnyxConfigRepo.update(organizationId, {
       accountSid: TELNYX_ACCOUNT_SID,
       authTokenEncrypted: encrypt(apiKey),
-      phoneNumbers: [phoneNumber],
+      phoneNumbers: mergePhoneNumbers(
+        existing.phoneNumbers || [],
+        [phoneNumber],
+        previousPhoneNumber,
+      ),
     })
   } else {
     await telnyxConfigRepo.create({

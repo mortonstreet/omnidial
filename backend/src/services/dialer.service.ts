@@ -23,6 +23,7 @@ import {
   encryptAuthToken,
   decryptAuthToken,
 } from '@/lib/telnyx'
+import { phoneNumbersMatch } from '@/lib/phone'
 import { getUserById } from '@/repositories/auth.repository'
 import { DBPagination } from '@shared/db/src/types'
 
@@ -60,15 +61,20 @@ export const resolveOrgTwilioConfig = async (
     if (
       provisioning?.usesMainAccount &&
       process.env.TELNYX_ACCOUNT_SID &&
-      process.env.TELNYX_API_KEY &&
-      existing.accountSid !== process.env.TELNYX_ACCOUNT_SID
+      process.env.TELNYX_API_KEY
     ) {
-      const updated = await twilioConfigRepository.update(organizationId, {
-        accountSid: process.env.TELNYX_ACCOUNT_SID,
-        authTokenEncrypted: encryptAuthToken(process.env.TELNYX_API_KEY),
-      })
-      telnyxClient.clearClientCache(organizationId)
-      return updated || existing
+      const storedApiKey = decryptAuthToken(existing.authTokenEncrypted)
+      if (
+        existing.accountSid !== process.env.TELNYX_ACCOUNT_SID ||
+        storedApiKey !== process.env.TELNYX_API_KEY
+      ) {
+        const updated = await twilioConfigRepository.update(organizationId, {
+          accountSid: process.env.TELNYX_ACCOUNT_SID,
+          authTokenEncrypted: encryptAuthToken(process.env.TELNYX_API_KEY),
+        })
+        telnyxClient.clearClientCache(organizationId)
+        return updated || existing
+      }
     }
     return existing
   }
@@ -209,6 +215,10 @@ export const updateTwilioConfig = async (
 
 export const listPhoneNumbers = async (organizationId: string) => {
   const client = await telnyxClient.getClientForOrganization(organizationId)
+  const [configData, provisioning] = await Promise.all([
+    twilioConfigRepository.findByOrganizationId(organizationId),
+    phoneProvisioningRepo.findByOrganizationId(organizationId),
+  ])
 
   // Fetch owned numbers and externally verified caller IDs in parallel
   const [ownedNumbers, verifiedNumbers] = await Promise.all([
@@ -220,8 +230,26 @@ export const listPhoneNumbers = async (organizationId: string) => {
   const verifiedCallerIds = new Set(
     verifiedNumbers.map((verified) => verified.phone_number),
   )
+  const scopedNumbers = new Set<string>()
+  if (!provisioning?.usesMainAccount && provisioning?.phoneNumber) {
+    scopedNumbers.add(provisioning.phoneNumber)
+  } else if (!provisioning?.usesMainAccount) {
+    for (const phoneNumber of configData?.phoneNumbers || []) {
+      scopedNumbers.add(phoneNumber)
+    }
+  }
 
-  const phoneNumberList = ownedNumbers.map((phone) => {
+  const shouldListAllOwnedNumbers =
+    provisioning?.usesMainAccount || (!provisioning && scopedNumbers.size === 0)
+  const scopedOwnedNumbers = shouldListAllOwnedNumbers
+    ? ownedNumbers
+    : ownedNumbers.filter((phone) =>
+        [...scopedNumbers].some((scoped) =>
+          phoneNumbersMatch(scoped, phone.phone_number),
+        ),
+      )
+
+  const phoneNumberList = scopedOwnedNumbers.map((phone) => {
     // Owned numbers are valid caller IDs.
     const isOwnedNumber = typeof phone.id === 'string' && phone.id.length > 0
     const isVerifiedCallerId =
@@ -913,12 +941,15 @@ export const deleteDispositionForOrg = async (
 export const updateCallRecording = async (
   twilioCallSid: string,
   recordingUrl: string,
-  recordingSid: string,
+  recordingSid?: string,
 ) => {
-  return callRepository.updateByTwilioCallSid(twilioCallSid, {
+  const updateData: callRepository.UpdateCallInput = {
     recordingUrl,
-    recordingSid,
-  })
+  }
+  if (recordingSid) {
+    updateData.recordingSid = recordingSid
+  }
+  return callRepository.updateByTwilioCallSid(twilioCallSid, updateData)
 }
 
 // === Voicemail Greetings ===

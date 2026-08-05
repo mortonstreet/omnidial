@@ -1,5 +1,6 @@
 import OpenAI, { toFile } from 'openai'
 import * as twilioConfigRepository from '@/repositories/twilioConfig.repository'
+import * as phoneProvisioningRepository from '@/repositories/phoneProvisioning.repository'
 import { decryptAuthToken, fetchRecordingAudio } from '@/lib/telnyx'
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
@@ -29,9 +30,13 @@ export interface TranscriptionResult {
  */
 async function fetchTelnyxRecording(
   recordingUrl: string,
+  accountSid: string,
   apiKey: string,
 ): Promise<ArrayBuffer> {
-  const response = await fetchRecordingAudio(apiKey, recordingUrl)
+  const response = await fetchRecordingAudio(
+    { accountSid, apiKey },
+    recordingUrl,
+  )
 
   if (!response.ok) {
     throw new Error(
@@ -58,10 +63,23 @@ export async function transcribeRecording(
     throw new Error(`No Telnyx configuration found for organization`)
   }
 
-  const apiKey = decryptAuthToken(telnyxConfig.authTokenEncrypted)
+  const provisioning =
+    await phoneProvisioningRepository.findByOrganizationId(organizationId)
+  const accountSid =
+    provisioning?.usesMainAccount && process.env.TELNYX_ACCOUNT_SID
+      ? process.env.TELNYX_ACCOUNT_SID
+      : telnyxConfig.accountSid
+  const apiKey =
+    provisioning?.usesMainAccount && process.env.TELNYX_API_KEY
+      ? process.env.TELNYX_API_KEY
+      : decryptAuthToken(telnyxConfig.authTokenEncrypted)
 
   // Fetch the recording from Telnyx
-  const audioBuffer = await fetchTelnyxRecording(recordingUrl, apiKey)
+  const audioBuffer = await fetchTelnyxRecording(
+    recordingUrl,
+    accountSid,
+    apiKey,
+  )
 
   // Convert to File object for OpenAI SDK
   const audioFile = await toFile(Buffer.from(audioBuffer), 'recording.mp3', {

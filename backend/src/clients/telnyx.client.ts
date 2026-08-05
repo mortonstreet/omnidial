@@ -14,9 +14,11 @@ import * as phoneProvisioningRepo from '@/repositories/phoneProvisioning.reposit
  */
 export class OrgTelnyxClient {
   readonly credentials: TelnyxCredentials
+  readonly texmlApplicationSid?: string
 
-  constructor(credentials: TelnyxCredentials) {
+  constructor(credentials: TelnyxCredentials, texmlApplicationSid?: string) {
     this.credentials = credentials
+    this.texmlApplicationSid = texmlApplicationSid
   }
 
   get apiKey(): string {
@@ -26,7 +28,17 @@ export class OrgTelnyxClient {
   // --- TeXML voice ---
 
   createCall(params: telnyx.InitiateCallParams) {
-    return telnyx.initiateCall(this.credentials, params)
+    const applicationSid = params.applicationSid ?? this.texmlApplicationSid
+    if (!applicationSid) {
+      throw new Error(
+        'Telnyx TeXML application id not configured. Set TELNYX_TEXML_APP_ID or provision organization phone infrastructure.',
+      )
+    }
+
+    return telnyx.initiateCall(this.credentials, {
+      ...params,
+      applicationSid,
+    })
   }
 
   updateCall(callSid: string, params: telnyx.UpdateCallParams) {
@@ -140,6 +152,7 @@ export const getClientForOrganization = async (
 
   let accountSid = config.accountSid
   let apiKey = decryptAuthToken(config.authTokenEncrypted)
+  let texmlApplicationSid: string | undefined = process.env.TELNYX_TEXML_APP_ID
 
   // For main-account orgs, always use current env vars
   const provisioning =
@@ -152,8 +165,12 @@ export const getClientForOrganization = async (
     accountSid = process.env.TELNYX_ACCOUNT_SID
     apiKey = process.env.TELNYX_API_KEY
   }
+  texmlApplicationSid = provisioning?.twimlAppSid || texmlApplicationSid
 
-  const client = new OrgTelnyxClient({ accountSid, apiKey })
+  const client = new OrgTelnyxClient(
+    { accountSid, apiKey },
+    texmlApplicationSid,
+  )
   clientCache.set(organizationId, { client, createdAt: now })
 
   return client

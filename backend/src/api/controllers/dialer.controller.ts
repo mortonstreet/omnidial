@@ -372,7 +372,7 @@ export const listCalls: AuthRequestHandler<ListCallsRequest> = async (
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const {
@@ -477,7 +477,7 @@ export const listVoicemailDrops: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const { page, limit } = req.validated
@@ -508,7 +508,7 @@ export const createVoicemailDrop: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const { name, recordingUrl, duration } = req.validated
@@ -558,7 +558,7 @@ export const listDispositions: AuthRequestHandler<
       req.user.id,
     )
     if (!twilioConfig) {
-      return res.status(400).json({ error: 'Twilio not configured' })
+      return res.status(400).json({ error: 'Telnyx not configured' })
     }
 
     const { page, limit } = req.validated
@@ -594,7 +594,7 @@ export const createDisposition: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const { label, color, sortOrder, isDefault } = req.validated
@@ -662,7 +662,7 @@ export const getCallRecording: AuthRequestHandler<GetCallRequest> = async (
   if (!call) {
     return res.status(404).json({ error: 'Call not found' })
   }
-  if (!call.recordingUrl || !call.recordingSid) {
+  if (!call.recordingUrl) {
     return res
       .status(404)
       .json({ error: 'No recording available for this call' })
@@ -682,7 +682,11 @@ export const getCallRecording: AuthRequestHandler<GetCallRequest> = async (
     // The API key is stored encrypted, so we need to decrypt it
     const apiKey = decryptAuthToken(telnyxConfig.authTokenEncrypted)
 
-    const response = await fetchRecordingAudio(apiKey, call.recordingUrl)
+    const response = await fetchRecordingAudio(
+      { accountSid: telnyxConfig.accountSid, apiKey },
+      call.recordingUrl,
+      call.recordingSid ?? undefined,
+    )
 
     if (!response.ok) {
       console.error(
@@ -694,10 +698,13 @@ export const getCallRecording: AuthRequestHandler<GetCallRequest> = async (
     }
 
     // Stream the recording to the client
-    res.setHeader('Content-Type', 'audio/mpeg')
+    res.setHeader(
+      'Content-Type',
+      response.headers.get('content-type') || 'audio/mpeg',
+    )
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="recording-${call.recordingSid}.mp3"`,
+      `inline; filename="recording-${call.recordingSid || call.id}.mp3"`,
     )
 
     const arrayBuffer = await response.arrayBuffer()
@@ -783,7 +790,7 @@ export const suggestDisposition: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   try {
@@ -818,7 +825,7 @@ export const listVoicemailGreetings: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const greetings = await dialerService.listVoicemailGreetings(twilioConfig.id)
@@ -838,7 +845,7 @@ export const createVoicemailGreeting: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const { name, recordingUrl, duration, recordingSid } = req.validated
@@ -866,7 +873,7 @@ export const setActiveVoicemailGreeting: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const { id } = req.validated
@@ -916,7 +923,7 @@ export const listVoicemails: AuthRequestHandler<ListVoicemailsRequest> = async (
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const { page, limit, unreadOnly } = req.validated
@@ -964,7 +971,7 @@ export const markAllVoicemailsRead: AuthRequestHandler<
     req.user.id,
   )
   if (!twilioConfig) {
-    return res.status(400).json({ error: 'Twilio not configured' })
+    return res.status(400).json({ error: 'Telnyx not configured' })
   }
 
   const count = await dialerService.markAllVoicemailsRead(twilioConfig.id)
