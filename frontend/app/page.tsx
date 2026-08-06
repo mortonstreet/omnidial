@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import DarkNavigation from "@/components/landing/DarkNavigation";
 import OmniDialFooter from "@/components/landing/OmniDialFooter";
@@ -26,7 +25,12 @@ export default function Home() {
       <main className="flex flex-1 items-center justify-center px-6 pt-32 pb-24">
         <div className="flex w-full max-w-3xl flex-col items-center text-center">
           {/* Continuously rotating mark */}
-          <Logo3DSpinner size={160} className="mb-12" />
+          <Logo3DSpinner
+            size={160}
+            className="mb-12"
+            hoverReactive
+            hoverSpeed={0.3}
+          />
 
           <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
             The sales dialer built for closers

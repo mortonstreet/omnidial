@@ -6,6 +6,8 @@ import * as THREE from "three";
 interface Logo3DSpinnerProps {
   size?: number;
   className?: string;
+  hoverReactive?: boolean;
+  hoverSpeed?: number;
 }
 
 /**
@@ -81,7 +83,12 @@ function buildTwistedRing({
   return geometry;
 }
 
-export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps) {
+export function Logo3DSpinner({
+  size = 200,
+  className = "",
+  hoverReactive = false,
+  hoverSpeed = 0.3,
+}: Logo3DSpinnerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
 
@@ -92,8 +99,46 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
     const dpr = Math.min(window.devicePixelRatio, 2);
     canvas.width = size * dpr;
     canvas.height = size * dpr;
+    canvas.style.backgroundImage = "";
+    canvas.style.backgroundPosition = "";
+    canvas.style.backgroundRepeat = "";
+    canvas.style.backgroundSize = "";
 
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    const showFallbackMark = () => {
+      canvas.style.backgroundImage = "url('/omnidial-mark-3d@256.png')";
+      canvas.style.backgroundPosition = "center";
+      canvas.style.backgroundRepeat = "no-repeat";
+      canvas.style.backgroundSize = "contain";
+    };
+
+    const supportsWebgl = (() => {
+      try {
+        const probe = document.createElement("canvas");
+        return Boolean(
+          window.WebGLRenderingContext &&
+            (probe.getContext("webgl2") || probe.getContext("webgl")),
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!supportsWebgl) {
+      showFallbackMark();
+      return;
+    }
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        alpha: true,
+        antialias: true,
+      });
+    } catch {
+      showFallbackMark();
+      return;
+    }
     renderer.setSize(size, size);
     renderer.setPixelRatio(dpr);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -180,14 +225,43 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
 
     // Animation — same cadence as the original mark so the loader reads the same
     let time = 0;
+    const hoverTarget = { x: 0, y: 0 };
+    const hoverCurrent = { x: 0, y: 0 };
+    const hoverLerp = Math.max(0.01, Math.min(1, hoverSpeed));
+
+    const updateHoverTarget = (event: PointerEvent) => {
+      if (!hoverReactive) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+      hoverTarget.x = Math.max(-1, Math.min(1, x));
+      hoverTarget.y = Math.max(-1, Math.min(1, y));
+    };
+
+    const resetHoverTarget = () => {
+      hoverTarget.x = 0;
+      hoverTarget.y = 0;
+    };
+
+    if (hoverReactive) {
+      canvas.addEventListener("pointermove", updateHoverTarget);
+      canvas.addEventListener("pointerleave", resetHoverTarget);
+      canvas.addEventListener("pointercancel", resetHoverTarget);
+    }
 
     function animate() {
       frameRef.current = requestAnimationFrame(animate);
       time += 0.012;
 
-      group.rotation.y = time * 1.0;
-      group.rotation.x = Math.sin(time * 0.5) * 0.12;
-      group.position.y = Math.sin(time * 0.6) * 0.03;
+      hoverCurrent.x += (hoverTarget.x - hoverCurrent.x) * hoverLerp;
+      hoverCurrent.y += (hoverTarget.y - hoverCurrent.y) * hoverLerp;
+
+      group.rotation.y = time * 1.0 + hoverCurrent.x * 0.75;
+      group.rotation.x = Math.sin(time * 0.5) * 0.12 + hoverCurrent.y * 0.45;
+      group.rotation.z = hoverCurrent.x * -0.18;
+      group.position.x = hoverCurrent.x * 0.12;
+      group.position.y = Math.sin(time * 0.6) * 0.03 - hoverCurrent.y * 0.08;
 
       renderer.render(scene, camera);
     }
@@ -196,19 +270,27 @@ export function Logo3DSpinner({ size = 200, className = "" }: Logo3DSpinnerProps
 
     return () => {
       cancelAnimationFrame(frameRef.current);
+      canvas.removeEventListener("pointermove", updateHoverTarget);
+      canvas.removeEventListener("pointerleave", resetHoverTarget);
+      canvas.removeEventListener("pointercancel", resetHoverTarget);
       renderer.dispose();
       ringGeo.dispose();
       material.dispose();
       envGeo.dispose();
       envMat.dispose();
     };
-  }, [size]);
+  }, [hoverReactive, hoverSpeed, size]);
 
   return (
     <canvas
       ref={canvasRef}
       className={className}
-      style={{ width: size, height: size, display: "block" }}
+      style={{
+        width: size,
+        height: size,
+        display: "block",
+        cursor: hoverReactive ? "grab" : undefined,
+      }}
     />
   );
 }
