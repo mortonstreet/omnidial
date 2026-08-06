@@ -325,10 +325,7 @@ const syncMembership = async (
     clerkOrganizationId: string | null
   },
 ) => {
-  if (
-    !membership.clerkUserId ||
-    !membership.clerkOrganizationId
-  ) {
+  if (!membership.clerkUserId || !membership.clerkOrganizationId) {
     return
   }
 
@@ -381,7 +378,10 @@ const syncMembership = async (
     .where('id', '=', membership.id)
     .executeTakeFirst()
   stats.membershipsCreated += 1
-  if (membership.clerkMembershipId && membership.clerkMembershipId !== created.id) {
+  if (
+    membership.clerkMembershipId &&
+    membership.clerkMembershipId !== created.id
+  ) {
     stats.staleMembershipsRepaired += 1
   }
 }
@@ -399,10 +399,7 @@ const syncPendingInvitation = async (
     inviterClerkUserId: string | null
   },
 ) => {
-  if (
-    invitation.status !== 'pending' ||
-    !invitation.clerkOrganizationId
-  ) {
+  if (invitation.status !== 'pending' || !invitation.clerkOrganizationId) {
     stats.invitationsSkipped += 1
     return
   }
@@ -564,11 +561,11 @@ const main = async () => {
   if (!apply) {
     console.log(
       JSON.stringify(
-          {
-            mode: 'dry-run',
-            localSummary,
-            note: 'Run pnpm --filter backend clerk:backfill -- --apply after deploying the DB migration and setting CLERK_SECRET_KEY. Add --repair-stale to rebuild mappings from another Clerk instance.',
-          },
+        {
+          mode: 'dry-run',
+          localSummary,
+          note: 'Run pnpm --filter backend clerk:backfill -- --apply after deploying the DB migration and setting CLERK_SECRET_KEY. Add --repair-stale to rebuild mappings from another Clerk instance.',
+        },
         null,
         2,
       ),
