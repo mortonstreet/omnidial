@@ -175,10 +175,26 @@ const findOrCreateClerkOrganization = async (
     return organization.clerkOrganizationId
   }
 
-  try {
-    const existing = await clerk.organizations.getOrganization({
-      slug: organization.slug,
-    })
+  const existingOrganizations = await clerk.organizations.getOrganizationList({
+    query: organization.name,
+    limit: 100,
+  })
+  const existing = existingOrganizations.data.find((candidate) => {
+    const privateMetadata = candidate.privateMetadata as
+      | Record<string, unknown>
+      | undefined
+    const publicMetadata = candidate.publicMetadata as
+      | Record<string, unknown>
+      | undefined
+
+    return (
+      privateMetadata?.omnidialOrganizationId === organization.id ||
+      publicMetadata?.omnidialSlug === organization.slug ||
+      candidate.name === organization.name
+    )
+  })
+
+  if (existing) {
     await clerk.organizations.updateOrganizationMetadata(existing.id, {
       privateMetadata: {
         omnidialOrganizationId: organization.id,
@@ -195,13 +211,10 @@ const findOrCreateClerkOrganization = async (
       .executeTakeFirst()
     stats.organizationsLinked += 1
     return existing.id
-  } catch {
-    // Missing organization; create below.
   }
 
   const created = await clerk.organizations.createOrganization({
     name: organization.name,
-    slug: organization.slug,
     createdBy: organization.ownerClerkUserId ?? undefined,
     privateMetadata: {
       omnidialOrganizationId: organization.id,
