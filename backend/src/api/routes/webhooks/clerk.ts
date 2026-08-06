@@ -198,7 +198,10 @@ const upsertUser = async (user: ClerkUserPayload) => {
 const upsertOrganization = async (organization: ClerkOrganizationPayload) => {
   const slug = organization.slug || `clerk-${organization.id}`
   const localOrganizationId =
-    getMetadataString(organization.private_metadata, 'omnidialOrganizationId') ??
+    getMetadataString(
+      organization.private_metadata,
+      'omnidialOrganizationId',
+    ) ??
     getMetadataString(organization.public_metadata, 'omnidialOrganizationId') ??
     randomUUID()
 
@@ -296,9 +299,7 @@ const syncMembership = async (membership: ClerkMembershipPayload) => {
     .executeTakeFirst()
 
   const role =
-    existing?.role === 'owner'
-      ? 'owner'
-      : normalizeClerkRole(membership.role)
+    existing?.role === 'owner' ? 'owner' : normalizeClerkRole(membership.role)
 
   if (existing) {
     await db

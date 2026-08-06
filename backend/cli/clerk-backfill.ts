@@ -59,7 +59,8 @@ const getMissingMappingColumns = async () => {
   )
 
   return requiredMappingColumns.filter(
-    (column) => !existingColumns.has(`${column.tableName}.${column.columnName}`),
+    (column) =>
+      !existingColumns.has(`${column.tableName}.${column.columnName}`),
   )
 }
 
@@ -515,11 +516,7 @@ const main = async () => {
   if (includeInvitations) {
     const mappedInvitations = await db
       .selectFrom('invitation')
-      .innerJoin(
-        'organization',
-        'organization.id',
-        'invitation.organizationId',
-      )
+      .innerJoin('organization', 'organization.id', 'invitation.organizationId')
       .innerJoin('user as inviter', 'inviter.id', 'invitation.inviterId')
       .select([
         'invitation.id',
