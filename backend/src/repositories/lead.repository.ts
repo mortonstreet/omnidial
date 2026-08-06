@@ -14,7 +14,7 @@ export interface CreateLeadInput {
   firstName?: string
   lastName?: string
   email?: string
-  phone: string
+  phone?: string | null
   normalizedPhone?: string | null
   company?: string
   title?: string
@@ -103,11 +103,15 @@ export interface LeadWithClient {
 }
 
 export const create = async (data: CreateLeadInput) => {
+  const phone = data.phone?.trim() || null
+
   // Auto-calculate normalized phone if not provided
   const normalizedPhone =
     data.normalizedPhone !== undefined
       ? data.normalizedPhone
-      : validateAndNormalizePhone(data.phone)
+      : phone
+        ? validateAndNormalizePhone(phone)
+        : null
 
   const lead = await db
     .insertInto('lead')
@@ -119,7 +123,7 @@ export const create = async (data: CreateLeadInput) => {
             firstName: data.firstName ?? null,
             lastName: data.lastName ?? null,
             email: data.email ?? null,
-            phone: data.phone,
+            phone,
             normalizedPhone,
             company: data.company ?? null,
             title: data.title ?? null,
@@ -149,11 +153,15 @@ export const createMany = async (
   if (leads.length === 0) return []
 
   const values = leads.map((lead) => {
+    const phone = lead.phone?.trim() || null
+
     // Auto-calculate normalized phone if not provided
     const normalizedPhone =
       lead.normalizedPhone !== undefined
         ? lead.normalizedPhone
-        : validateAndNormalizePhone(lead.phone)
+        : phone
+          ? validateAndNormalizePhone(phone)
+          : null
 
     return {
       ...withId(
@@ -163,7 +171,7 @@ export const createMany = async (
             firstName: lead.firstName ?? null,
             lastName: lead.lastName ?? null,
             email: lead.email ?? null,
-            phone: lead.phone,
+            phone,
             normalizedPhone,
             company: lead.company ?? null,
             title: lead.title ?? null,
@@ -810,7 +818,7 @@ export interface BulkCreateLeadInput {
   firstName?: string | null
   lastName?: string | null
   email?: string | null
-  phone: string
+  phone?: string | null
   normalizedPhone?: string | null
   company?: string | null
   title?: string | null
@@ -826,11 +834,15 @@ export const bulkCreateIgnoreConflicts = async (
   if (leads.length === 0) return []
 
   const values = leads.map((lead) => {
+    const phone = lead.phone?.trim() || null
+
     // Auto-calculate normalized phone if not provided
     const normalizedPhone =
       lead.normalizedPhone !== undefined
         ? lead.normalizedPhone
-        : validateAndNormalizePhone(lead.phone)
+        : phone
+          ? validateAndNormalizePhone(phone)
+          : null
 
     return {
       ...withId(
@@ -840,7 +852,7 @@ export const bulkCreateIgnoreConflicts = async (
             firstName: lead.firstName ?? null,
             lastName: lead.lastName ?? null,
             email: lead.email ?? null,
-            phone: lead.phone,
+            phone,
             normalizedPhone,
             company: lead.company ?? null,
             title: lead.title ?? null,

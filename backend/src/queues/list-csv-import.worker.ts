@@ -13,201 +13,7 @@ import * as leadRepo from '@/repositories/lead.repository'
 import * as leadListEntryRepo from '@/repositories/leadListEntry.repository'
 import * as campaignListRepo from '@/repositories/campaignList.repository'
 import * as campaignLeadRepo from '@/repositories/campaign-lead.repository'
-import { validateAndNormalizePhone } from '@/lib/phone'
-
-interface ParsedLead {
-  firstName?: string
-  lastName?: string
-  email?: string
-  phone?: string
-  normalizedPhone: string | null // E.164 format or null if invalid
-  company?: string
-  title?: string
-  linkedInUrl?: string
-  website?: string
-}
-
-// CSV field mappings to ParsedLead fields (case-insensitive)
-// Note: normalizedPhone is calculated, not mapped from CSV
-type CsvMappableField = Exclude<keyof ParsedLead, 'normalizedPhone'>
-const FIELD_MAPPINGS: Record<string, CsvMappableField> = {
-  first_name: 'firstName',
-  firstname: 'firstName',
-  'first name': 'firstName',
-  first: 'firstName',
-  last_name: 'lastName',
-  lastname: 'lastName',
-  'last name': 'lastName',
-  last: 'lastName',
-  email: 'email',
-  email_address: 'email',
-  'email address': 'email',
-  'e-mail': 'email',
-  phone: 'phone',
-  phone_number: 'phone',
-  phonenumber: 'phone',
-  'phone number': 'phone',
-  mobile: 'phone',
-  mobile_phone: 'phone',
-  'mobile phone': 'phone',
-  cell: 'phone',
-  cell_phone: 'phone',
-  'cell phone': 'phone',
-  cellphone: 'phone',
-  telephone: 'phone',
-  tel: 'phone',
-  work_phone: 'phone',
-  'work phone': 'phone',
-  direct_phone: 'phone',
-  'direct phone': 'phone',
-  'direct dial': 'phone',
-  direct: 'phone',
-  number: 'phone',
-  contact_phone: 'phone',
-  'contact phone': 'phone',
-  company: 'company',
-  company_name: 'company',
-  'company name': 'company',
-  organization: 'company',
-  org: 'company',
-  employer: 'company',
-  title: 'title',
-  job_title: 'title',
-  jobtitle: 'title',
-  'job title': 'title',
-  position: 'title',
-  role: 'title',
-  linkedin: 'linkedInUrl',
-  linkedin_url: 'linkedInUrl',
-  linked_in_url: 'linkedInUrl',
-  linkedinurl: 'linkedInUrl',
-  'linkedin url': 'linkedInUrl',
-  'linked in url': 'linkedInUrl',
-  'linkedin profile': 'linkedInUrl',
-  linkedin_profile_url: 'linkedInUrl',
-  'linkedin profile url': 'linkedInUrl',
-  website: 'website',
-  website_url: 'website',
-  websiteurl: 'website',
-  'website url': 'website',
-  domain: 'website',
-  company_website: 'website',
-  'company website': 'website',
-  url: 'website',
-  site: 'website',
-}
-
-function normalizeHeader(header: string): string {
-  return header
-    .replace(/^\uFEFF/, '')
-    .toLowerCase()
-    .trim()
-}
-
-function parseCSV(content: string): { headers: string[]; rows: string[][] } {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim())
-  if (lines.length === 0) {
-    return { headers: [], rows: [] }
-  }
-
-  const headers = parseCSVLine(lines[0])
-  const rows = lines.slice(1).map(parseCSVLine)
-
-  return { headers, rows }
-}
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    const nextChar = line[i + 1]
-
-    if (char === '"' && !inQuotes) {
-      inQuotes = true
-    } else if (char === '"' && inQuotes) {
-      if (nextChar === '"') {
-        current += '"'
-        i++
-      } else {
-        inQuotes = false
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim())
-      current = ''
-    } else {
-      current += char
-    }
-  }
-
-  result.push(current.trim())
-  return result
-}
-
-// Validate that all headers are recognized - reject imports with unknown columns
-function validateHeaders(headers: string[]): {
-  valid: boolean
-  unrecognized: string[]
-} {
-  const unrecognized: string[] = []
-
-  for (const header of headers) {
-    const normalized = normalizeHeader(header)
-    if (!FIELD_MAPPINGS[normalized]) {
-      unrecognized.push(header)
-    }
-  }
-
-  return { valid: unrecognized.length === 0, unrecognized }
-}
-
-function mapRowToLead(
-  headers: string[],
-  row: string[],
-):
-  | { lead: ParsedLead; error?: undefined }
-  | { lead?: undefined; error: string } {
-  const lead: Partial<Omit<ParsedLead, 'normalizedPhone'>> & {
-    normalizedPhone?: string | null
-  } = {}
-
-  for (let i = 0; i < headers.length && i < row.length; i++) {
-    const header = normalizeHeader(headers[i])
-    const value = row[i]?.trim()
-
-    if (!value) continue
-
-    const mappedField = FIELD_MAPPINGS[header]
-    if (mappedField) {
-      ;(lead as Record<string, string>)[mappedField] = value
-    }
-    // Unknown columns are now rejected at validation, not stored as custom fields
-  }
-
-  // Require at least one identity handle: phone OR LinkedIn URL.
-  if (!lead.phone && !lead.linkedInUrl) {
-    return { error: 'Missing required phone or LinkedIn URL field' }
-  }
-
-  // Validate and normalize phone number only when provided.
-  let normalizedPhone: string | null = null
-  if (lead.phone) {
-    normalizedPhone = validateAndNormalizePhone(lead.phone)
-    if (!normalizedPhone) {
-      return { error: `Invalid phone number format: "${lead.phone}"` }
-    }
-  }
-
-  return {
-    lead: {
-      ...lead,
-      phone: lead.phone ?? '',
-      normalizedPhone,
-    } as ParsedLead,
-  }
-}
+import { mapCsvRowToLead, parseCSV, ParsedCsvLead } from '@/lib/csv-lead-import'
 
 async function processListCsvImport(job: Job<ListCsvImportEvent>) {
   const { organizationId, listId, fileContent, fileName } = job.data
@@ -233,25 +39,14 @@ async function processListCsvImport(job: Job<ListCsvImportEvent>) {
       'CSV parsed',
     )
 
-    // Validate headers - reject imports with unrecognized columns
-    const headerValidation = validateHeaders(headers)
-    if (!headerValidation.valid) {
-      const recognizedHeaders = Object.keys(FIELD_MAPPINGS)
-        .slice(0, 20)
-        .join(', ')
-      throw new Error(
-        `Unrecognized column(s): [${headerValidation.unrecognized.join(', ')}]. ` +
-          `Only these columns are allowed: ${recognizedHeaders}, etc. ` +
-          `Please rename or remove unrecognized columns and try again.`,
-      )
-    }
-
     // Map rows to leads
-    const leads: ParsedLead[] = []
+    const leads: ParsedCsvLead[] = []
     const errors: { row: number; error: string }[] = []
 
     for (let i = 0; i < rows.length; i++) {
-      const result = mapRowToLead(headers, rows[i])
+      const result = mapCsvRowToLead(headers, rows[i], {
+        requirePhone: false,
+      })
       if (result.lead) {
         leads.push(result.lead)
       } else {
@@ -265,12 +60,9 @@ async function processListCsvImport(job: Job<ListCsvImportEvent>) {
     )
 
     if (leads.length === 0) {
-      const recognizedPhoneHeaders = Object.keys(FIELD_MAPPINGS).filter(
-        (k) => FIELD_MAPPINGS[k] === 'phone',
-      )
       throw new Error(
         `No valid leads found - each row must include phone or LinkedIn URL. Found headers: [${headers.join(', ')}]. ` +
-          `Recognized phone headers: ${recognizedPhoneHeaders.slice(0, 10).join(', ')}, etc. LinkedIn headers: linkedin, linkedin_url.`,
+          `Prospeo headers such as Mobile and Person LinkedIn URL are supported.`,
       )
     }
 
@@ -289,12 +81,13 @@ async function processListCsvImport(job: Job<ListCsvImportEvent>) {
           firstName: lead.firstName ?? null,
           lastName: lead.lastName ?? null,
           email: lead.email ?? null,
-          phone: lead.phone ?? '',
+          phone: lead.phone ?? null,
           normalizedPhone: lead.normalizedPhone,
           company: lead.company ?? null,
           title: lead.title ?? null,
           linkedInUrl: lead.linkedInUrl ?? null,
           website: lead.website ?? null,
+          customFields: lead.customFields,
         })),
       )
 

@@ -190,6 +190,8 @@ export const uploadListCsv: AuthRequestHandler<UploadListCsvRequest> = async (
 
   const fileContent = file.buffer.toString('base64')
 
+  await listService.updateImportStatus(id, 'processing')
+
   const jobId = await addListCsvImportJob({
     type: ListCsvImportEventType.PROCESS_CSV,
     organizationId,

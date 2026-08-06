@@ -151,6 +151,7 @@ export interface BulkCreateLeadsParams {
     company?: string
     title?: string
     linkedInUrl?: string
+    website?: string
     customFields?: Record<string, string>
   }[]
 }

@@ -1,37 +1,48 @@
-"use client";
+'use client'
 
-import { useState, useMemo, useEffect } from "react";
-import DOMPurify from "dompurify";
-import { ChevronDown, ChevronRight, FileText, Loader2, Settings, StickyNote, Send } from "lucide-react";
-import { useScripts } from "@/hooks/api/useScripts";
-import { useNotes, useCreateNote } from "@/hooks/api/useNotes";
-import { formatDistanceToNow } from "date-fns";
+import { useState, useMemo, useEffect } from 'react'
+import DOMPurify from 'dompurify'
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Loader2,
+  Settings,
+  StickyNote,
+  Send,
+} from 'lucide-react'
+import { useScripts } from '@/hooks/api/useScripts'
+import { useNotes, useCreateNote } from '@/hooks/api/useNotes'
+import { formatDistanceToNow } from 'date-fns'
 
 interface Lead {
-  id?: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-  phone?: string;
-  company?: string | null;
-  title?: string | null;
-  linkedInUrl?: string | null;
-  website?: string | null;
-  customFields?: Record<string, string>;
+  id?: string
+  firstName?: string | null
+  lastName?: string | null
+  email?: string | null
+  phone?: string
+  company?: string | null
+  title?: string | null
+  linkedInUrl?: string | null
+  website?: string | null
+  customFields?: Record<string, string>
 }
 
 interface ScriptPanelProps {
-  campaignId?: string;
-  lead?: Lead | null;
-  onManageScripts?: () => void;
+  campaignId?: string
+  lead?: Lead | null
+  onManageScripts?: () => void
 }
+
+const UNMATCHED_VARIABLE_OPEN = '__OMNIDIAL_UNMATCHED_VARIABLE_OPEN__'
+const UNMATCHED_VARIABLE_CLOSE = '__OMNIDIAL_UNMATCHED_VARIABLE_CLOSE__'
 
 // Substitute variables in script content
 function substituteVariables(content: string, lead?: Lead | null): string {
-  if (!content) return "";
-  if (!lead) return content;
+  if (!content) return ''
+  if (!lead) return content
 
-  let result = content;
+  let result = content
 
   // Standard lead fields
   const standardFields: Record<string, string | undefined | null> = {
@@ -43,48 +54,62 @@ function substituteVariables(content: string, lead?: Lead | null): string {
     title: lead.title,
     linkedInUrl: lead.linkedInUrl,
     website: lead.website,
-  };
+  }
 
   // Replace standard fields
   for (const [key, value] of Object.entries(standardFields)) {
-    const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
-    result = result.replace(regex, value || `[${key}]`);
+    const regex = buildVariableRegex(key)
+    result = result.replace(regex, value || `[${key}]`)
   }
 
   // Replace custom fields
   if (lead.customFields) {
     for (const [key, value] of Object.entries(lead.customFields)) {
-      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
-      result = result.replace(regex, value || `[${key}]`);
+      const regex = buildVariableRegex(key)
+      result = result.replace(regex, value || `[${key}]`)
     }
   }
 
   // Mark any remaining unmatched variables
-  result = result.replace(/\{\{\s*(\w+)\s*\}\}/g, "[$1]");
+  result = result.replace(
+    /\{\{\s*([^}]+?)\s*\}\}/g,
+    `${UNMATCHED_VARIABLE_OPEN}$1${UNMATCHED_VARIABLE_CLOSE}`,
+  )
 
-  return result;
+  return result
+}
+
+function buildVariableRegex(variable: string): RegExp {
+  return new RegExp(`\\{\\{\\s*${escapeRegex(variable)}\\s*\\}\\}`, 'gi')
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 // Highlight unmatched variables in rendered content
 function highlightVariables(html: string): string {
   return html.replace(
-    /\[(\w+)\]/g,
-    '<span class="px-1 py-0.5 bg-yellow-500/20 text-yellow-500 rounded text-xs font-mono">[$1]</span>'
-  );
+    new RegExp(
+      `${UNMATCHED_VARIABLE_OPEN}([\\s\\S]+?)${UNMATCHED_VARIABLE_CLOSE}`,
+      'g',
+    ),
+    '<span class="px-1 py-0.5 bg-yellow-500/20 text-yellow-500 rounded text-xs font-mono">[$1]</span>',
+  )
 }
 
 // Render text with URLs converted to clickable links
 function linkifyContent(text: string): React.ReactNode[] {
-  const urlRegex = /(https?:\/\/[^\s<]+(?:\([^\s<]*\))?[^\s<.,;:!?)}\]]*)/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  const urlRegex = /(https?:\/\/[^\s<]+(?:\([^\s<]*\))?[^\s<.,;:!?)}\]]*)/g
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
 
   while ((match = urlRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
+      parts.push(text.slice(lastIndex, match.index))
     }
-    const url = match[1];
+    const url = match[1]
     parts.push(
       <a
         key={match.index}
@@ -94,82 +119,86 @@ function linkifyContent(text: string): React.ReactNode[] {
         className="text-primary hover:underline break-all"
       >
         {url}
-      </a>
-    );
-    lastIndex = match.index + match[0].length;
+      </a>,
+    )
+    lastIndex = match.index + match[0].length
   }
 
   if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
+    parts.push(text.slice(lastIndex))
   }
 
-  return parts;
+  return parts
 }
 
-export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [isNotesExpanded, setIsNotesExpanded] = useState(true);
-  const [newNote, setNewNote] = useState("");
-  const [selectedScriptId, setSelectedScriptId] = useState<string | undefined>();
+export function ScriptPanel({
+  campaignId,
+  lead,
+  onManageScripts,
+}: ScriptPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(true)
+  const [isNotesExpanded, setIsNotesExpanded] = useState(true)
+  const [newNote, setNewNote] = useState('')
+  const [selectedScriptId, setSelectedScriptId] = useState<string | undefined>()
 
   // Fetch scripts for this campaign (including org-wide scripts)
-  const { data: scripts, isLoading } = useScripts(campaignId);
+  const { data: scripts, isLoading } = useScripts(campaignId)
 
   // Fetch existing notes for the current lead
   const { data: notesData, isLoading: notesLoading } = useNotes({
-    leadId: lead?.id || "",
-  });
-  const existingNotes = notesData?.data || [];
+    leadId: lead?.id || '',
+  })
+  const existingNotes = notesData?.data || []
 
   // Create note mutation
-  const createNote = useCreateNote();
+  const createNote = useCreateNote()
 
   // Clear new note when lead changes
   useEffect(() => {
-    queueMicrotask(() => setNewNote(""));
-  }, [lead?.id]);
+    queueMicrotask(() => setNewNote(''))
+  }, [lead?.id])
 
   // Handle adding a new note
   const handleAddNote = async () => {
-    if (!newNote.trim() || !lead?.id) return;
+    if (!newNote.trim() || !lead?.id) return
 
     try {
       await createNote.mutateAsync({
         leadId: lead.id,
         content: newNote.trim(),
-      });
-      setNewNote("");
+      })
+      setNewNote('')
     } catch (error) {
-      console.error("Failed to create note:", error);
+      console.error('Failed to create note:', error)
     }
-  };
+  }
 
   // Handle Enter key to submit note
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleAddNote();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleAddNote()
     }
-  };
+  }
 
   // Get the active script (selected or default)
   const activeScript = useMemo(() => {
-    if (!scripts || scripts.length === 0) return null;
+    if (!scripts || scripts.length === 0) return null
 
     // If a script is selected, use that
     if (selectedScriptId) {
-      return scripts.find((s) => s.id === selectedScriptId) || null;
+      return scripts.find((s) => s.id === selectedScriptId) || null
     }
 
     // Otherwise use the default script or the first one
-    return scripts.find((s) => s.isDefault) || scripts[0];
-  }, [scripts, selectedScriptId]);
+    return scripts.find((s) => s.isDefault) || scripts[0]
+  }, [scripts, selectedScriptId])
 
   // Substitute variables in the script content
   const processedContent = useMemo(() => {
-    if (!activeScript) return "";
-    return substituteVariables(activeScript.content, lead);
-  }, [activeScript, lead]);
+    if (!activeScript) return ''
+    return substituteVariables(activeScript.content, lead)
+  }, [activeScript, lead])
 
   // Render the script section content based on state
   const renderScriptSection = () => {
@@ -181,7 +210,7 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
             <span className="text-sm">Select a campaign to view scripts</span>
           </div>
         </div>
-      );
+      )
     }
 
     if (isLoading) {
@@ -192,7 +221,7 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
             <span className="text-sm">Loading scripts...</span>
           </div>
         </div>
-      );
+      )
     }
 
     if (!scripts || scripts.length === 0) {
@@ -213,7 +242,7 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
             )}
           </div>
         </div>
-      );
+      )
     }
 
     return (
@@ -241,8 +270,8 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
             {onManageScripts && (
               <button
                 onClick={(e) => {
-                  e.stopPropagation();
-                  onManageScripts();
+                  e.stopPropagation()
+                  onManageScripts()
                 }}
                 className="p-1 hover:bg-muted rounded transition"
                 title="Manage Scripts"
@@ -260,14 +289,14 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
             {scripts.length > 1 && (
               <div className="p-2 border-b border-border bg-muted/20">
                 <select
-                  value={selectedScriptId || activeScript?.id || ""}
+                  value={selectedScriptId || activeScript?.id || ''}
                   onChange={(e) => setSelectedScriptId(e.target.value)}
                   className="w-full px-2 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   {scripts.map((script) => (
                     <option key={script.id} value={script.id}>
                       {script.name}
-                      {script.isDefault ? " (Default)" : ""}
+                      {script.isDefault ? ' (Default)' : ''}
                     </option>
                   ))}
                 </select>
@@ -279,7 +308,9 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
               <div
                 className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:text-foreground [&_em]:text-foreground [&_u]:text-foreground"
                 dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(highlightVariables(processedContent)),
+                  __html: DOMPurify.sanitize(
+                    highlightVariables(processedContent),
+                  ),
                 }}
               />
             </div>
@@ -288,12 +319,15 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
             {lead && (
               <div className="px-3 py-2 border-t border-border bg-muted/20">
                 <p className="text-xs text-muted-foreground">
-                  Variables filled for:{" "}
+                  Variables filled for:{' '}
                   <span className="text-foreground font-medium">
-                    {lead.firstName || "Unknown"} {lead.lastName || ""}
+                    {lead.firstName || 'Unknown'} {lead.lastName || ''}
                   </span>
                   {lead.company && (
-                    <span className="text-muted-foreground"> at {lead.company}</span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      at {lead.company}
+                    </span>
                   )}
                 </p>
               </div>
@@ -301,8 +335,8 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
           </div>
         )}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className="space-y-3">
@@ -357,7 +391,9 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
                             {linkifyContent(note.content)}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1.5">
-                            {formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(note.createdAt), {
+                              addSuffix: true,
+                            })}
                           </p>
                         </div>
                       ))}
@@ -400,5 +436,5 @@ export function ScriptPanel({ campaignId, lead, onManageScripts }: ScriptPanelPr
         )}
       </div>
     </div>
-  );
+  )
 }

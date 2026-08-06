@@ -187,6 +187,7 @@ export const findNextToDialFromList = async (
     .where('lead_list_entry.removedAt', 'is', null)
     .where('lead.deletedAt', 'is', null)
     .where('lead.phone', 'is not', null)
+    .where('lead.phone', '!=', '')
     // Exclude leads already attempted in this session
     .where(
       'lead_list_entry.leadId',

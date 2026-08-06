@@ -1,72 +1,74 @@
-"use client";
+'use client'
 
-import { useState, useCallback } from "react";
-import { Upload, FileText, X, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useUploadCsv } from "@/hooks/api/useCampaigns";
-import { toast } from "sonner";
+import { useState, useCallback } from 'react'
+import { Upload, FileText, X, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useUploadCsv } from '@/hooks/api/useCampaigns'
+import { toast } from 'sonner'
 
 interface CsvUploaderProps {
-  campaignId: string;
-  onSuccess?: () => void;
+  campaignId: string
+  onSuccess?: () => void
 }
 
 export function CsvUploader({ campaignId, onSuccess }: CsvUploaderProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [dragActive, setDragActive] = useState(false);
-  const uploadMutation = useUploadCsv();
+  const [file, setFile] = useState<File | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const uploadMutation = useUploadCsv()
 
   const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true)
+    } else if (e.type === 'dragleave') {
+      setDragActive(false)
     }
-  }, []);
+  }, [])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
 
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile && droppedFile.name.endsWith(".csv")) {
-      setFile(droppedFile);
+    const droppedFile = e.dataTransfer.files?.[0]
+    if (droppedFile && droppedFile.name.endsWith('.csv')) {
+      setFile(droppedFile)
     } else {
-      toast.error("Please upload a CSV file");
+      toast.error('Please upload a CSV file')
     }
-  }, []);
+  }, [])
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selectedFile = e.target.files?.[0];
+      const selectedFile = e.target.files?.[0]
       if (selectedFile) {
-        setFile(selectedFile);
+        setFile(selectedFile)
       }
     },
-    []
-  );
+    [],
+  )
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (!file) return
 
     try {
-      await uploadMutation.mutateAsync({ campaignId, file });
-      toast.success("CSV upload started! Leads will be imported in the background.");
-      setFile(null);
-      onSuccess?.();
+      await uploadMutation.mutateAsync({ campaignId, file })
+      toast.success(
+        'CSV upload started! Leads will be imported in the background.',
+      )
+      setFile(null)
+      onSuccess?.()
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to upload CSV"
-      );
+        error instanceof Error ? error.message : 'Failed to upload CSV',
+      )
     }
-  };
+  }
 
   const handleClear = () => {
-    setFile(null);
-  };
+    setFile(null)
+  }
 
   return (
     <div className="space-y-4">
@@ -79,8 +81,8 @@ export function CsvUploader({ campaignId, onSuccess }: CsvUploaderProps) {
           relative border-2 border-dashed rounded-xl p-8 text-center transition-colors
           ${
             dragActive
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-primary/50"
+              ? 'border-primary bg-primary/5'
+              : 'border-border hover:border-primary/50'
           }
         `}
       >
@@ -105,8 +107,8 @@ export function CsvUploader({ campaignId, onSuccess }: CsvUploaderProps) {
               variant="ghost"
               size="icon"
               onClick={(e) => {
-                e.preventDefault();
-                handleClear();
+                e.preventDefault()
+                handleClear()
               }}
               className="ml-2"
             >
@@ -119,19 +121,14 @@ export function CsvUploader({ campaignId, onSuccess }: CsvUploaderProps) {
             <p className="text-foreground font-medium mb-1">
               Drop your CSV file here
             </p>
-            <p className="text-sm text-muted-foreground">
-              or click to browse
-            </p>
+            <p className="text-sm text-muted-foreground">or click to browse</p>
           </>
         )}
       </div>
 
       {file && (
         <div className="flex justify-end">
-          <Button
-            onClick={handleUpload}
-            disabled={uploadMutation.isPending}
-          >
+          <Button onClick={handleUpload} disabled={uploadMutation.isPending}>
             {uploadMutation.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -149,15 +146,16 @@ export function CsvUploader({ campaignId, onSuccess }: CsvUploaderProps) {
 
       <div className="text-xs text-muted-foreground">
         <p className="font-medium mb-1">Required column:</p>
-        <p>phone - Phone number (any format)</p>
+        <p>phone or mobile - Phone number (any format)</p>
         <p className="font-medium mt-2 mb-1">Optional columns:</p>
         <p>
-          first_name, last_name, email, company, title, linkedin_url, website
+          first_name, last_name, email, company, title, linkedin_url, website,
+          Prospeo exports
         </p>
         <p className="mt-1">
           Any additional columns will be stored as custom fields.
         </p>
       </div>
     </div>
-  );
+  )
 }

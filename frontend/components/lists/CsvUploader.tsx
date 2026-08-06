@@ -1,69 +1,69 @@
-"use client";
+'use client'
 
-import { useCallback, useState } from "react";
-import { useDropzone } from "react-dropzone";
-import { Upload, FileSpreadsheet, X, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useUploadListCsv } from "@/hooks/api/useLists";
-import { toast } from "sonner";
+import { useCallback, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { Upload, FileSpreadsheet, X, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { useUploadListCsv } from '@/hooks/api/useLists'
+import { toast } from 'sonner'
 
 interface CsvUploaderProps {
-  listId: string;
-  onUploadComplete?: () => void;
+  listId: string
+  onUploadComplete?: () => void
 }
 
 export function CsvUploader({ listId, onUploadComplete }: CsvUploaderProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const uploadMutation = useUploadListCsv();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const uploadMutation = useUploadListCsv()
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setSelectedFile(acceptedFiles[0]);
+      setSelectedFile(acceptedFiles[0])
     }
-  }, []);
+  }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "text/csv": [".csv"],
-      "application/vnd.ms-excel": [".csv"],
+      'text/csv': ['.csv'],
+      'application/vnd.ms-excel': ['.csv'],
     },
     maxFiles: 1,
     maxSize: 10 * 1024 * 1024, // 10MB
-  });
+  })
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile) return
 
     try {
       await uploadMutation.mutateAsync({
         listId,
         file: selectedFile,
-      });
-      toast.success("CSV uploaded! Processing will begin shortly.");
-      setSelectedFile(null);
-      onUploadComplete?.();
+      })
+      toast.success('CSV uploaded! Processing will begin shortly.')
+      setSelectedFile(null)
+      onUploadComplete?.()
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to upload CSV"
-      );
+        error instanceof Error ? error.message : 'Failed to upload CSV',
+      )
     }
-  };
+  }
 
   const removeFile = () => {
-    setSelectedFile(null);
-  };
+    setSelectedFile(null)
+  }
 
   return (
     <div className="space-y-4">
       <div
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors",
+          'border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
           isDragActive
-            ? "border-primary bg-primary/5"
-            : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+            ? 'border-primary bg-primary/5'
+            : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
         )}
       >
         <input {...getInputProps()} />
@@ -130,11 +130,11 @@ export function CsvUploader({ listId, onUploadComplete }: CsvUploaderProps) {
       <div className="text-xs text-muted-foreground space-y-1">
         <p>
           <strong>Supported columns:</strong> first_name, last_name, email,
-          phone, company, title, linkedin_url, website
+          phone, company, title, linkedin_url, website, Prospeo exports
         </p>
         <p>Each row must include phone or linkedin_url.</p>
-        <p>Rename or remove other columns before uploading.</p>
+        <p>Additional columns are stored as custom fields.</p>
       </div>
     </div>
-  );
+  )
 }
