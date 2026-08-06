@@ -134,6 +134,20 @@ app.use(
   },
 )
 
+// Clerk webhooks use Svix signatures over the raw JSON body
+app.use(
+  '/api/webhooks/clerk',
+  express.raw({ type: 'application/json' }),
+  (req, _res, next) => {
+    ;(req as express.Request & { rawBody?: string }).rawBody = Buffer.isBuffer(
+      req.body,
+    )
+      ? req.body.toString('utf8')
+      : ''
+    next()
+  },
+)
+
 // Telnyx TeXML voice webhooks send form-encoded data; messaging webhooks send
 // JSON. Capture the raw body on both for Ed25519 signature verification.
 app.use(
@@ -163,7 +177,8 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/api/webhooks/slack') ||
     req.path.startsWith('/api/webhooks/telnyx') ||
-    req.path.startsWith('/api/webhooks/stripe')
+    req.path.startsWith('/api/webhooks/stripe') ||
+    req.path.startsWith('/api/webhooks/clerk')
   ) {
     return next()
   }
@@ -173,7 +188,8 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/api/webhooks/slack') ||
     req.path.startsWith('/api/webhooks/telnyx') ||
-    req.path.startsWith('/api/webhooks/stripe')
+    req.path.startsWith('/api/webhooks/stripe') ||
+    req.path.startsWith('/api/webhooks/clerk')
   ) {
     return next()
   }
@@ -183,7 +199,8 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/api/webhooks/slack') ||
     req.path.startsWith('/api/webhooks/telnyx') ||
-    req.path.startsWith('/api/webhooks/stripe')
+    req.path.startsWith('/api/webhooks/stripe') ||
+    req.path.startsWith('/api/webhooks/clerk')
   ) {
     return next()
   }

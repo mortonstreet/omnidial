@@ -59,10 +59,19 @@ const envSchema = z.object({
   AXIOM_DATASET: z.string(),
   AXIOM_TOKEN: z.string(),
   SENTRY_DSN: z.string(),
+  POSTHOG_ENABLED: z
+    .string()
+    .default('false')
+    .transform((val) => val === 'true'),
+  POSTHOG_PROJECT_TOKEN: z.string().optional(),
+  POSTHOG_KEY: z.string().optional(),
+  POSTHOG_HOST: z.string().url().optional(),
   JWT_SECRET: z.string(),
   BETTER_AUTH_SECRET: z.string().optional(),
   BETTER_AUTH_TOKEN: z.string().optional(),
   ENCRYPTION_KEY: z.string().optional(),
+  CLERK_SECRET_KEY: z.string().optional(),
+  CLERK_WEBHOOK_SECRET: z.string().optional(),
   WEBHOOK_API_KEY: z.string(),
   STRIPE_PUBLISHABLE_KEY: z.string(),
   STRIPE_SECRET_KEY: z.string(),
@@ -319,6 +328,15 @@ export const config = {
   },
   sentry: {
     dsn: env.SENTRY_DSN,
+  },
+  posthog: {
+    enabled: env.POSTHOG_ENABLED,
+    projectToken: env.POSTHOG_PROJECT_TOKEN ?? env.POSTHOG_KEY,
+    host: env.POSTHOG_HOST ?? 'https://us.i.posthog.com',
+  },
+  clerk: {
+    secretKey: env.CLERK_SECRET_KEY,
+    webhookSecret: env.CLERK_WEBHOOK_SECRET,
   },
   stripe: {
     secretKey: env.STRIPE_SECRET_KEY,

@@ -765,6 +765,7 @@ export type Integration = {
 }
 export type Invitation = {
   id: string
+  clerkInvitationId: string | null
   organizationId: string
   email: string
   role: string | null
@@ -936,6 +937,7 @@ export type ManagerListenSession = {
 }
 export type Member = {
   id: string
+  clerkMembershipId: string | null
   organizationId: string
   userId: string
   role: string
@@ -1010,6 +1012,7 @@ export type OrchestrationStep = {
 }
 export type Organization = {
   id: string
+  clerkOrganizationId: string | null
   name: string
   slug: string
   logo: string | null
@@ -1433,6 +1436,7 @@ export type User = {
   updatedAt: Generated<Timestamp>
   email: string
   emailVerified: Generated<boolean>
+  clerkUserId: string | null
   name: string | null
   image: string | null
   stripeCustomerId: string | null

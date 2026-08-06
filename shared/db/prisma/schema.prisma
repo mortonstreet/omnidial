@@ -26,6 +26,7 @@ model User {
   updatedAt                DateTime  @default(now()) @updatedAt
   email                    String
   emailVerified            Boolean   @default(false)
+  clerkUserId              String?   @unique
   name                     String?
   image                    String?
   stripeCustomerId         String?
@@ -41,30 +42,30 @@ model User {
   onboardingIndustry       String?
   onboardingComplete       Boolean   @default(false)
 
-  sessions              Session[]
-  twoFactors            TwoFactor[]
-  accounts              Account[]
-  members               Member[]
-  invitations           Invitation[]
-  notifications         Notification[]
-  campaigns             Campaign[]
-  campaignLeads         CampaignLead[]
-  campaignUsers         CampaignUser[]
-  leadLists             LeadList[]
-  activities            Activity[]
-  scheduleEvents        ScheduleEvent[]
-  powerDialerProgresses PowerDialerProgress[]
-  integrations          Integration[]
-  apiKeys               ApiKey[]
-  listFavorites         ListFavorite[]
-  listOpens             ListOpen[]
-  clientAssignments     ClientUserAssignment[]
-  leadsCreated           Lead[]                   @relation("LeadCreatedBy")
-  leadsModified          Lead[]                   @relation("LeadModifiedBy")
-  leadListsModified      LeadList[]               @relation("LeadListModifiedBy")
-  foldersCreated         LeadListFolder[]         @relation("FolderCreatedBy")
-  foldersModified        LeadListFolder[]         @relation("FolderModifiedBy")
-  enrichEngineConnections EnrichEngineConnection[]
+  sessions                 Session[]
+  twoFactors               TwoFactor[]
+  accounts                 Account[]
+  members                  Member[]
+  invitations              Invitation[]
+  notifications            Notification[]
+  campaigns                Campaign[]
+  campaignLeads            CampaignLead[]
+  campaignUsers            CampaignUser[]
+  leadLists                LeadList[]
+  activities               Activity[]
+  scheduleEvents           ScheduleEvent[]
+  powerDialerProgresses    PowerDialerProgress[]
+  integrations             Integration[]
+  apiKeys                  ApiKey[]
+  listFavorites            ListFavorite[]
+  listOpens                ListOpen[]
+  clientAssignments        ClientUserAssignment[]
+  leadsCreated             Lead[]                   @relation("LeadCreatedBy")
+  leadsModified            Lead[]                   @relation("LeadModifiedBy")
+  leadListsModified        LeadList[]               @relation("LeadListModifiedBy")
+  foldersCreated           LeadListFolder[]         @relation("FolderCreatedBy")
+  foldersModified          LeadListFolder[]         @relation("FolderModifiedBy")
+  enrichEngineConnections  EnrichEngineConnection[]
   slackWorkspacesInstalled SlackWorkspace[]
   slackUserLinks           SlackUserLink[]
   slackNotificationRules   SlackNotificationRule[]
@@ -137,41 +138,42 @@ model TwoFactor {
 }
 
 model Organization {
-  id                    String                  @id
-  name                  String
-  slug                  String
-  logo                  String?
-  createdAt             DateTime
-  metadata              String?
-  members               Member[]
-  invitations           Invitation[]
-  creditTransactions    CreditTransaction[]
-  campaigns             Campaign[]
-  leads                 Lead[]
-  leadListFolders       LeadListFolder[]
-  leadLists             LeadList[]
-  clients               Client[]
-  activities            Activity[]
-  scheduleEvents        ScheduleEvent[]
-  scripts               Script[]
-  integrations          Integration[]
-  apiKeys               ApiKey[]
+  id                     String                  @id
+  clerkOrganizationId    String?                 @unique
+  name                   String
+  slug                   String
+  logo                   String?
+  createdAt              DateTime
+  metadata               String?
+  members                Member[]
+  invitations            Invitation[]
+  creditTransactions     CreditTransaction[]
+  campaigns              Campaign[]
+  leads                  Lead[]
+  leadListFolders        LeadListFolder[]
+  leadLists              LeadList[]
+  clients                Client[]
+  activities             Activity[]
+  scheduleEvents         ScheduleEvent[]
+  scripts                Script[]
+  integrations           Integration[]
+  apiKeys                ApiKey[]
   enrichEngineConnection EnrichEngineConnection?
-  slackWorkspaces       SlackWorkspace[]
+  slackWorkspaces        SlackWorkspace[]
 
   // Agent orchestration v2
-  agentDefinitions  AgentDefinition[]
-  agentExecutions   AgentExecution[]
-  agentApprovals    AgentApproval[]
-  agentTools        AgentTool[]
-  agentUsage        AgentUsage[]
+  agentDefinitions AgentDefinition[]
+  agentExecutions  AgentExecution[]
+  agentApprovals   AgentApproval[]
+  agentTools       AgentTool[]
+  agentUsage       AgentUsage[]
 
   // Phone provisioning
   phoneProvisioning PhoneProvisioning?
 
   managedBySuperadmin Boolean @default(false)
 
-  usageCycles UsageCycle[]
+  usageCycles   UsageCycle[]
   billingEvents BillingEvent[]
 
   @@unique([slug])
@@ -220,7 +222,7 @@ model ClientPhoneNumber {
   id             String   @id @default(uuid())
   organizationId String
   clientId       String
-  phoneNumber    String   // E.164 format
+  phoneNumber    String // E.164 format
   friendlyName   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now()) @updatedAt
@@ -234,28 +236,30 @@ model ClientPhoneNumber {
 }
 
 model Member {
-  id             String       @id
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           String
-  createdAt      DateTime
+  id                String       @id
+  clerkMembershipId String?      @unique
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              String
+  createdAt         DateTime
 
   @@map("member")
 }
 
 model Invitation {
-  id             String       @id
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email          String
-  role           String?
-  status         String
-  expiresAt      DateTime
-  createdAt      DateTime
-  inviterId      String
-  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  id                String       @id
+  clerkInvitationId String?      @unique
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email             String
+  role              String?
+  status            String
+  expiresAt         DateTime
+  createdAt         DateTime
+  inviterId         String
+  user              User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
 
   @@map("invitation")
 }
@@ -356,28 +360,28 @@ model Campaign {
 // CRM Models
 
 model Lead {
-  id               String    @id @default(uuid())
+  id               String   @id @default(uuid())
   organizationId   String
   firstName        String?
   lastName         String?
   email            String?
   phone            String?
-  normalizedPhone  String?   // E.164 format for deduplication (e.g., "+15551234567")
+  normalizedPhone  String? // E.164 format for deduplication (e.g., "+15551234567")
   company          String?
   title            String?
   linkedInUrl      String?
-  website          String?   // Company or personal website URL
-  customFields     Json      @default("{}")
+  website          String? // Company or personal website URL
+  customFields     Json     @default("{}")
   pipelineStageId  String?
-  dealValue        Decimal?  @db.Decimal(12, 2)
-  aiCompanySummary String?   // AI-generated company summary (cached, markdown format for backward compat)
+  dealValue        Decimal? @db.Decimal(12, 2)
+  aiCompanySummary String? // AI-generated company summary (cached, markdown format for backward compat)
 
   // Structured AI summary fields (Phase 2)
-  aiCompanyOverview      String?   // Company description (2-4 sentences)
-  aiSalesTalkingPoints   Json?     // Array of talking points strings
-  aiBusinessContext      Json?     // { founded, size, funding, recentNews, targetCustomers, products }
-  aiSummaryGeneratedAt   DateTime? // When the summary was last generated
-  aiSummaryProvider      String?   // "openrouter" | "openai" - which provider generated this
+  aiCompanyOverview    String? // Company description (2-4 sentences)
+  aiSalesTalkingPoints Json? // Array of talking points strings
+  aiBusinessContext    Json? // { founded, size, funding, recentNews, targetCustomers, products }
+  aiSummaryGeneratedAt DateTime? // When the summary was last generated
+  aiSummaryProvider    String? // "openrouter" | "openai" - which provider generated this
 
   createdById      String?
   lastModifiedById String?
@@ -386,35 +390,35 @@ model Lead {
   deletedAt        DateTime?
 
   // Call tracking fields for predictive scoring
-  phoneType         String?   // "mobile" | "landline" | "voip" | "unknown"
+  phoneType         String? // "mobile" | "landline" | "voip" | "unknown"
   totalCallAttempts Int       @default(0)
   totalAnswers      Int       @default(0)
   lastCallAt        DateTime?
 
   // Enrichment fields
-  enrichmentStatus  String?   // "pending" | "enriched" | "failed" | "stale"
-  enrichmentSources String[]  @default([]) // Array of vendor names that enriched this lead
+  enrichmentStatus  String? // "pending" | "enriched" | "failed" | "stale"
+  enrichmentSources String[] @default([]) // Array of vendor names that enriched this lead
 
   // Timezone resolution (from LinkedIn location)
-  timezone            String?   // IANA timezone (e.g., "America/Detroit")
-  timezoneResolvedAt  DateTime? // When resolution was attempted (null = never tried)
+  timezone           String? // IANA timezone (e.g., "America/Detroit")
+  timezoneResolvedAt DateTime? // When resolution was attempted (null = never tried)
 
   // Voicemail analysis
-  hasPersonalVoicemail Boolean?  // true = personal greeting, false = generic/carrier, null = unknown
+  hasPersonalVoicemail Boolean? // true = personal greeting, false = generic/carrier, null = unknown
 
   // Direct client assignment (for leads not in a campaign)
-  clientId         String?
+  clientId String?
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  pipelineStage  PipelineStage?  @relation(fields: [pipelineStageId], references: [id])
-  client         Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  createdBy      User?           @relation("LeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  lastModifiedBy User?           @relation("LeadModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
-  tasks          Task[]
-  notes          Note[]
-  campaignLeads  CampaignLead[]
-  listEntries    LeadListEntry[]
-  scheduleEvents ScheduleEvent[]
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipelineStage    PipelineStage?      @relation(fields: [pipelineStageId], references: [id])
+  client           Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy        User?               @relation("LeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastModifiedBy   User?               @relation("LeadModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
+  tasks            Task[]
+  notes            Note[]
+  campaignLeads    CampaignLead[]
+  listEntries      LeadListEntry[]
+  scheduleEvents   ScheduleEvent[]
   qualifications   LeadQualification[]
   intelligenceData CallIntelligence[]
   crmSyncRecords   CrmSyncRecord[]
@@ -494,7 +498,7 @@ model CampaignLead {
 
   // Predictive scoring fields
   predictiveScore Decimal? @db.Decimal(5, 4) // Cached score for this lead in this campaign
-  scoreDialOrder  Int?     // Dial order based on predictive score (null = use dialOrder)
+  scoreDialOrder  Int? // Dial order based on predictive score (null = use dialOrder)
 
   campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -640,7 +644,7 @@ model Call {
   campaignId       String?
   twilioCallSid    String?      @unique // Parent call SID (browser to Twilio)
   dialCallSid      String?      @unique // Child call SID (Twilio to destination phone)
-  conferenceSid    String?      // Conference SID for live listening
+  conferenceSid    String? // Conference SID for live listening
   fromNumber       String
   toNumber         String
   direction        String       @default("outbound") // "outbound" | "inbound"
@@ -652,7 +656,7 @@ model Call {
   recordingSid     String?
   voicemailDropped Boolean      @default(false)
   voicemailLeft    Boolean      @default(false) // true if caller left a voicemail (inbound)
-  voicemailReadAt  DateTime?    // null = unread, timestamp = read
+  voicemailReadAt  DateTime? // null = unread, timestamp = read
   startedAt        DateTime     @default(now())
   answeredAt       DateTime?
   endedAt          DateTime?
@@ -660,19 +664,19 @@ model Call {
   updatedAt        DateTime     @updatedAt
 
   // Parallel dialing fields
-  parallelSessionId    String?  // Reference to parallel dial session
-  wasParallelAbandoned Boolean  @default(false) // True if this call was abandoned in parallel dialing
+  parallelSessionId    String? // Reference to parallel dial session
+  wasParallelAbandoned Boolean @default(false) // True if this call was abandoned in parallel dialing
 
   // Predictive scoring field
-  predictiveScore      Decimal? @db.Decimal(5, 4) // Score at time of dial
+  predictiveScore Decimal? @db.Decimal(5, 4) // Score at time of dial
 
   // Local presence field
-  poolNumberId         String?  // Which pool number was used for caller ID
+  poolNumberId String? // Which pool number was used for caller ID
 
   // Sales Coach relations
-  transcript       CallTranscript?
-  coaching         CallCoaching?
-  intelligence     CallIntelligence?
+  transcript   CallTranscript?
+  coaching     CallCoaching?
+  intelligence CallIntelligence?
 
   @@index([twilioConfigId])
   @@index([userId])
@@ -884,7 +888,7 @@ model ApiKeyUsage {
 model EnrichEngineConnection {
   id              String    @id @default(uuid())
   organizationId  String    @unique
-  apiKeyEncrypted String    // Encrypted API key from EnrichEngine
+  apiKeyEncrypted String // Encrypted API key from EnrichEngine
   isActive        Boolean   @default(true)
   lastSyncAt      DateTime?
   createdById     String
@@ -946,9 +950,9 @@ model ActiveDialerSession {
   updatedAt      DateTime  @updatedAt
 
   // Sales floor visibility fields
-  currentLeadId       String?
-  currentLeadName     String?  // Cached for display without join
-  callsThisSession    Int      @default(0)
+  currentLeadId        String?
+  currentLeadName      String? // Cached for display without join
+  callsThisSession     Int     @default(0)
   connectedThisSession Int     @default(0)
 
   @@index([organizationId, status])
@@ -961,7 +965,7 @@ model CallTranscript {
   id               String   @id @default(uuid())
   callId           String   @unique
   organizationId   String
-  transcriptText   String   // Full transcript text
+  transcriptText   String // Full transcript text
   transcriptSource String   @default("twilio") // "twilio" | "deepgram" | "assembly" | "manual"
   speakerLabels    Json     @default("[]") // Array of speaker segments with timestamps
   durationSeconds  Int      @default(0)
@@ -969,9 +973,9 @@ model CallTranscript {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
 
-  call          Call              @relation(fields: [callId], references: [id], onDelete: Cascade)
-  coaching      CallCoaching?
-  intelligence  CallIntelligence?
+  call         Call              @relation(fields: [callId], references: [id], onDelete: Cascade)
+  coaching     CallCoaching?
+  intelligence CallIntelligence?
 
   @@index([organizationId])
   @@index([callId])
@@ -980,30 +984,30 @@ model CallTranscript {
 
 // Sales Coach - AI Coaching Feedback
 model CallCoaching {
-  id             String   @id @default(uuid())
-  callId         String   @unique
-  transcriptId   String   @unique
+  id             String @id @default(uuid())
+  callId         String @unique
+  transcriptId   String @unique
   organizationId String
-  userId         String   // The rep who made the call
+  userId         String // The rep who made the call
 
   // AI Analysis Results
-  overallScore   Int      @default(0) // 1-10 score
-  unhingedQuote  String?  // Headline/memorable coaching quote
-  strengths      String[] @default([]) // Array of strength points
-  improvements   String[] @default([]) // Array of improvement areas
+  overallScore  Int      @default(0) // 1-10 score
+  unhingedQuote String? // Headline/memorable coaching quote
+  strengths     String[] @default([]) // Array of strength points
+  improvements  String[] @default([]) // Array of improvement areas
 
   // Detailed feedback stored as JSON
-  feedback       Json     @default("{}") // Structured coaching feedback by category
+  feedback Json @default("{}") // Structured coaching feedback by category
 
   // Analysis metadata
-  modelUsed      String   @default("claude-3-sonnet") // AI model used for analysis
-  tokensUsed     Int      @default(0)
-  analysisTimeMs Int      @default(0)
+  modelUsed      String @default("claude-3-sonnet") // AI model used for analysis
+  tokensUsed     Int    @default(0)
+  analysisTimeMs Int    @default(0)
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
-  call       Call          @relation(fields: [callId], references: [id], onDelete: Cascade)
+  call       Call           @relation(fields: [callId], references: [id], onDelete: Cascade)
   transcript CallTranscript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -1015,28 +1019,28 @@ model CallCoaching {
 
 // Call Intelligence - AI-extracted business intelligence from call transcripts
 model CallIntelligence {
-  id             String   @id @default(uuid())
-  callId         String   @unique
-  transcriptId   String   @unique
+  id             String  @id @default(uuid())
+  callId         String  @unique
+  transcriptId   String  @unique
   organizationId String
   userId         String
   leadId         String?
 
   // AI Analysis Results
-  decisionMaker     Json     @default("{}") // { name, title, role, notes }
-  currentStrategies Json     @default("[]") // Array of strategy strings
-  painPoints        Json     @default("[]") // Array of pain point strings
-  techStack         Json     @default("[]") // Array of tech/vendor strings
-  talkingPoints     Json     @default("[]") // Array of talking point strings
-  summary           String   @default("")   // 2-3 sentence executive summary
+  decisionMaker     Json   @default("{}") // { name, title, role, notes }
+  currentStrategies Json   @default("[]") // Array of strategy strings
+  painPoints        Json   @default("[]") // Array of pain point strings
+  techStack         Json   @default("[]") // Array of tech/vendor strings
+  talkingPoints     Json   @default("[]") // Array of talking point strings
+  summary           String @default("") // 2-3 sentence executive summary
 
   // Analysis metadata
-  modelUsed      String   @default("claude-3.5-sonnet")
-  tokensUsed     Int      @default(0)
-  analysisTimeMs Int      @default(0)
+  modelUsed      String @default("claude-3.5-sonnet")
+  tokensUsed     Int    @default(0)
+  analysisTimeMs Int    @default(0)
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   call       Call           @relation(fields: [callId], references: [id], onDelete: Cascade)
   transcript CallTranscript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
@@ -1056,19 +1060,19 @@ model CallIntelligence {
 // Slack Workspace - Stores connected Slack workspace information
 model SlackWorkspace {
   id                 String    @id @default(uuid())
-  organizationId     String?   // Nullable for pending workspaces (App Directory flow)
+  organizationId     String? // Nullable for pending workspaces (App Directory flow)
   teamId             String    @unique // Slack workspace ID (T01234567)
-  teamName           String    // Workspace name
-  teamDomain         String?   // Workspace domain (company.slack.com)
-  botToken           String    // Encrypted xoxb-... token
-  botUserId          String    // Bot's Slack user ID
-  appId              String    // Slack App ID
-  enterpriseId       String?   // For Enterprise Grid
+  teamName           String // Workspace name
+  teamDomain         String? // Workspace domain (company.slack.com)
+  botToken           String // Encrypted xoxb-... token
+  botUserId          String // Bot's Slack user ID
+  appId              String // Slack App ID
+  enterpriseId       String? // For Enterprise Grid
   enterpriseName     String?
-  installedById      String?   // OmniDial user who installed
-  installedBySlackId String?   // Slack user who installed
-  defaultChannelId   String?   // Default channel for notifications
-  reviewChannelId    String?   // Channel for AI qualification reviews
+  installedById      String? // OmniDial user who installed
+  installedBySlackId String? // Slack user who installed
+  defaultChannelId   String? // Default channel for notifications
+  reviewChannelId    String? // Channel for AI qualification reviews
   settings           Json      @default("{}") // Notification preferences
   isActive           Boolean   @default(true)
   isPending          Boolean   @default(false) // True when installed from App Directory but not linked to org
@@ -1093,13 +1097,13 @@ model SlackUserLink {
   id                   String   @id @default(uuid())
   workspaceId          String
   userId               String
-  slackUserId          String   // Slack user ID (U01234567)
-  slackEmail           String?  // Email from Slack profile
+  slackUserId          String // Slack user ID (U01234567)
+  slackEmail           String? // Email from Slack profile
   slackDisplayName     String?
   slackRealName        String?
   slackTimezone        String?
   notificationsEnabled Boolean  @default(true)
-  dmChannelId          String?  // Cached DM channel ID
+  dmChannelId          String? // Cached DM channel ID
   createdAt            DateTime @default(now())
   updatedAt            DateTime @default(now()) @updatedAt
 
@@ -1117,9 +1121,9 @@ model SlackUserLink {
 model SlackNotificationRule {
   id          String   @id @default(uuid())
   workspaceId String
-  channelId   String   // Slack channel ID
-  channelName String?  // Cached channel name
-  eventType   String   // Event type enum
+  channelId   String // Slack channel ID
+  channelName String? // Cached channel name
+  eventType   String // Event type enum
   enabled     Boolean  @default(true)
   config      Json     @default("{}") // Event-specific config
   createdById String?
@@ -1140,9 +1144,9 @@ model SlackMessageLog {
   id           String   @id @default(uuid())
   workspaceId  String
   channelId    String
-  messageTs    String?  // Slack message timestamp
+  messageTs    String? // Slack message timestamp
   eventType    String?
-  payload      Json?    // Message content sent
+  payload      Json? // Message content sent
   success      Boolean  @default(true)
   errorMessage String?
   createdAt    DateTime @default(now())
@@ -1158,8 +1162,8 @@ model SlackLinkToken {
   id          String    @id @default(uuid())
   workspaceId String
   token       String    @unique // crypto.randomBytes(32).toString('hex')
-  slackUserId String    // Slack user who initiated the link
-  expiresAt   DateTime  // 1 hour expiry
+  slackUserId String // Slack user who initiated the link
+  expiresAt   DateTime // 1 hour expiry
   usedAt      DateTime? // Set when token is used
   createdAt   DateTime  @default(now())
 
@@ -1183,7 +1187,7 @@ model ParallelDialSession {
   listId         String?
   lineCount      Int       @default(2) // Number of parallel lines (2-5)
   status         String    @default("active") // "active" | "paused" | "ended"
-  conferenceId   String?   // Twilio conference SID for the rep
+  conferenceId   String? // Twilio conference SID for the rep
   totalAttempts  Int       @default(0)
   totalConnects  Int       @default(0)
   totalAbandoned Int       @default(0)
@@ -1201,17 +1205,17 @@ model ParallelDialSession {
 
 // Parallel Dial Attempt - Individual outbound calls during parallel dialing
 model ParallelDialAttempt {
-  id              String    @id @default(uuid())
-  sessionId       String
-  leadId          String
-  callSid         String?   @unique // Twilio call SID
-  status          String    @default("dialing") // "dialing" | "ringing" | "connected" | "abandoned" | "failed" | "no_answer"
-  wasConnected    Boolean   @default(false) // True if this lead answered first
-  wasAbandoned    Boolean   @default(false) // True if answered but dropped due to another connect
-  abandonedAfterMs Int?     // How long they waited before abandon
-  startedAt       DateTime  @default(now())
-  answeredAt      DateTime?
-  endedAt         DateTime?
+  id               String    @id @default(uuid())
+  sessionId        String
+  leadId           String
+  callSid          String?   @unique // Twilio call SID
+  status           String    @default("dialing") // "dialing" | "ringing" | "connected" | "abandoned" | "failed" | "no_answer"
+  wasConnected     Boolean   @default(false) // True if this lead answered first
+  wasAbandoned     Boolean   @default(false) // True if answered but dropped due to another connect
+  abandonedAfterMs Int? // How long they waited before abandon
+  startedAt        DateTime  @default(now())
+  answeredAt       DateTime?
+  endedAt          DateTime?
 
   session ParallelDialSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -1226,20 +1230,20 @@ model ParallelDialAttempt {
 
 // Lead Predictive Score - Calculated likelihood to answer
 model LeadPredictiveScore {
-  id             String   @id @default(uuid())
-  organizationId String
-  leadId         String   @unique
-  score          Decimal  @db.Decimal(5, 4) // 0.0000 to 1.0000
-  phoneType      String?  // "mobile" | "landline" | "voip" | "unknown"
-  bestDayOfWeek  Int?     // 0-6 (Sunday-Saturday)
-  bestHourOfDay  Int?     // 0-23
-  totalAttempts  Int      @default(0)
-  totalAnswers   Int      @default(0)
-  lastAttemptAt  DateTime?
-  lastAnswerAt   DateTime?
+  id                   String    @id @default(uuid())
+  organizationId       String
+  leadId               String    @unique
+  score                Decimal   @db.Decimal(5, 4) // 0.0000 to 1.0000
+  phoneType            String? // "mobile" | "landline" | "voip" | "unknown"
+  bestDayOfWeek        Int? // 0-6 (Sunday-Saturday)
+  bestHourOfDay        Int? // 0-23
+  totalAttempts        Int       @default(0)
+  totalAnswers         Int       @default(0)
+  lastAttemptAt        DateTime?
+  lastAnswerAt         DateTime?
   hasPersonalVoicemail Boolean? // true = personal greeting, false = generic/carrier, null = unknown
-  calculatedAt   DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  calculatedAt         DateTime  @default(now())
+  updatedAt            DateTime  @default(now()) @updatedAt
 
   @@index([organizationId, score(sort: Desc)])
   @@index([leadId])
@@ -1250,8 +1254,8 @@ model LeadPredictiveScore {
 model CallAnswerPattern {
   id             String   @id @default(uuid())
   organizationId String
-  dayOfWeek      Int      // 0-6 (Sunday-Saturday)
-  hourOfDay      Int      // 0-23
+  dayOfWeek      Int // 0-6 (Sunday-Saturday)
+  hourOfDay      Int // 0-23
   attempts       Int      @default(0)
   answers        Int      @default(0)
   answerRate     Decimal  @db.Decimal(5, 4) // Cached calculation
@@ -1268,21 +1272,21 @@ model CallAnswerPattern {
 
 // Call Blitz - Team competition/sprint sessions
 model CallBlitz {
-  id             String    @id @default(uuid())
-  organizationId String
-  name           String
-  description    String?
-  status         String    @default("scheduled") // "scheduled" | "active" | "paused" | "ended"
-  startAt        DateTime
-  endAt          DateTime
-  goalType       String    @default("calls") // "calls" | "connects" | "meetings"
-  goalTarget     Int?      // Optional target to hit
+  id               String    @id @default(uuid())
+  organizationId   String
+  name             String
+  description      String?
+  status           String    @default("scheduled") // "scheduled" | "active" | "paused" | "ended"
+  startAt          DateTime
+  endAt            DateTime
+  goalType         String    @default("calls") // "calls" | "connects" | "meetings"
+  goalTarget       Int? // Optional target to hit
   prizeDescription String?
-  createdById    String
-  startedAt      DateTime?
-  endedAt        DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @default(now()) @updatedAt
+  createdById      String
+  startedAt        DateTime?
+  endedAt          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
 
   participants BlitzParticipant[]
 
@@ -1293,15 +1297,15 @@ model CallBlitz {
 
 // Blitz Participant - Tracks individual performance in a blitz
 model BlitzParticipant {
-  id             String    @id @default(uuid())
-  blitzId        String
-  userId         String
-  callCount      Int       @default(0)
-  connectCount   Int       @default(0)
-  meetingCount   Int       @default(0)
-  rank           Int?      // Current leaderboard position
-  joinedAt       DateTime  @default(now())
-  updatedAt      DateTime  @default(now()) @updatedAt
+  id           String   @id @default(uuid())
+  blitzId      String
+  userId       String
+  callCount    Int      @default(0)
+  connectCount Int      @default(0)
+  meetingCount Int      @default(0)
+  rank         Int? // Current leaderboard position
+  joinedAt     DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   blitz CallBlitz @relation(fields: [blitzId], references: [id], onDelete: Cascade)
 
@@ -1314,10 +1318,10 @@ model BlitzParticipant {
 model ManagerListenSession {
   id             String    @id @default(uuid())
   organizationId String
-  managerId      String    // The manager listening
-  repId          String    // The rep being monitored
-  callId         String    // The call being monitored
-  conferenceSid  String?   // Twilio conference SID
+  managerId      String // The manager listening
+  repId          String // The rep being monitored
+  callId         String // The call being monitored
+  conferenceSid  String? // Twilio conference SID
   mode           String    @default("listen") // "listen" | "whisper" | "barge"
   startedAt      DateTime  @default(now())
   endedAt        DateTime?
@@ -1341,7 +1345,7 @@ model CoachCard {
   title          String
   category       String   @default("general") // "objection" | "question" | "closing" | "discovery" | "general"
   triggerPhrases String[] @default([])
-  content        String   // Main coaching content (markdown)
+  content        String // Main coaching content (markdown)
   tips           String[] @default([]) // Bullet point tips
   isActive       Boolean  @default(true)
   sortOrder      Int      @default(0)
@@ -1358,14 +1362,14 @@ model CoachCard {
 
 // Coach Card Trigger - Log of when cards were triggered
 model CoachCardTrigger {
-  id             String   @id @default(uuid())
-  coachCardId    String
-  callId         String
-  userId         String
-  triggerPhrase  String   // The phrase that triggered this
-  confidence     Decimal? @db.Decimal(5, 4) // Match confidence score
-  wasHelpful     Boolean? // User feedback
-  triggeredAt    DateTime @default(now())
+  id            String   @id @default(uuid())
+  coachCardId   String
+  callId        String
+  userId        String
+  triggerPhrase String // The phrase that triggered this
+  confidence    Decimal? @db.Decimal(5, 4) // Match confidence score
+  wasHelpful    Boolean? // User feedback
+  triggeredAt   DateTime @default(now())
 
   coachCard CoachCard @relation(fields: [coachCardId], references: [id], onDelete: Cascade)
 
@@ -1383,7 +1387,7 @@ model LiveTranscriptSegment {
   speaker        String   @default("unknown") // "rep" | "prospect" | "unknown"
   text           String
   confidence     Decimal? @db.Decimal(5, 4)
-  startMs        Int      // Milliseconds from call start
+  startMs        Int // Milliseconds from call start
   endMs          Int
   isFinal        Boolean  @default(false) // Interim vs final transcript
   createdAt      DateTime @default(now())
@@ -1401,15 +1405,15 @@ model LiveTranscriptSegment {
 model PhoneNumberPool {
   id             String    @id @default(uuid())
   organizationId String
-  phoneNumber    String    // E.164 format
+  phoneNumber    String // E.164 format
   friendlyName   String?
-  areaCode       String    // 3-digit area code
-  region         String?   // State/province
+  areaCode       String // 3-digit area code
+  region         String? // State/province
   country        String    @default("US")
   twilioSid      String?   @unique // Twilio phone number SID
   capabilities   String[]  @default([]) // ["voice", "sms", "mms"]
-  cnamStatus     String?   // "pending" | "approved" | "rejected"
-  cnamName       String?   // Registered CNAM name
+  cnamStatus     String? // "pending" | "approved" | "rejected"
+  cnamName       String? // Registered CNAM name
   isActive       Boolean   @default(true)
   lastUsedAt     DateTime?
   callsToday     Int       @default(0) // For rotation/spam prevention
@@ -1426,14 +1430,14 @@ model PhoneNumberPool {
 
 // Callback Route - Routes inbound calls to the rep who dialed
 model CallbackRoute {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   organizationId String
   poolNumberId   String
-  leadPhone      String    // The lead's phone number (normalized)
-  repUserId      String    // The rep who dialed this lead
-  lastCallAt     DateTime  @default(now())
-  expiresAt      DateTime  // When this route expires
-  createdAt      DateTime  @default(now())
+  leadPhone      String // The lead's phone number (normalized)
+  repUserId      String // The rep who dialed this lead
+  lastCallAt     DateTime @default(now())
+  expiresAt      DateTime // When this route expires
+  createdAt      DateTime @default(now())
 
   poolNumber PhoneNumberPool @relation(fields: [poolNumberId], references: [id], onDelete: Cascade)
 
@@ -1452,13 +1456,13 @@ model CallbackRoute {
 model DataVendorConnection {
   id               String    @id @default(uuid())
   organizationId   String
-  provider         String    // "zoominfo" | "apollo" | "clearbit" | "lusha" | "enrichengine"
-  apiKeyEncrypted  String    // Encrypted API key
+  provider         String // "zoominfo" | "apollo" | "clearbit" | "lusha" | "enrichengine"
+  apiKeyEncrypted  String // Encrypted API key
   isActive         Boolean   @default(true)
   priority         Int       @default(0) // Order for waterfall enrichment
   enabledDataTypes String[]  @default(["phone", "email", "profile"])
   creditsUsed      Int       @default(0)
-  creditsLimit     Int?      // Monthly limit if set
+  creditsLimit     Int? // Monthly limit if set
   lastSyncAt       DateTime?
   connectedById    String
   createdAt        DateTime  @default(now())
@@ -1473,16 +1477,16 @@ model DataVendorConnection {
 
 // Lead Contact Info - Multiple contact points per lead
 model LeadContactInfo {
-  id             String   @id @default(uuid())
-  leadId         String
-  type           String   // "work_email" | "personal_email" | "mobile" | "direct_dial" | "office"
-  value          String   // The actual email/phone
-  isPrimary      Boolean  @default(false)
-  isVerified     Boolean  @default(false)
-  source         String?  // Which vendor provided this
-  confidence     Decimal? @db.Decimal(5, 4) // Vendor confidence score
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  id         String   @id @default(uuid())
+  leadId     String
+  type       String // "work_email" | "personal_email" | "mobile" | "direct_dial" | "office"
+  value      String // The actual email/phone
+  isPrimary  Boolean  @default(false)
+  isVerified Boolean  @default(false)
+  source     String? // Which vendor provided this
+  confidence Decimal? @db.Decimal(5, 4) // Vendor confidence score
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([leadId, type])
   @@index([leadId, isPrimary])
@@ -1491,19 +1495,19 @@ model LeadContactInfo {
 
 // Enrichment History - Track enrichment events for billing/audit
 model EnrichmentHistory {
-  id               String   @id @default(uuid())
-  organizationId   String
-  leadId           String
+  id                 String   @id @default(uuid())
+  organizationId     String
+  leadId             String
   vendorConnectionId String?
-  provider         String   // Which vendor was used
-  requestType      String   // "person" | "company" | "email_lookup" | "phone_lookup"
-  fieldsRequested  String[] @default([])
-  fieldsEnriched   String[] @default([]) // Which fields were actually filled
-  creditsCost      Int      @default(1)
-  success          Boolean  @default(true)
-  errorMessage     String?
-  responseTimeMs   Int?
-  createdAt        DateTime @default(now())
+  provider           String // Which vendor was used
+  requestType        String // "person" | "company" | "email_lookup" | "phone_lookup"
+  fieldsRequested    String[] @default([])
+  fieldsEnriched     String[] @default([]) // Which fields were actually filled
+  creditsCost        Int      @default(1)
+  success            Boolean  @default(true)
+  errorMessage       String?
+  responseTimeMs     Int?
+  createdAt          DateTime @default(now())
 
   vendorConnection DataVendorConnection? @relation(fields: [vendorConnectionId], references: [id], onDelete: SetNull)
 
@@ -1516,17 +1520,17 @@ model EnrichmentHistory {
 // Enrichment Cache - Platform-level cache for vendor responses (no org scope)
 // RLS classification: no-rls (backend-only access)
 model EnrichmentCache {
-  id             String   @id @default(uuid())
-  lookupKey      String   // Canonical LinkedIn URL or identity hash
-  lookupType     String   // "linkedin" | "identity_hash"
-  provider       String   // "prospeo" | "forager" | "leadmagic"
-  rawResponse    Json     // Full vendor response
-  normalizedData Json     // { firstName, lastName, email, phone, phoneNumbers[], company, title }
+  id             String    @id @default(uuid())
+  lookupKey      String // Canonical LinkedIn URL or identity hash
+  lookupType     String // "linkedin" | "identity_hash"
+  provider       String // "prospeo" | "forager" | "leadmagic"
+  rawResponse    Json // Full vendor response
+  normalizedData Json // { firstName, lastName, email, phone, phoneNumbers[], company, title }
   expiresAt      DateTime
-  hitCount       Int      @default(0)
+  hitCount       Int       @default(0)
   lastHitAt      DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
 
   @@unique([lookupKey, provider])
   @@index([lookupKey])
@@ -1542,13 +1546,13 @@ model EnrichmentCache {
 model CustomFieldSchema {
   id             String   @id @default(uuid())
   organizationId String
-  name           String   // Internal field name (snake_case, e.g., "funding_amount")
-  label          String   // Display label (e.g., "Funding Amount")
+  name           String // Internal field name (snake_case, e.g., "funding_amount")
+  label          String // Display label (e.g., "Funding Amount")
   fieldType      String   @default("text") // "text" | "number" | "date" | "url" | "email" | "phone" | "select" | "multiselect"
   description    String?
   isRequired     Boolean  @default(false)
   defaultValue   String?
-  validationRule String?  // JSON: regex pattern, min/max, allowed values, etc.
+  validationRule String? // JSON: regex pattern, min/max, allowed values, etc.
   sortOrder      Int      @default(0)
   isActive       Boolean  @default(true)
   createdById    String?
@@ -1565,10 +1569,10 @@ model CustomFieldSchema {
 // Research Template - Predefined research task configurations
 model ResearchTemplate {
   id               String   @id @default(uuid())
-  organizationId   String?  // null for system templates
+  organizationId   String? // null for system templates
   name             String
   description      String?
-  prompt           String   // LLM prompt for extraction
+  prompt           String // LLM prompt for extraction
   targetUrls       String[] @default([]) // URL patterns like "crunchbase.com", "{company_website}"
   extractionSchema Json     @default("{}") // LLM extraction schema
   fieldMappings    Json     @default("{}") // Maps extracted fields to custom fields
@@ -1591,7 +1595,7 @@ model ResearchTask {
   organizationId String
   leadId         String
   templateId     String?
-  customPrompt   String?   // Override prompt if not using template
+  customPrompt   String? // Override prompt if not using template
   targetUrls     String[]  @default([]) // Resolved URLs for this specific task
   status         String    @default("pending") // "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
   priority       Int       @default(0) // Higher = higher priority
@@ -1600,8 +1604,8 @@ model ResearchTask {
   errorMessage   String?
   retryCount     Int       @default(0)
   maxRetries     Int       @default(3)
-  rawResults     Json?     // Raw crawl results
-  extractedData  Json?     // Processed extraction data
+  rawResults     Json? // Raw crawl results
+  extractedData  Json? // Processed extraction data
   creditsUsed    Int       @default(0)
   crawlCount     Int       @default(0) // Number of URLs crawled
   createdById    String?
@@ -1623,17 +1627,17 @@ model ResearchApproval {
   id              String    @id @default(uuid())
   researchTaskId  String
   leadId          String
-  fieldSchemaId   String?   // Reference to CustomFieldSchema
-  fieldName       String    // Field being updated
+  fieldSchemaId   String? // Reference to CustomFieldSchema
+  fieldName       String // Field being updated
   fieldType       String    @default("text") // Type of field
-  currentValue    String?   // Current value on lead
-  proposedValue   String    // Value extracted from research
-  source          String?   // URL or source of the data
+  currentValue    String? // Current value on lead
+  proposedValue   String // Value extracted from research
+  source          String? // URL or source of the data
   confidence      Decimal?  @db.Decimal(5, 4) // 0.0000 to 1.0000
   status          String    @default("pending") // "pending" | "approved" | "rejected" | "modified"
   reviewedById    String?
   reviewedAt      DateTime?
-  modifiedValue   String?   // If user modified before approving
+  modifiedValue   String? // If user modified before approving
   rejectionReason String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
@@ -1653,7 +1657,7 @@ model ResearchHistory {
   organizationId String
   leadId         String?
   taskId         String?
-  action         String   // "task_created" | "task_started" | "task_completed" | "approval_approved" | "approval_rejected" | etc.
+  action         String // "task_created" | "task_started" | "task_completed" | "approval_approved" | "approval_rejected" | etc.
   details        Json     @default("{}") // Action-specific details
   performedById  String?
   createdAt      DateTime @default(now())
@@ -1673,12 +1677,12 @@ model ResearchHistory {
 // Error Log - Platform-wide error tracking for admin visibility
 model ErrorLog {
   id             String    @id @default(uuid())
-  code           String    // e.g., "TWILIO_31002", "DIALER_INIT_FAILED", "API_500"
+  code           String // e.g., "TWILIO_31002", "DIALER_INIT_FAILED", "API_500"
   message        String
   description    String?
-  severity       String    // "warning" | "error" | "critical"
-  product        String    // "Programmable Voice" | "Calls" | "Dialer" | "API"
-  category       String    // "TWILIO" | "DIALER" | "API" | "VALIDATION" | "CONFIG"
+  severity       String // "warning" | "error" | "critical"
+  product        String // "Programmable Voice" | "Calls" | "Dialer" | "API"
+  category       String // "TWILIO" | "DIALER" | "API" | "VALIDATION" | "CONFIG"
   organizationId String?
   userId         String?
   callId         String?
@@ -1686,7 +1690,7 @@ model ErrorLog {
   leadId         String?
   twilioCallSid  String?
   metadata       Json      @default("{}")
-  source         String?   // "backend" | "webhook" | "cron"
+  source         String? // "backend" | "webhook" | "cron"
   requestId      String?
   stackTrace     String?
   status         String    @default("open") // "open" | "acknowledged" | "resolved"
@@ -1711,7 +1715,7 @@ model ErrorLog {
 
 // Lead Qualification Result - Core of the lead agent
 model LeadQualification {
-  id             String    @id @default(uuid())
+  id             String  @id @default(uuid())
   organizationId String
   leadId         String
   agentId        String?
@@ -1727,7 +1731,7 @@ model LeadQualification {
   intentSignals   Json? // { how they found us, what they asked, etc }
 
   // Generated outreach
-  generatedEmail Json?   // { subject, body, approved: boolean }
+  generatedEmail Json? // { subject, body, approved: boolean }
   generatedSms   String?
 
   // Human review
@@ -1769,25 +1773,25 @@ model Agent {
   status         String  @default("inactive") // inactive|active|paused
 
   // Capabilities
-  emailEnabled   Boolean @default(false)
-  smsEnabled     Boolean @default(false)
-  dailyEmailLimit Int    @default(100)
-  dailySmsLimit   Int    @default(50)
+  emailEnabled    Boolean @default(false)
+  smsEnabled      Boolean @default(false)
+  dailyEmailLimit Int     @default(100)
+  dailySmsLimit   Int     @default(50)
 
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Agent orchestration v2
-  orchestrationEnabled      Boolean @default(false)
-  orchestratorDefinitionId  String?
+  orchestrationEnabled     Boolean @default(false)
+  orchestratorDefinitionId String?
 
   emailConfig            AgentEmailConfig?
   smsConfig              AgentSmsConfig?
   workflows              AgentWorkflow[]
   messages               AgentMessage[]
   qualifications         LeadQualification[]
-  orchestratorDefinition AgentDefinition? @relation("OrchestratorDefinition", fields: [orchestratorDefinitionId], references: [id], onDelete: SetNull)
+  orchestratorDefinition AgentDefinition?    @relation("OrchestratorDefinition", fields: [orchestratorDefinitionId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([status])
@@ -1807,7 +1811,7 @@ model AgentEmailConfig {
   tokenExpiresAt           DateTime?
   fromEmail                String
   fromName                 String?
-  signatureHtml            String? @db.Text
+  signatureHtml            String?   @db.Text
 
   isVerified Boolean  @default(false)
   createdAt  DateTime @default(now())
@@ -1836,14 +1840,14 @@ model AgentSmsConfig {
   a2pStatus      String? // pending|approved|rejected
 
   // AI Agent Settings (for response generation)
-  aiModel        String @default("claude-3-5-sonnet") // LLM model
+  aiModel        String  @default("claude-3-5-sonnet") // LLM model
   aiSystemPrompt String? @db.Text // SMS-specific system prompt
-  aiMaxTokens    Int    @default(160) // Keep SMS concise
-  aiTemperature  Float  @default(0.7)
+  aiMaxTokens    Int     @default(160) // Keep SMS concise
+  aiTemperature  Float   @default(0.7)
 
   // Autonomous mode settings
-  autonomousEnabled  Boolean @default(false)
-  maxRepliesPerLead  Int     @default(5)
+  autonomousEnabled Boolean @default(false)
+  maxRepliesPerLead Int     @default(5)
 
   isActive  Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -1857,12 +1861,12 @@ model AgentSmsConfig {
 
 // Twilio ISV Master Config (admin only)
 model TwilioIsvConfig {
-  id                    String  @id @default(uuid())
-  accountSid            String  @unique
+  id                    String   @id @default(uuid())
+  accountSid            String   @unique
   authTokenEncrypted    String
   apiKeySid             String
   apiKeySecretEncrypted String
-  isActive              Boolean @default(true)
+  isActive              Boolean  @default(true)
   createdAt             DateTime @default(now())
 
   @@map("twilio_isv_config")
@@ -1870,22 +1874,22 @@ model TwilioIsvConfig {
 
 // A2P Brand Registration
 model A2pBrandRegistration {
-  id               String    @id @default(uuid())
-  organizationId   String
-  twilioBrandSid   String?   @unique
-  businessName     String
-  businessType     String
-  ein              String?
-  websiteUrl       String
-  vertical         String
-  companyAddress   Json
-  contactInfo      Json
-  status           String    @default("pending") // pending|approved|rejected
-  trustScore       Int?
-  submittedAt      DateTime?
-  approvedAt       DateTime?
-  rejectionReason  String?
-  createdAt        DateTime  @default(now())
+  id              String    @id @default(uuid())
+  organizationId  String
+  twilioBrandSid  String?   @unique
+  businessName    String
+  businessType    String
+  ein             String?
+  websiteUrl      String
+  vertical        String
+  companyAddress  Json
+  contactInfo     Json
+  status          String    @default("pending") // pending|approved|rejected
+  trustScore      Int?
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
 
   campaigns A2pCampaign[]
 
@@ -1930,13 +1934,13 @@ model AgentWorkflow {
   actionConfig  Json
   targetType    String // campaign|list|lead
   targetId      String?
-  targetFilters Json   @default("{}")
+  targetFilters Json    @default("{}")
 
-  isActive        Boolean   @default(false)
-  executionCount  Int       @default(0)
-  lastExecutedAt  DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  isActive       Boolean   @default(false)
+  executionCount Int       @default(0)
+  lastExecutedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   agent    Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
   messages AgentMessage[]
@@ -1968,10 +1972,10 @@ model AgentMessage {
   twilioMessageSid String? @unique
 
   // Inbound SMS fields
-  direction        String  @default("outbound") // outbound|inbound
+  direction        String         @default("outbound") // outbound|inbound
   fromPhone        String?
   replyToMessageId String?
-  replyToMessage   AgentMessage? @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replyToMessage   AgentMessage?  @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
   replies          AgentMessage[] @relation("MessageReplies")
 
   // Tracking
@@ -2001,33 +2005,33 @@ model AgentMessage {
 
 // Agent Instance - Running OpenClaw/ClawdBody instances
 model AgentInstance {
-  id             String    @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
   agentId        String
 
   // Runtime info
-  provider       String    @default("openclaw") // openclaw|clawdbody|local
-  instanceUrl    String?   // URL to the running instance
-  instanceId     String?   // External instance ID (OpenClaw session ID or ClawdBody VM ID)
+  provider    String  @default("openclaw") // openclaw|clawdbody|local
+  instanceUrl String? // URL to the running instance
+  instanceId  String? // External instance ID (OpenClaw session ID or ClawdBody VM ID)
 
   // Status
-  status         String    @default("provisioning") // provisioning|running|paused|stopped|failed
-  lastHeartbeat  DateTime?
+  status        String    @default("provisioning") // provisioning|running|paused|stopped|failed
+  lastHeartbeat DateTime?
 
   // Resource allocation
-  memoryMb       Int       @default(512)
-  cpuCores       Float     @default(0.5)
+  memoryMb Int   @default(512)
+  cpuCores Float @default(0.5)
 
   // Metrics
-  totalSessions    Int     @default(0)
-  totalToolCalls   Int     @default(0)
-  totalTokensUsed  Int     @default(0)
+  totalSessions   Int @default(0)
+  totalToolCalls  Int @default(0)
+  totalTokensUsed Int @default(0)
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  stoppedAt      DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  stoppedAt DateTime?
 
-  sessions       AgentSession[]
+  sessions AgentSession[]
 
   @@index([organizationId])
   @@index([agentId])
@@ -2037,31 +2041,31 @@ model AgentInstance {
 
 // Agent Session - Conversation sessions with memory
 model AgentSession {
-  id              String    @id @default(uuid())
-  instanceId      String
-  organizationId  String
+  id             String @id @default(uuid())
+  instanceId     String
+  organizationId String
 
   // Context
-  leadId          String?   // If session is about a specific lead
-  campaignId      String?   // If session is for a campaign
-  clientId        String?   // Client account this session is for
+  leadId     String? // If session is about a specific lead
+  campaignId String? // If session is for a campaign
+  clientId   String? // Client account this session is for
 
   // Session state
-  status          String    @default("active") // active|paused|completed|failed
-  contextSummary  String?   @db.Text // AI-generated summary of session context
+  status         String  @default("active") // active|paused|completed|failed
+  contextSummary String? @db.Text // AI-generated summary of session context
 
   // Metrics
-  messageCount    Int       @default(0)
-  toolCallCount   Int       @default(0)
-  tokensUsed      Int       @default(0)
+  messageCount  Int @default(0)
+  toolCallCount Int @default(0)
+  tokensUsed    Int @default(0)
 
-  startedAt       DateTime  @default(now())
-  lastActivityAt  DateTime  @default(now())
-  completedAt     DateTime?
+  startedAt      DateTime  @default(now())
+  lastActivityAt DateTime  @default(now())
+  completedAt    DateTime?
 
-  instance        AgentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  memories        AgentMemory[]
-  toolCalls       AgentToolCall[]
+  instance  AgentInstance   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  memories  AgentMemory[]
+  toolCalls AgentToolCall[]
 
   @@index([instanceId])
   @@index([organizationId])
@@ -2072,16 +2076,16 @@ model AgentSession {
 
 // Agent Memory - Persistent memory entries
 model AgentMemory {
-  id             String    @id @default(uuid())
-  sessionId      String?   // Can be session-specific or global
+  id             String  @id @default(uuid())
+  sessionId      String? // Can be session-specific or global
   organizationId String
   agentId        String
 
   // Memory content
-  memoryType     String    // fact|preference|context|learning|relationship
-  key            String    // Unique key for this memory
-  content        String    @db.Text // The memory content
-  embedding      Json?     // Vector embedding for semantic search (stored as JSON array)
+  memoryType String // fact|preference|context|learning|relationship
+  key        String // Unique key for this memory
+  content    String @db.Text // The memory content
+  embedding  Json? // Vector embedding for semantic search (stored as JSON array)
 
   // Metadata
   importance     Float     @default(0.5) // 0-1 importance score
@@ -2090,13 +2094,13 @@ model AgentMemory {
   expiresAt      DateTime? // Optional expiration
 
   // Source tracking
-  sourceType     String?   // conversation|tool_result|user_feedback|system
-  sourceId       String?   // Reference to source
+  sourceType String? // conversation|tool_result|user_feedback|system
+  sourceId   String? // Reference to source
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  session        AgentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session AgentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([agentId, key])
   @@index([organizationId])
@@ -2108,30 +2112,30 @@ model AgentMemory {
 
 // Agent Tool Call - Log of tool executions
 model AgentToolCall {
-  id             String    @id @default(uuid())
+  id             String @id @default(uuid())
   sessionId      String
   organizationId String
 
   // Tool info
-  toolName       String    // e.g., search_leads, send_email, qualify_lead
-  toolInput      Json      // Input parameters
-  toolOutput     Json?     // Output result
+  toolName   String // e.g., search_leads, send_email, qualify_lead
+  toolInput  Json // Input parameters
+  toolOutput Json? // Output result
 
   // Execution
-  status         String    @default("pending") // pending|running|success|failed
-  errorMessage   String?
-  durationMs     Int?
+  status       String  @default("pending") // pending|running|success|failed
+  errorMessage String?
+  durationMs   Int?
 
   // Approvals (for human-in-loop)
-  requiresApproval Boolean @default(false)
+  requiresApproval Boolean   @default(false)
   approvalStatus   String? // pending|approved|rejected
   approvedById     String?
   approvedAt       DateTime?
 
-  createdAt      DateTime  @default(now())
-  completedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
 
-  session        AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([organizationId])
@@ -2146,40 +2150,40 @@ model AgentToolCall {
 
 // SMS Campaign - Multi-step automated SMS outreach campaign
 model SmsCampaign {
-  id             String    @id @default(uuid())
+  id             String  @id @default(uuid())
   organizationId String
   name           String
   description    String?
-  status         String    @default("draft") // draft | active | paused | completed
+  status         String  @default("draft") // draft | active | paused | completed
 
   // Send window configuration (in lead's local timezone)
-  sendWindowStart String   @default("09:00") // HH:MM format
-  sendWindowEnd   String   @default("18:00") // HH:MM format
-  sendDays        Int[]    @default([1, 2, 3, 4, 5]) // 0=Sunday, 1=Monday, etc.
-  defaultTimezone String   @default("America/New_York") // Fallback if lead has no timezone
+  sendWindowStart String @default("09:00") // HH:MM format
+  sendWindowEnd   String @default("18:00") // HH:MM format
+  sendDays        Int[]  @default([1, 2, 3, 4, 5]) // 0=Sunday, 1=Monday, etc.
+  defaultTimezone String @default("America/New_York") // Fallback if lead has no timezone
 
   // AI personalization settings
-  aiEnabled       Boolean  @default(false)
-  aiModel         String?  // llama-3.3-70b-versatile
-  aiSystemPrompt  String?  @db.Text
+  aiEnabled        Boolean @default(false)
+  aiModel          String? // llama-3.3-70b-versatile
+  aiSystemPrompt   String? @db.Text
   valueProposition String? @db.Text
 
   // Limits
-  dailySendLimit  Int      @default(100) // Max messages per day for this campaign
+  dailySendLimit Int @default(100) // Max messages per day for this campaign
 
   // Stats (denormalized for performance)
-  totalEnrolled    Int     @default(0)
-  totalSent        Int     @default(0)
-  totalDelivered   Int     @default(0)
-  totalReplied     Int     @default(0)
-  totalUnsubscribed Int    @default(0)
+  totalEnrolled     Int @default(0)
+  totalSent         Int @default(0)
+  totalDelivered    Int @default(0)
+  totalReplied      Int @default(0)
+  totalUnsubscribed Int @default(0)
 
   // Metadata
-  createdById    String
-  activatedAt    DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @default(now()) @updatedAt
+  createdById String
+  activatedAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
 
   steps       SmsCampaignStep[]
   lists       SmsCampaignList[]
@@ -2193,13 +2197,13 @@ model SmsCampaign {
 
 // SMS Campaign Step - Individual message template in a sequence
 model SmsCampaignStep {
-  id         String  @id @default(uuid())
+  id         String @id @default(uuid())
   campaignId String
-  stepNumber Int     // 1, 2, 3...
-  dayOffset  Int     // Day 0, Day 3, Day 7, etc.
+  stepNumber Int // 1, 2, 3...
+  dayOffset  Int // Day 0, Day 3, Day 7, etc.
 
   // Message content
-  messageTemplate String  @db.Text // Supports {{firstName}}, {{company}}, etc.
+  messageTemplate String @db.Text // Supports {{firstName}}, {{company}}, etc.
 
   // AI settings (inherit from campaign if null)
   aiEnabled        Boolean? // null = inherit from campaign
@@ -2252,19 +2256,19 @@ model SmsCampaignEnrollment {
   nextSendAt  DateTime?
 
   // Lead info (cached for send window calculation)
-  timezone    String?
+  timezone String?
 
   // Research data for personalization (cached from lead research)
   researchData Json?
 
   // Timestamps
-  lastSentAt      DateTime?
-  repliedAt       DateTime?
-  unsubscribedAt  DateTime?
-  enrolledAt      DateTime  @default(now())
-  completedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @default(now()) @updatedAt
+  lastSentAt     DateTime?
+  repliedAt      DateTime?
+  unsubscribedAt DateTime?
+  enrolledAt     DateTime  @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
 
   campaign SmsCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   messages SmsCampaignMessage[]
@@ -2279,31 +2283,31 @@ model SmsCampaignEnrollment {
 
 // SMS Campaign Message - Individual message history
 model SmsCampaignMessage {
-  id           String  @id @default(uuid())
+  id           String @id @default(uuid())
   campaignId   String
   enrollmentId String
   stepId       String
   leadId       String
 
   // Message details
-  toPhone         String
-  messageBody     String  @db.Text
-  originalTemplate String @db.Text
-  aiPersonalized  Boolean @default(false)
+  toPhone          String
+  messageBody      String  @db.Text
+  originalTemplate String  @db.Text
+  aiPersonalized   Boolean @default(false)
 
   // Twilio tracking
   twilioMessageSid String? @unique
 
   // Status
-  status       String    @default("queued") // queued | sending | sent | delivered | failed | undelivered
+  status        String  @default("queued") // queued | sending | sent | delivered | failed | undelivered
   failureReason String?
 
   // Timestamps
-  scheduledAt  DateTime?
-  sentAt       DateTime?
-  deliveredAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @default(now()) @updatedAt
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
 
   campaign   SmsCampaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   enrollment SmsCampaignEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
@@ -2320,32 +2324,32 @@ model SmsCampaignMessage {
 
 // Orchestration Job - Parent job for parallel orchestration
 model OrchestrationJob {
-  id             String    @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
 
   // Job definition
-  name           String
-  description    String?
-  jobType        String    // lead_qualification|outreach_campaign|research_batch|custom
+  name        String
+  description String?
+  jobType     String // lead_qualification|outreach_campaign|research_batch|custom
 
   // Targeting
-  targetType     String    // leads|campaign|list|custom
-  targetId       String?   // ID of target (campaign ID, list ID, etc.)
-  targetFilters  Json      @default("{}") // Additional filters
-  targetCount    Int       @default(0) // Total items to process
+  targetType    String // leads|campaign|list|custom
+  targetId      String? // ID of target (campaign ID, list ID, etc.)
+  targetFilters Json    @default("{}") // Additional filters
+  targetCount   Int     @default(0) // Total items to process
 
   // Parallelism
-  maxParallel    Int       @default(5) // Max concurrent agents
-  batchSize      Int       @default(10) // Items per batch
+  maxParallel Int @default(5) // Max concurrent agents
+  batchSize   Int @default(10) // Items per batch
 
   // Status
-  status         String    @default("pending") // pending|running|paused|completed|failed|cancelled
-  progress       Float     @default(0) // 0-100 percentage
+  status   String @default("pending") // pending|running|paused|completed|failed|cancelled
+  progress Float  @default(0) // 0-100 percentage
 
   // Results
-  processedCount Int       @default(0)
-  successCount   Int       @default(0)
-  failureCount   Int       @default(0)
+  processedCount Int @default(0)
+  successCount   Int @default(0)
+  failureCount   Int @default(0)
 
   // Timing
   scheduledAt    DateTime?
@@ -2354,14 +2358,14 @@ model OrchestrationJob {
   estimatedEndAt DateTime?
 
   // Configuration
-  config         Json      @default("{}") // Job-specific configuration
-  retryPolicy    Json      @default("{}") // Retry configuration
+  config      Json @default("{}") // Job-specific configuration
+  retryPolicy Json @default("{}") // Retry configuration
 
-  createdById    String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  steps          OrchestrationStep[]
+  steps OrchestrationStep[]
 
   @@index([organizationId])
   @@index([status])
@@ -2372,43 +2376,43 @@ model OrchestrationJob {
 
 // Orchestration Step - Individual steps within a job
 model OrchestrationStep {
-  id             String    @id @default(uuid())
-  jobId          String
+  id    String @id @default(uuid())
+  jobId String
 
   // Step definition
-  stepNumber     Int       // Order in the job
-  stepType       String    // agent_task|wait|condition|parallel_split|parallel_join|human_review
+  stepNumber Int // Order in the job
+  stepType   String // agent_task|wait|condition|parallel_split|parallel_join|human_review
 
   // Target (what this step operates on)
-  targetId       String?   // Lead ID, etc.
-  targetData     Json?     // Additional target data
+  targetId   String? // Lead ID, etc.
+  targetData Json? // Additional target data
 
   // Agent assignment
-  agentId        String?   // Which agent handles this
-  sessionId      String?   // Session ID if running
+  agentId   String? // Which agent handles this
+  sessionId String? // Session ID if running
 
   // Status
-  status         String    @default("pending") // pending|running|waiting|completed|failed|skipped
+  status String @default("pending") // pending|running|waiting|completed|failed|skipped
 
   // Results
-  input          Json?     // Step input
-  output         Json?     // Step output
-  errorMessage   String?
+  input        Json? // Step input
+  output       Json? // Step output
+  errorMessage String?
 
   // Timing
-  startedAt      DateTime?
-  completedAt    DateTime?
-  durationMs     Int?
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
 
   // Retry tracking
-  attemptCount   Int       @default(0)
-  maxAttempts    Int       @default(3)
-  nextRetryAt    DateTime?
+  attemptCount Int       @default(0)
+  maxAttempts  Int       @default(3)
+  nextRetryAt  DateTime?
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  job            OrchestrationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job OrchestrationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
   @@index([status])
@@ -2419,38 +2423,38 @@ model OrchestrationStep {
 
 // ClawdBody Instance - Managed VM instances
 model ClawdBodyInstance {
-  id             String    @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
 
   // VM info
-  vmId           String    @unique // ClawdBody VM ID
-  vmName         String
-  vmUrl          String    // Access URL
-  vmRegion       String    @default("us-east-1")
+  vmId     String @unique // ClawdBody VM ID
+  vmName   String
+  vmUrl    String // Access URL
+  vmRegion String @default("us-east-1")
 
   // Specs
-  vmSize         String    @default("small") // small|medium|large|xlarge
-  memoryGb       Int       @default(2)
-  cpuCores       Int       @default(2)
-  storageGb      Int       @default(20)
+  vmSize    String @default("small") // small|medium|large|xlarge
+  memoryGb  Int    @default(2)
+  cpuCores  Int    @default(2)
+  storageGb Int    @default(20)
 
   // Status
-  status         String    @default("provisioning") // provisioning|running|stopped|terminated
-  healthStatus   String    @default("unknown") // healthy|degraded|unhealthy|unknown
+  status          String    @default("provisioning") // provisioning|running|stopped|terminated
+  healthStatus    String    @default("unknown") // healthy|degraded|unhealthy|unknown
   lastHealthCheck DateTime?
 
   // Usage
-  activeAgents   Int       @default(0)
-  totalSessions  Int       @default(0)
-  uptimeSeconds  Int       @default(0)
+  activeAgents  Int @default(0)
+  totalSessions Int @default(0)
+  uptimeSeconds Int @default(0)
 
   // Cost tracking
-  hourlyRate     Float     @default(0)
-  totalCost      Float     @default(0)
+  hourlyRate Float @default(0)
+  totalCost  Float @default(0)
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  terminatedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  terminatedAt DateTime?
 
   @@index([organizationId])
   @@index([status])
@@ -2463,16 +2467,16 @@ model ClawdBodyInstance {
 
 // Agent definitions - configured via dashboard or system defaults
 model AgentDefinition {
-  id             String  @id @default(uuid())
+  id             String @id @default(uuid())
   organizationId String
 
   name        String  @db.VarChar(100)
   type        String  @db.VarChar(50) // orchestrator, email, sms, research, qualify, analytics, campaign
   description String? @db.Text
 
-  systemPrompt String  @db.Text
-  tools        Json    @default("[]")
-  guardrails   Json    @default("{}")
+  systemPrompt String @db.Text
+  tools        Json   @default("[]")
+  guardrails   Json   @default("{}")
 
   model       String  @default("claude-sonnet") @db.VarChar(50)
   maxTokens   Int     @default(2048)
@@ -2484,10 +2488,10 @@ model AgentDefinition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   executions   AgentExecution[]
   usage        AgentUsage[]
-  agents       Agent[]             @relation("OrchestratorDefinition")
+  agents       Agent[]          @relation("OrchestratorDefinition")
 
   @@index([organizationId])
   @@index([type])
@@ -2497,23 +2501,23 @@ model AgentDefinition {
 
 // Agent executions - audit trail of all agent invocations
 model AgentExecution {
-  id                  String  @id @default(uuid())
-  organizationId      String
-  agentDefinitionId   String
+  id                String @id @default(uuid())
+  organizationId    String
+  agentDefinitionId String
 
   // Trigger info
-  triggerType    String  @db.VarChar(50) // user, orchestrator, schedule, webhook, inbound_sms
-  triggerContext Json?
+  triggerType       String  @db.VarChar(50) // user, orchestrator, schedule, webhook, inbound_sms
+  triggerContext    Json?
   parentExecutionId String?
 
   // Input/Output
-  inputPrompt    String  @db.Text
-  inputContext   Json?
-  outputResponse String? @db.Text
+  inputPrompt     String  @db.Text
+  inputContext    Json?
+  outputResponse  String? @db.Text
   outputToolCalls Json?
 
   // Status
-  status String @default("running") @db.VarChar(20) // running, awaiting_approval, completed, failed, cancelled
+  status String  @default("running") @db.VarChar(20) // running, awaiting_approval, completed, failed, cancelled
   error  String? @db.Text
 
   // Related entities
@@ -2529,12 +2533,12 @@ model AgentExecution {
   createdAt   DateTime  @default(now())
   completedAt DateTime?
 
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  agentDefinition AgentDefinition   @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
-  parentExecution AgentExecution?   @relation("ExecutionHierarchy", fields: [parentExecutionId], references: [id], onDelete: SetNull)
-  childExecutions AgentExecution[]  @relation("ExecutionHierarchy")
-  lead            Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  campaign        Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentDefinition AgentDefinition      @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+  parentExecution AgentExecution?      @relation("ExecutionHierarchy", fields: [parentExecutionId], references: [id], onDelete: SetNull)
+  childExecutions AgentExecution[]     @relation("ExecutionHierarchy")
+  lead            Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign        Campaign?            @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   approvals       AgentApproval[]
   toolExecutions  AgentToolExecution[]
 
@@ -2578,11 +2582,11 @@ model AgentApproval {
   createdAt   DateTime  @default(now())
   respondedAt DateTime?
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  execution    AgentExecution   @relation(fields: [executionId], references: [id], onDelete: Cascade)
-  lead         Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  campaign     Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  respondedBy  User?            @relation(fields: [respondedById], references: [id], onDelete: SetNull)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  execution    AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  lead         Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  respondedBy  User?          @relation(fields: [respondedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([executionId])
@@ -2641,7 +2645,7 @@ model AgentToolExecution {
 
 // Daily usage tracking for rate limiting
 model AgentUsage {
-  id                String @id @default(uuid())
+  id                String   @id @default(uuid())
   organizationId    String
   agentDefinitionId String
   date              DateTime @db.Date
@@ -2715,11 +2719,11 @@ model CrmSyncRecord {
   id             String   @id @default(uuid())
   organizationId String
   leadId         String
-  provider       String   // "hubspot" | "salesforce" | "attio"
-  externalId     String   // Contact ID in the external CRM
-  externalUrl    String?  // Direct link to CRM contact
-  syncDirection  String   // "push" | "pull"
-  syncStatus     String   // "synced" | "failed" | "pending"
+  provider       String // "hubspot" | "salesforce" | "attio"
+  externalId     String // Contact ID in the external CRM
+  externalUrl    String? // Direct link to CRM contact
+  syncDirection  String // "push" | "pull"
+  syncStatus     String // "synced" | "failed" | "pending"
   lastSyncedAt   DateTime
   errorMessage   String?
   createdAt      DateTime @default(now())
@@ -2744,7 +2748,7 @@ model UsageCycle {
   usedMinutes             Int       @default(0)
   overageMinutes          Int       @default(0)
   overageAmountCents      Int       @default(0)
-  overageRateCents        Int       // e.g. 15 = $0.015/min (tenths of cents)
+  overageRateCents        Int // e.g. 15 = $0.015/min (tenths of cents)
   overageReportedToStripe Int       @default(0) // minutes already sent to Stripe
   lastStripeReportAt      DateTime?
   isCurrent               Boolean   @default(true)
@@ -2762,7 +2766,7 @@ model UsageCycle {
 model BillingEvent {
   id             String   @id @default(uuid())
   organizationId String
-  eventType      String   // subscription_created, payment_succeeded, payment_failed, overage_reported, cap_hit, service_suspended, etc.
+  eventType      String // subscription_created, payment_succeeded, payment_failed, overage_reported, cap_hit, service_suspended, etc.
   metadata       Json     @default("{}")
   createdAt      DateTime @default(now())
 
