@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useActiveOrganization } from '@/lib/auth-client';
 import { ENDPOINTS, QUERY_KEYS, env } from '@/lib/config';
-import { get, post, patch, del } from '@/lib/api';
+import { get, post, patch, del, getAuthHeaders } from '@/lib/api';
 
 // Types
 interface LeadListFolder {
@@ -437,6 +437,7 @@ export function useUploadListCsv() {
         {
           method: 'POST',
           credentials: 'include',
+          headers: await getAuthHeaders(),
           body: formData,
         }
       );

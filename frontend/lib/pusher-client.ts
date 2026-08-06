@@ -1,5 +1,6 @@
 import PusherClient from "pusher-js";
 import { env } from "./config";
+import { getAuthHeaders } from "./api";
 
 let pusherInstance: PusherClient | null = null;
 
@@ -26,7 +27,9 @@ export const getPusherClient = (): PusherClient | null => {
         try {
           const response = await fetch(`${env.API_URL}/pusher/auth`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await getAuthHeaders({
+              headers: { "Content-Type": "application/json" },
+            }),
             credentials: "include", // Include cookies for auth
             body: JSON.stringify({
               socket_id: socketId,

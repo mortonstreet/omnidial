@@ -19,6 +19,7 @@ import {
 } from "@/hooks/api/useVoicemailInbox";
 import { ENDPOINTS } from "@/lib/config";
 import { env } from "@/lib/config";
+import { getAuthHeaders } from "@/lib/api";
 import type { VoicemailInboxItem } from "@shared/types/src";
 
 interface VoicemailInboxPanelProps {
@@ -58,7 +59,10 @@ export function VoicemailInboxPanel({ onCallBack }: VoicemailInboxPanelProps) {
     // Fetch with credentials then create blob URL (audio elements don't send cookies)
     const recordingUrl = `${env.API_URL}${ENDPOINTS.CALLS.RECORDING(vm.id)}`;
     try {
-      const response = await fetch(recordingUrl, { credentials: 'include' });
+      const response = await fetch(recordingUrl, {
+        credentials: 'include',
+        headers: await getAuthHeaders(),
+      });
       if (!response.ok) {
         console.error('Failed to load voicemail recording:', response.status);
         return;

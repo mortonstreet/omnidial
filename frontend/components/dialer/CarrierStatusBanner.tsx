@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { env } from "@/lib/config";
+import { getAuthHeaders } from "@/lib/api";
 
 interface TelnyxHealth {
   healthy: boolean;
@@ -36,6 +37,7 @@ export function CarrierStatusBanner() {
       try {
         const res = await fetch(`${env.API_URL.toString()}/health/telnyx`, {
           credentials: "include",
+          headers: await getAuthHeaders(),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

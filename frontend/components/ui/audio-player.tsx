@@ -13,6 +13,7 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { env, ENDPOINTS } from "@/lib/config";
+import { getAuthHeaders } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
@@ -161,7 +162,10 @@ export function AudioPlayer({
       if (!audio.src) {
         setIsLoading(true);
         try {
-          const response = await fetch(recordingUrl, { credentials: 'include' });
+          const response = await fetch(recordingUrl, {
+            credentials: 'include',
+            headers: await getAuthHeaders(),
+          });
           if (!response.ok) throw new Error('Failed to load recording');
           const blob = await response.blob();
           const url = URL.createObjectURL(blob);
@@ -253,6 +257,7 @@ export function AudioPlayer({
     try {
       const response = await fetch(recordingUrl, {
         credentials: "include",
+        headers: await getAuthHeaders(),
       });
 
       if (!response.ok) throw new Error("Download failed");

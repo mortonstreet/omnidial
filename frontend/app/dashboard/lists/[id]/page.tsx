@@ -74,6 +74,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useActiveOrganization } from "@/lib/auth-client";
 import { ENDPOINTS, env } from "@/lib/config";
+import { getAuthHeaders } from "@/lib/api";
 import { useQuickCall } from "@/hooks/useQuickCall";
 import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
 
@@ -174,7 +175,10 @@ export default function ListDetailPage() {
     try {
       const response = await fetch(
         `${env.API_URL}${ENDPOINTS.LISTS.EXPORT(listId)}?organizationId=${orgId}`,
-        { credentials: "include" }
+        {
+          credentials: "include",
+          headers: await getAuthHeaders(),
+        },
       );
 
       if (!response.ok) {

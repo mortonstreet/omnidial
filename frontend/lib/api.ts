@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { getToken } from '@clerk/nextjs'
 import { env } from './config'
 
 async function getErrorMessage(response: Response): Promise<string> {
@@ -29,11 +30,25 @@ async function getErrorMessage(response: Response): Promise<string> {
   }
 }
 
-export const get = <T>(url: string, options?: RequestInit): Promise<T> =>
+export async function getAuthHeaders(options?: RequestInit) {
+  const headers = new Headers(options?.headers)
+
+  if (typeof window !== 'undefined' && !headers.has('Authorization')) {
+    const token = await getToken().catch(() => null)
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+  }
+
+  return headers
+}
+
+export const get = async <T>(url: string, options?: RequestInit): Promise<T> =>
   fetch(`${env.API_URL.toString()}${url}`, {
     ...options,
     method: 'GET',
     credentials: 'include',
+    headers: await getAuthHeaders(options),
   }).then(async (response) => {
     if (!response.ok) {
       throw new Error(await getErrorMessage(response))
@@ -46,15 +61,25 @@ export const post = <T>(
   data?: any,
   options?: RequestInit,
 ): Promise<T> =>
+  postWithAuthHeaders(url, data, options)
+
+const postWithAuthHeaders = async <T>(
+  url: string,
+  data?: any,
+  options?: RequestInit,
+): Promise<T> =>
   fetch(`${env.API_URL.toString()}${url}`, {
     ...options,
     method: 'POST',
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers: await getAuthHeaders({
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    }),
   }).then(async (response) => {
     if (!response.ok) {
       throw new Error(await getErrorMessage(response))
@@ -67,15 +92,25 @@ export const put = <T>(
   data?: any,
   options?: RequestInit,
 ): Promise<T> =>
+  putWithAuthHeaders(url, data, options)
+
+const putWithAuthHeaders = async <T>(
+  url: string,
+  data?: any,
+  options?: RequestInit,
+): Promise<T> =>
   fetch(`${env.API_URL.toString()}${url}`, {
     ...options,
     method: 'PUT',
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers: await getAuthHeaders({
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    }),
   }).then(async (response) => {
     if (!response.ok) {
       throw new Error(await getErrorMessage(response))
@@ -88,15 +123,25 @@ export const patch = <T>(
   data?: any,
   options?: RequestInit,
 ): Promise<T> =>
+  patchWithAuthHeaders(url, data, options)
+
+const patchWithAuthHeaders = async <T>(
+  url: string,
+  data?: any,
+  options?: RequestInit,
+): Promise<T> =>
   fetch(`${env.API_URL.toString()}${url}`, {
     ...options,
     method: 'PATCH',
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers: await getAuthHeaders({
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    }),
   }).then(async (response) => {
     if (!response.ok) {
       throw new Error(await getErrorMessage(response))
@@ -104,11 +149,12 @@ export const patch = <T>(
     return response.json()
   })
 
-export const del = <T>(url: string, options?: RequestInit): Promise<T> =>
+export const del = async <T>(url: string, options?: RequestInit): Promise<T> =>
   fetch(`${env.API_URL.toString()}${url}`, {
     ...options,
     method: 'DELETE',
     credentials: 'include',
+    headers: await getAuthHeaders(options),
   }).then(async (response) => {
     if (!response.ok) {
       throw new Error(await getErrorMessage(response))

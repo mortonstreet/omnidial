@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { Plus_Jakarta_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
@@ -67,7 +68,13 @@ export default function RootLayout({
       <body
         className={`${plusJakarta.variable} ${jetbrainsMono.variable} ${sourceSerif.variable} antialiased grain`}
       >
-        <Providers>{children}</Providers>
+        <ClerkProvider
+          signInUrl="/login"
+          signUpUrl="/signup"
+          afterSignOutUrl="/login"
+        >
+          <Providers>{children}</Providers>
+        </ClerkProvider>
         {analyticsEnabled && <Analytics />}
         {speedInsightsEnabled && <SpeedInsights />}
         {process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID && process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID !== 'NEXT_PUBLIC_GOOGLE_ANALYTICS_ID' && (

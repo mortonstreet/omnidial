@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useActiveOrganization } from "@/lib/auth-client";
-import { ENDPOINTS, QUERY_KEYS, env } from "@/lib/config";
+import { ENDPOINTS, QUERY_KEYS } from "@/lib/config";
+import { get } from "@/lib/api";
 import { AppFeature, PlanTier, planHasFeature } from "@shared/types/src/stripe";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 
@@ -25,12 +26,7 @@ export const useSubscriptionInfo = () => {
     queryKey: QUERY_KEYS.organizationSubscription(orgId),
     queryFn: async () => {
       if (!orgId) return { subscription: null, tier: null, isTrialing: false };
-      const res = await fetch(
-        `${env.API_URL}${ENDPOINTS.ORGANIZATION.SUBSCRIPTION(orgId)}`,
-        { credentials: "include" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch subscription");
-      return res.json();
+      return get<SubscriptionInfo>(ENDPOINTS.ORGANIZATION.SUBSCRIPTION(orgId));
     },
     enabled: !!orgId,
   });
