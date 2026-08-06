@@ -6,6 +6,7 @@ import { config } from '@/config'
 
 const apply = process.argv.includes('--apply')
 const includeInvitations = process.argv.includes('--include-invitations')
+const repairStale = process.argv.includes('--repair-stale')
 
 type BackfillStats = {
   usersCreated: number
@@ -17,6 +18,9 @@ type BackfillStats = {
   membershipsUpdated: number
   invitationsCreated: number
   invitationsSkipped: number
+  staleUsersRepaired: number
+  staleOrganizationsRepaired: number
+  staleMembershipsRepaired: number
 }
 
 const stats: BackfillStats = {
@@ -29,6 +33,9 @@ const stats: BackfillStats = {
   membershipsUpdated: 0,
   invitationsCreated: 0,
   invitationsSkipped: 0,
+  staleUsersRepaired: 0,
+  staleOrganizationsRepaired: 0,
+  staleMembershipsRepaired: 0,
 }
 
 const requiredMappingColumns = [
@@ -84,6 +91,55 @@ const ensureClerkClient = () => {
   return createClerkClient({ secretKey: config.clerk.secretKey })
 }
 
+const isNotFoundError = (error: unknown) => {
+  const candidate = error as {
+    status?: number
+    statusCode?: number
+    errors?: Array<{ code?: string; message?: string }>
+    message?: string
+  }
+
+  return (
+    candidate?.status === 404 ||
+    candidate?.statusCode === 404 ||
+    candidate?.errors?.some((entry) =>
+      [entry.code, entry.message].some((value) =>
+        /not[_ -]?found|resource_not_found/i.test(value ?? ''),
+      ),
+    ) ||
+    /not[_ -]?found|resource_not_found/i.test(candidate?.message ?? '')
+  )
+}
+
+const clerkUserExists = async (clerk: ClerkClient, clerkUserId: string) => {
+  try {
+    await clerk.users.getUser(clerkUserId)
+    return true
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return false
+    }
+    throw error
+  }
+}
+
+const clerkOrganizationExists = async (
+  clerk: ClerkClient,
+  clerkOrganizationId: string,
+) => {
+  try {
+    await clerk.organizations.getOrganization({
+      organizationId: clerkOrganizationId,
+    })
+    return true
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return false
+    }
+    throw error
+  }
+}
+
 const findOrCreateClerkUser = async (
   clerk: ClerkClient,
   user: {
@@ -97,7 +153,9 @@ const findOrCreateClerkUser = async (
   },
 ) => {
   if (user.clerkUserId) {
-    return user.clerkUserId
+    if (!repairStale || (await clerkUserExists(clerk, user.clerkUserId))) {
+      return user.clerkUserId
+    }
   }
 
   const byExternalId = await clerk.users.getUserList({
@@ -130,6 +188,9 @@ const findOrCreateClerkUser = async (
       .where('id', '=', user.id)
       .executeTakeFirst()
     stats.usersLinked += 1
+    if (user.clerkUserId && user.clerkUserId !== byEmail.id) {
+      stats.staleUsersRepaired += 1
+    }
     return byEmail.id
   }
 
@@ -157,6 +218,9 @@ const findOrCreateClerkUser = async (
     .where('id', '=', user.id)
     .executeTakeFirst()
   stats.usersCreated += 1
+  if (user.clerkUserId && user.clerkUserId !== created.id) {
+    stats.staleUsersRepaired += 1
+  }
   return created.id
 }
 
@@ -172,7 +236,12 @@ const findOrCreateClerkOrganization = async (
   },
 ) => {
   if (organization.clerkOrganizationId) {
-    return organization.clerkOrganizationId
+    if (
+      !repairStale ||
+      (await clerkOrganizationExists(clerk, organization.clerkOrganizationId))
+    ) {
+      return organization.clerkOrganizationId
+    }
   }
 
   const existingOrganizations = await clerk.organizations.getOrganizationList({
@@ -210,6 +279,12 @@ const findOrCreateClerkOrganization = async (
       .where('id', '=', organization.id)
       .executeTakeFirst()
     stats.organizationsLinked += 1
+    if (
+      organization.clerkOrganizationId &&
+      organization.clerkOrganizationId !== existing.id
+    ) {
+      stats.staleOrganizationsRepaired += 1
+    }
     return existing.id
   }
 
@@ -231,6 +306,12 @@ const findOrCreateClerkOrganization = async (
     .where('id', '=', organization.id)
     .executeTakeFirst()
   stats.organizationsCreated += 1
+  if (
+    organization.clerkOrganizationId &&
+    organization.clerkOrganizationId !== created.id
+  ) {
+    stats.staleOrganizationsRepaired += 1
+  }
   return created.id
 }
 
@@ -245,10 +326,13 @@ const syncMembership = async (
   },
 ) => {
   if (
-    membership.clerkMembershipId ||
     !membership.clerkUserId ||
     !membership.clerkOrganizationId
   ) {
+    return
+  }
+
+  if (membership.clerkMembershipId && !repairStale) {
     return
   }
 
@@ -276,6 +360,12 @@ const syncMembership = async (
       .where('id', '=', membership.id)
       .executeTakeFirst()
     stats.membershipsLinked += 1
+    if (
+      membership.clerkMembershipId &&
+      membership.clerkMembershipId !== existingMembership.id
+    ) {
+      stats.staleMembershipsRepaired += 1
+    }
     return
   }
 
@@ -291,6 +381,9 @@ const syncMembership = async (
     .where('id', '=', membership.id)
     .executeTakeFirst()
   stats.membershipsCreated += 1
+  if (membership.clerkMembershipId && membership.clerkMembershipId !== created.id) {
+    stats.staleMembershipsRepaired += 1
+  }
 }
 
 const syncPendingInvitation = async (
@@ -308,9 +401,13 @@ const syncPendingInvitation = async (
 ) => {
   if (
     invitation.status !== 'pending' ||
-    invitation.clerkInvitationId ||
     !invitation.clerkOrganizationId
   ) {
+    stats.invitationsSkipped += 1
+    return
+  }
+
+  if (invitation.clerkInvitationId && !repairStale) {
     stats.invitationsSkipped += 1
     return
   }
@@ -467,11 +564,11 @@ const main = async () => {
   if (!apply) {
     console.log(
       JSON.stringify(
-        {
-          mode: 'dry-run',
-          localSummary,
-          note: 'Run pnpm --filter backend clerk:backfill -- --apply after deploying the DB migration and setting CLERK_SECRET_KEY.',
-        },
+          {
+            mode: 'dry-run',
+            localSummary,
+            note: 'Run pnpm --filter backend clerk:backfill -- --apply after deploying the DB migration and setting CLERK_SECRET_KEY. Add --repair-stale to rebuild mappings from another Clerk instance.',
+          },
         null,
         2,
       ),
