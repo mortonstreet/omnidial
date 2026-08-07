@@ -98,9 +98,9 @@ router.delete(
   authenticatedRoute(unassignPhoneNumber),
 )
 
-// Get dialable phone numbers for a client (all members)
+// Get the caller's own dialable numbers (derived from the session user)
 router.get(
-  '/phone-numbers/:organizationId/dialable/:clientId',
+  '/phone-numbers/:organizationId/dialable',
   validateAndMerge(GetDialablePhoneNumbersRequestSchema),
   validateMemberOfOrganization,
   authenticatedRoute(getDialablePhoneNumbers),

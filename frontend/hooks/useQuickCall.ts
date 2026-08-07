@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react'
 import { useDialerContext } from '@/components/providers/DialerProvider'
 import { useActiveOrganization } from '@/lib/auth-client'
-import { useTwilioPhoneNumbers } from '@/hooks/api/useDialer'
 import { get } from '@/lib/api'
 import { ENDPOINTS } from '@/lib/config'
 import { toast } from 'sonner'
@@ -32,7 +31,6 @@ export function useQuickCall() {
   } = useDialerContext()
 
   // Pre-fetch org phone numbers as fallback
-  const { data: orgPhoneNumbers } = useTwilioPhoneNumbers(organizationId)
 
   const quickCall = useCallback(
     async ({ leadId, leadName, phone, clientId }: QuickCallParams) => {
@@ -72,30 +70,23 @@ export function useQuickCall() {
         // Resolve caller ID
         let fromNumber: string | undefined
 
-        if (clientId && organizationId) {
-          // Try client-specific numbers first
+        if (organizationId) {
           try {
             const response = await get<{ data: DialablePhoneNumber[] }>(
-              ENDPOINTS.DIALER.DIALABLE_PHONE_NUMBERS(organizationId, clientId),
+              ENDPOINTS.DIALER.DIALABLE_PHONE_NUMBERS(organizationId),
             )
-            const clientNumbers = response?.data ?? []
-            if (clientNumbers.length > 0) {
-              fromNumber = clientNumbers[0].phoneNumber
-            }
+            fromNumber = response?.data?.[0]?.phoneNumber
           } catch {
-            // Fall through to org numbers
+            // Leave unset — handled below.
           }
         }
 
-        // Fallback to org-level numbers
-        if (!fromNumber && orgPhoneNumbers && orgPhoneNumbers.length > 0) {
-          fromNumber = orgPhoneNumbers[0].phoneNumber
-        }
-
+        // No org-number fallback: the server only accepts a caller ID assigned
+        // to this rep, so falling back would just produce a rejected call.
         if (!fromNumber) {
-          toast.error('No phone numbers available', {
+          toast.error('No caller ID assigned to you', {
             description:
-              'Please configure phone numbers in your dialer settings',
+              'Ask an admin to assign you a phone number in dialer settings',
           })
           setIsDialing(false)
           return
@@ -125,7 +116,6 @@ export function useQuickCall() {
       makeCall,
       setCurrentLeadInfo,
       organizationId,
-      orgPhoneNumbers,
     ],
   )
 

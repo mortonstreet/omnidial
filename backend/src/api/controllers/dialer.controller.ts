@@ -124,11 +124,11 @@ export const listPhoneNumbersWithAssignments: AuthRequestHandler<
 export const assignPhoneNumber: AuthRequestHandler<
   AssignPhoneNumberRequest
 > = async (req, res) => {
-  const { organizationId, clientId, phoneNumber, friendlyName } = req.validated
+  const { organizationId, userId, phoneNumber, friendlyName } = req.validated
   try {
-    const assignment = await dialerService.assignPhoneNumberToClient(
+    const assignment = await dialerService.assignPhoneNumberToUser(
       organizationId,
-      clientId,
+      userId,
       phoneNumber,
       friendlyName,
     )
@@ -153,11 +153,13 @@ export const unassignPhoneNumber: AuthRequestHandler<
 export const getDialablePhoneNumbers: AuthRequestHandler<
   GetDialablePhoneNumbersRequest
 > = async (req, res) => {
-  const { organizationId, clientId } = req.validated
+  const { organizationId } = req.validated
   try {
+    // The rep's own numbers — taken from the session, never from the request,
+    // so a caller can't ask for someone else's dialable set.
     const phoneNumbers = await dialerService.getDialablePhoneNumbers(
       organizationId,
-      clientId,
+      req.user.id,
     )
     res.json({ data: phoneNumbers })
   } catch (error) {

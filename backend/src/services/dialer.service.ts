@@ -10,7 +10,7 @@ import * as callRepository from '@/repositories/call.repository'
 import * as voicemailDropRepository from '@/repositories/voicemailDrop.repository'
 import * as voicemailGreetingRepository from '@/repositories/voicemailGreeting.repository'
 import * as dispositionRepository from '@/repositories/disposition.repository'
-import * as clientPhoneNumberRepository from '@/repositories/clientPhoneNumber.repository'
+import * as userPhoneNumberRepository from '@/repositories/userPhoneNumber.repository'
 import * as campaignRepository from '@/repositories/campaign.repository'
 import * as campaignLeadRepository from '@/repositories/campaign-lead.repository'
 import * as telnyxClient from '@/clients/telnyx.client'
@@ -299,9 +299,7 @@ export const listPhoneNumbersWithAssignments = async (
 
   // Get all assignments for this org
   const assignments =
-    await clientPhoneNumberRepository.findByOrganizationWithClient(
-      organizationId,
-    )
+    await userPhoneNumberRepository.findByOrganizationWithUser(organizationId)
 
   // Map phone numbers to include assignment info
   return twilioNumbers.map((phone) => {
@@ -310,44 +308,38 @@ export const listPhoneNumbersWithAssignments = async (
     )
     return {
       ...phone,
-      assignedToClient: assignment
+      assignedToUser: assignment
         ? {
-            id: assignment.clientId,
-            name: assignment.clientName,
-            color: assignment.clientColor,
+            id: assignment.userId,
+            name: assignment.userName,
+            email: assignment.userEmail,
           }
         : null,
     }
   })
 }
 
-export const getClientPhoneNumbers = async (
+export const getUserPhoneNumbers = async (
   organizationId: string,
-  clientId: string,
+  userId: string,
 ) => {
-  return clientPhoneNumberRepository.findByClient(organizationId, clientId)
+  return userPhoneNumberRepository.findByUser(organizationId, userId)
 }
 
-export const assignPhoneNumberToClient = async (
+/**
+ * Give a number to a rep. Reassigning moves it — a number has exactly one
+ * owner, so there is no "already assigned" error to raise here; the previous
+ * owner simply loses it.
+ */
+export const assignPhoneNumberToUser = async (
   organizationId: string,
-  clientId: string,
+  userId: string,
   phoneNumber: string,
   friendlyName?: string,
 ) => {
-  // Check if already assigned
-  const existing = await clientPhoneNumberRepository.findByPhoneNumber(
+  return userPhoneNumberRepository.assign({
     organizationId,
-    phoneNumber,
-  )
-  if (existing) {
-    throw new Error(
-      `Phone number ${phoneNumber} is already assigned to a client`,
-    )
-  }
-
-  return clientPhoneNumberRepository.create({
-    organizationId,
-    clientId,
+    userId,
     phoneNumber,
     friendlyName,
   })
@@ -357,24 +349,30 @@ export const unassignPhoneNumber = async (
   organizationId: string,
   phoneNumber: string,
 ) => {
-  return clientPhoneNumberRepository.deleteByPhoneNumber(
+  return userPhoneNumberRepository.deleteByPhoneNumber(
     organizationId,
     phoneNumber,
   )
 }
 
+/**
+ * Caller IDs this rep may dial from.
+ *
+ * Scoped to the user rather than the client they're working: client-scoped
+ * numbers were shared by every rep on that client, which let two of them dial
+ * out from the same number at once.
+ */
 export const getDialablePhoneNumbers = async (
   organizationId: string,
-  clientId: string,
+  userId: string,
 ) => {
-  // Get assignments for this client
-  const assignments = await clientPhoneNumberRepository.findByClient(
+  const assignments = await userPhoneNumberRepository.findByUser(
     organizationId,
-    clientId,
+    userId,
   )
 
   if (assignments.length === 0) {
-    // Client has no assigned numbers - return empty array
+    // Rep has no assigned numbers yet — nothing they may dial from.
     return []
   }
 
@@ -480,6 +478,24 @@ export const initiateOutboundCall = async (
   const configData = await twilioConfigRepository.findById(twilioConfigId)
   if (!configData) {
     throw new Error('Telnyx configuration not found')
+  }
+
+  // `fromNumber` comes from the browser, so ownership has to be enforced here.
+  // Hiding a number in the dropdown is not a control — without this check any
+  // rep can dial from a colleague's caller ID, which is exactly the collision
+  // this model exists to prevent.
+  const ownsNumber = await userPhoneNumberRepository.isOwnedByUser(
+    configData.organizationId,
+    userId,
+    fromNumber,
+  )
+  if (!ownsNumber) {
+    const error = new Error(
+      `Caller ID ${fromNumber} is not assigned to you. Ask an admin to assign it in Settings > Phone Numbers.`,
+    ) as Error & { code: string; statusCode: number }
+    error.code = 'CALLER_ID_NOT_ASSIGNED'
+    error.statusCode = 403
+    throw error
   }
 
   // Check billing guard before allowing the call

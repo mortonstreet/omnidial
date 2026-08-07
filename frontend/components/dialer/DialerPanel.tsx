@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import { DispositionSelector } from './DispositionSelector'
 import { VoicemailDropButton } from './VoicemailDropButton'
-import { useTwilioPhoneNumbers } from '@/hooks/api/useDialer'
 import { useDialablePhoneNumbers } from '@/hooks/api/usePhoneNumberAssignments'
 import { useDispositions } from '@/hooks/api/useCalls'
 import { useLead, useLeads, useResolveTimezone } from '@/hooks/api/useLeads'
@@ -130,22 +129,13 @@ export function DialerPanel({
 
   const { data: dispositions } = useDispositions(!!organizationId)
 
-  // Fetch phone numbers - filtered by client if clientId is provided
-  // Use dialable phone numbers when clientId is provided (respects client assignments)
-  const { data: dialableNumbers, isLoading: dialableNumbersLoading } =
-    useDialablePhoneNumbers(organizationId, clientId)
-  // Fall back to all Twilio numbers when no clientId (for admin/testing scenarios)
-  const { data: allPhoneNumbers, isLoading: allNumbersLoading } =
-    useTwilioPhoneNumbers(
-      organizationId,
-      !clientId, // Only fetch all numbers when no clientId is provided
-    )
-
-  // Use dialable numbers when clientId is provided, otherwise use all phone numbers
-  const phoneNumbers = clientId ? dialableNumbers : allPhoneNumbers
-  const phoneNumbersLoading = clientId
-    ? dialableNumbersLoading
-    : allNumbersLoading
+  // The rep's own assigned caller IDs, regardless of which client is selected.
+  // There is deliberately no "show every org number" fallback: falling back
+  // would re-create the shared-number problem, and the server rejects a call
+  // from an unassigned number anyway, so offering one only produces a failed
+  // dial. An empty list means "ask an admin for a number", not "use any".
+  const { data: phoneNumbers, isLoading: phoneNumbersLoading } =
+    useDialablePhoneNumbers(organizationId)
   const isCallActive = callState === 'ringing' || callState === 'in-progress'
   const trimmedDialQuery = dialQuery.trim()
   const dialQueryLooksLikePhone = looksLikePhoneInput(trimmedDialQuery)
@@ -264,11 +254,6 @@ export function DialerPanel({
     shouldSearchLeads,
     trimmedDialQuery,
   ])
-
-  // Reset selected number when clientId changes (different numbers available)
-  useEffect(() => {
-    queueMicrotask(() => setSelectedFromNumber(''))
-  }, [clientId])
 
   // Set default from number when phone numbers are loaded (defer to avoid sync setState in effect)
   useEffect(() => {

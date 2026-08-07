@@ -231,8 +231,8 @@ export const ENDPOINTS = {
     ASSIGN_PHONE_NUMBER: '/dialer/phone-numbers/assign',
     UNASSIGN_PHONE_NUMBER: (orgId: string, phoneNumber: string) =>
       `/dialer/phone-numbers/${orgId}/assign/${encodeURIComponent(phoneNumber)}`,
-    DIALABLE_PHONE_NUMBERS: (orgId: string, clientId: string) =>
-      `/dialer/phone-numbers/${orgId}/dialable/${clientId}`,
+    DIALABLE_PHONE_NUMBERS: (orgId: string) =>
+      `/dialer/phone-numbers/${orgId}/dialable`,
     // Active dialer sessions
     SESSIONS: '/dialer/sessions',
     SESSION_END: (sessionId: string) => `/dialer/sessions/${sessionId}/end`,
@@ -681,8 +681,8 @@ export const QUERY_KEYS = {
     ['dialer', 'phone-numbers', orgId] as const,
   phoneNumberAssignments: (orgId?: string) =>
     ['phone-number-assignments', orgId] as const,
-  dialablePhoneNumbers: (orgId?: string, clientId?: string) =>
-    ['dialable-phone-numbers', orgId, clientId] as const,
+  dialablePhoneNumbers: (orgId?: string) =>
+    ['dialable-phone-numbers', orgId] as const,
   calls: (filters?: Record<string, unknown>) => ['calls', filters] as const,
   call: (id: string) => ['calls', id] as const,
   voicemailDrops: () => ['voicemail-drops'] as const,

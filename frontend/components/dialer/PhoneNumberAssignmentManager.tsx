@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Phone,
-  Building2,
+  User,
   ChevronDown,
   X,
   Loader2,
@@ -15,7 +15,7 @@ import {
   useAssignPhoneNumber,
   useUnassignPhoneNumber,
 } from '@/hooks/api/usePhoneNumberAssignments'
-import { useClients } from '@/hooks/api/useClients'
+import { useListOrganizationMembers } from '@/hooks/api/useOrganization'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -35,24 +35,38 @@ export function PhoneNumberAssignmentManager({
     isLoading: loadingNumbers,
     refetch,
   } = usePhoneNumberAssignments(organizationId)
-  const { data: clients, isLoading: loadingClients } = useClients()
+  const { data: membersData, isLoading: loadingMembers } =
+    useListOrganizationMembers()
+
+  // better-auth returns members as { userId, user: { name, email } }; flatten
+  // to the shape the selector wants.
+  const members = (
+    (membersData?.data?.members ?? []) as Array<{
+      userId: string
+      user?: { name?: string | null; email?: string | null }
+    }>
+  ).map((member) => ({
+    userId: member.userId,
+    name: member.user?.name || '',
+    email: member.user?.email || '',
+  }))
 
   const assignMutation = useAssignPhoneNumber()
   const unassignMutation = useUnassignPhoneNumber()
 
   const handleAssign = async (
     phoneNumber: string,
-    clientId: string,
+    userId: string,
     friendlyName?: string,
   ) => {
     try {
       await assignMutation.mutateAsync({
         organizationId,
-        clientId,
+        userId,
         phoneNumber,
         friendlyName,
       })
-      toast.success('Phone number assigned to client')
+      toast.success('Phone number assigned')
       setSelectedPhoneForAssign(null)
     } catch (error) {
       toast.error(
@@ -72,7 +86,7 @@ export function PhoneNumberAssignmentManager({
     }
   }
 
-  if (loadingNumbers || loadingClients) {
+  if (loadingNumbers || loadingMembers) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -140,26 +154,23 @@ export function PhoneNumberAssignmentManager({
                   )}
                 </div>
 
-                {phone.assignedToClient ? (
+                {phone.assignedToUser ? (
                   <>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg">
-                      {phone.assignedToClient.color && (
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{
-                            backgroundColor: phone.assignedToClient.color,
-                          }}
-                        />
-                      )}
+                    <div
+                      className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg"
+                      title={phone.assignedToUser.email}
+                    >
+                      <User className="w-3.5 h-3.5 flex-shrink-0" />
                       <span className="text-sm font-medium">
-                        {phone.assignedToClient.name}
+                        {phone.assignedToUser.name ||
+                          phone.assignedToUser.email}
                       </span>
                     </div>
                     <button
                       onClick={() => handleUnassign(phone.phoneNumber)}
                       disabled={unassignMutation.isPending}
                       className="p-1.5 text-muted-foreground hover:text-red-500 transition"
-                      title="Unassign from client"
+                      title="Unassign from rep"
                     >
                       {unassignMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -169,12 +180,12 @@ export function PhoneNumberAssignmentManager({
                     </button>
                   </>
                 ) : selectedPhoneForAssign === phone.phoneNumber ? (
-                  <ClientSelector
-                    clients={clients || []}
-                    onSelect={(clientId) =>
+                  <UserSelector
+                    members={members}
+                    onSelect={(userId) =>
                       handleAssign(
                         phone.phoneNumber,
-                        clientId,
+                        userId,
                         phone.friendlyName,
                       )
                     }
@@ -186,8 +197,8 @@ export function PhoneNumberAssignmentManager({
                     onClick={() => setSelectedPhoneForAssign(phone.phoneNumber)}
                     className="flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-lg text-sm transition"
                   >
-                    <Building2 className="w-4 h-4" />
-                    Assign to Client
+                    <User className="w-4 h-4" />
+                    Assign to Rep
                   </button>
                 )}
               </div>
@@ -219,15 +230,17 @@ export function PhoneNumberAssignmentManager({
   )
 }
 
-// Client selector dropdown component
-function ClientSelector({
-  clients,
+// Rep selector dropdown. Assigning a number that already belongs to someone
+// else moves it — a number has exactly one owner, enforced by a unique
+// constraint on (organizationId, phoneNumber).
+function UserSelector({
+  members,
   onSelect,
   onCancel,
   loading,
 }: {
-  clients: Array<{ id: string; name: string; color?: string | null }>
-  onSelect: (clientId: string) => void
+  members: Array<{ userId: string; name: string; email: string }>
+  onSelect: (userId: string) => void
   onCancel: () => void
   loading: boolean
 }) {
@@ -249,10 +262,10 @@ function ClientSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [onCancel])
 
-  if (clients.length === 0) {
+  if (members.length === 0) {
     return (
       <div className="text-sm text-muted-foreground px-3 py-1.5">
-        No clients available.{' '}
+        No members available.{' '}
         <button onClick={onCancel} className="text-primary hover:underline">
           Cancel
         </button>
@@ -271,7 +284,7 @@ function ClientSelector({
           <Loader2 className="w-4 h-4 animate-spin" />
         ) : (
           <>
-            Select client
+            Select rep
             <ChevronDown
               className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
             />
@@ -280,20 +293,19 @@ function ClientSelector({
       </button>
 
       {open && !loading && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-10 py-1">
-          {clients.map((client) => (
+        <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-border rounded-lg shadow-lg z-10 py-1">
+          {members.map((member) => (
             <button
-              key={client.id}
-              onClick={() => onSelect(client.id)}
-              className="w-full px-3 py-2 text-left text-sm hover:bg-muted/50 flex items-center gap-2"
+              key={member.userId}
+              onClick={() => onSelect(member.userId)}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-muted/50 flex flex-col"
             >
-              {client.color && (
-                <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: client.color }}
-                />
+              <span className="truncate">{member.name || member.email}</span>
+              {member.name && (
+                <span className="truncate text-xs text-muted-foreground">
+                  {member.email}
+                </span>
               )}
-              <span className="truncate">{client.name}</span>
             </button>
           ))}
           <div className="border-t border-border mt-1 pt-1">

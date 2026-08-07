@@ -1452,6 +1452,15 @@ export type User = {
   onboardingIndustry: string | null
   onboardingComplete: Generated<boolean>
 }
+export type UserPhoneNumber = {
+  id: string
+  organizationId: string
+  userId: string
+  phoneNumber: string
+  friendlyName: string | null
+  createdAt: Generated<Timestamp>
+  updatedAt: Generated<Timestamp>
+}
 export type Verification = {
   id: string
   identifier: string
@@ -1594,6 +1603,7 @@ export type DB = {
   twoFactor: TwoFactor
   usage_cycle: UsageCycle
   user: User
+  user_phone_number: UserPhoneNumber
   verification: Verification
   voicemail_drop: VoicemailDrop
   voicemail_greeting: VoicemailGreeting

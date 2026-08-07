@@ -82,7 +82,7 @@ export function ParallelDialerControls({
   const startSession = useStartParallelDialSession();
   const endSession = useEndParallelDialSession();
   const dialNextBatch = useDialNextBatch();
-  const { data: dialableNumbers, isLoading: isLoadingNumbers } = useDialablePhoneNumbers(orgId, clientId);
+  const { data: dialableNumbers, isLoading: isLoadingNumbers } = useDialablePhoneNumbers(orgId);
   const { data: sessionData } = useParallelDialSession(currentSessionId);
 
   // Set default phone number when dialable numbers load

@@ -60,6 +60,7 @@ model User {
   listFavorites            ListFavorite[]
   listOpens                ListOpen[]
   clientAssignments        ClientUserAssignment[]
+  phoneNumbers             UserPhoneNumber[]
   leadsCreated             Lead[]                   @relation("LeadCreatedBy")
   leadsModified            Lead[]                   @relation("LeadModifiedBy")
   leadListsModified        LeadList[]               @relation("LeadListModifiedBy")
@@ -233,6 +234,31 @@ model ClientPhoneNumber {
   @@index([organizationId])
   @@index([clientId])
   @@map("client_phone_number")
+}
+
+/// Caller IDs owned by an individual rep.
+///
+/// Replaces ClientPhoneNumber as the source of truth for outbound caller ID.
+/// Assigning numbers per client meant every rep working that client shared the
+/// same pool, so two reps could dial out from one number at the same time. The
+/// unique constraint below is what makes single ownership structural rather
+/// than a UI convention — see also the server-side check in
+/// `initiateOutboundCall`, since `fromNumber` arrives from the client.
+model UserPhoneNumber {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  phoneNumber    String // E.164 format
+  friendlyName   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, phoneNumber]) // One owner per number, per org
+  @@index([organizationId])
+  @@index([organizationId, userId])
+  @@map("user_phone_number")
 }
 
 model Member {

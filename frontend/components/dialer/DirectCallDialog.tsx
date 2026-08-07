@@ -13,7 +13,6 @@ import {
   X,
 } from 'lucide-react'
 import { useDialablePhoneNumbers } from '@/hooks/api/usePhoneNumberAssignments'
-import { useTwilioPhoneNumbers } from '@/hooks/api/useDialer'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useDialerContext } from '@/components/providers/DialerProvider'
 import { toast } from 'sonner'
@@ -62,16 +61,10 @@ export function DirectCallDialog({
     setCurrentLeadInfo,
   } = useDialerContext()
 
-  // Fetch phone numbers - filtered by client if clientId is provided
-  const { data: dialableNumbers, isLoading: dialableNumbersLoading } =
-    useDialablePhoneNumbers(organizationId, clientId)
-  const { data: allPhoneNumbers, isLoading: allNumbersLoading } =
-    useTwilioPhoneNumbers(organizationId, !clientId)
-
-  const phoneNumbers = clientId ? dialableNumbers : allPhoneNumbers
-  const phoneNumbersLoading = clientId
-    ? dialableNumbersLoading
-    : allNumbersLoading
+  // The rep's own caller IDs — not the client's. See DialerPanel for why there
+  // is no fallback to every org number.
+  const { data: phoneNumbers, isLoading: phoneNumbersLoading } =
+    useDialablePhoneNumbers(organizationId)
 
   // Set default from number when phone numbers are loaded
   useEffect(() => {
@@ -80,14 +73,15 @@ export function DirectCallDialog({
     }
   }, [phoneNumbers, selectedFromNumber])
 
-  // Reset selected number when dialog opens with different clientId
+  // Reset selection when the dialog opens. No clientId dependency: the caller
+  // IDs on offer are the rep's own and don't change with the selected client.
   useEffect(() => {
     if (isOpen) {
       setSelectedFromNumber('')
       setIsMuted(false)
       setCallDuration(0)
     }
-  }, [isOpen, clientId])
+  }, [isOpen])
 
   // Track previous call state for transition handling
   const prevCallStateRef = useRef(callState)
@@ -398,9 +392,7 @@ export function DirectCallDialog({
               ) : (
                 <div className="text-center py-2">
                   <span className="text-sm text-amber-500">
-                    {clientId
-                      ? 'No phone numbers assigned to this client'
-                      : 'No phone numbers available'}
+                    No caller ID assigned to you — ask an admin to assign one
                   </span>
                 </div>
               )}
