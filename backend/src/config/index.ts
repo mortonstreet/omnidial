@@ -104,6 +104,12 @@ const envSchema = z.object({
   // Monday
   MONDAY_CLIENT_ID: z.string().optional(),
   MONDAY_CLIENT_SECRET: z.string().optional(),
+  // Telnyx text-to-speech voice used by TeXML <Say> verbs.
+  // Telnyx accepts `man`/`woman`/`alice` (robotic basic voices) plus
+  // provider-prefixed neural voices: `Polly.VoiceId-Neural`, `Azure.VoiceId`,
+  // `ElevenLabs.ModelId.VoiceId`, `Telnyx.ModelId.VoiceId`, and others.
+  // Default to a Polly neural voice — the basic voices are the robotic ones.
+  TELNYX_TTS_VOICE: z.string().default('Polly.Joanna-Neural'),
   // Pusher/Soketi
   PUSHER_ENABLED: z
     .string()
@@ -299,6 +305,7 @@ export const config = {
   nodeEnv: env.NODE_ENV,
   frontendUrl: env.FRONTEND_URL,
   backendUrl: env.BACKEND_URL,
+  telnyxTtsVoice: env.TELNYX_TTS_VOICE,
   corsOrigin: env.CORS_ORIGIN,
   cookieDomain: env.COOKIE_DOMAIN,
   billingEnforced: env.BILLING_ENFORCED,

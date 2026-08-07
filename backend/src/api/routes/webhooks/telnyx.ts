@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { createHash, randomUUID } from 'crypto'
-import { VoiceResponse } from '@/lib/texml'
+import { VoiceResponse, setDefaultVoice } from '@/lib/texml'
 import * as dialerService from '@/services/dialer.service'
 import * as parallelDialerService from '@/services/parallelDialer.service'
 import * as slackClickToCallService from '@/services/slackClickToCall.service'
@@ -71,6 +71,10 @@ const sendInboundSlackNotification = (
       )
     })
 }
+
+// Every TeXML <Say> in this file speaks to a prospect, so default them all to
+// the configured neural voice instead of Telnyx's robotic basic voices.
+setDefaultVoice(config.telnyxTtsVoice)
 
 const router = Router()
 const WEBHOOK_PROVIDER = 'telnyx'
@@ -853,13 +857,27 @@ router.post('/voice/inbound/status', async (req: Request, res: Response) => {
 
       if (!usedCustomGreeting) {
         response.say(
-          'Sorry, no one is available to take your call. Please leave a message after the beep.',
+          "Hi, thanks for calling. We can't pick up right now, but leave your name, number, and a quick message after the tone and we'll get right back to you.",
         )
       }
 
+      // `action` alone is not enough to capture a voicemail. It fires when the
+      // <Record> verb ends and hands back the next TeXML, but a caller who
+      // simply hangs up — the normal way people finish a voicemail — does not
+      // reliably trigger it, which silently dropped recordings on the floor.
+      // `recordingStatusCallback` fires when the recording becomes available
+      // regardless of how it ended, so it is the durable capture path; `action`
+      // stays for the "thanks, goodbye" prompt when the caller doesn't hang up.
       response.record({
         maxLength: 120,
+        // End on ~5s of silence so the recording closes cleanly instead of
+        // relying on the caller hanging up or waiting out maxLength.
+        timeout: 5,
+        playBeep: true,
         action: `${config.backendUrl}/api/webhooks/telnyx/voicemail?callId=${callId || ''}`,
+        recordingStatusCallback: `${config.backendUrl}/api/webhooks/telnyx/recording?callId=${callId || ''}&voicemail=1`,
+        recordingStatusCallbackMethod: 'POST',
+        recordingStatusCallbackEvent: ['completed'],
       })
     } else if (
       DialCallStatus === 'completed' ||
@@ -1075,6 +1093,9 @@ router.post('/status', async (req: Request, res: Response) => {
  */
 router.post('/recording', async (req: Request, res: Response) => {
   const { callId } = req.query
+  // Set by the voicemail <Record> verb so this handler knows the recording is a
+  // voicemail rather than a recorded conversation, and flags it for the inbox.
+  const isVoicemail = req.query.voicemail === '1'
   const CallSid = firstString(req.body.CallSid, req.body.call_sid)
   const ConferenceSid = firstString(
     req.body.ConferenceSid,
@@ -1114,22 +1135,37 @@ router.post('/recording', async (req: Request, res: Response) => {
     if (RecordingStatus === 'completed' && recordingUrl) {
       let updated = null
 
+      // A voicemail recording also needs the inbox flag — the inbox query
+      // requires both voicemailLeft AND a non-null recordingUrl, so setting
+      // only one leaves the voicemail invisible in the UI.
+      const voicemailFields = isVoicemail ? { voicemailLeft: true } : {}
+
       if (typeof callId === 'string') {
         updated = await callRepository.update(
           callId,
           compactDefined({
             recordingUrl,
             recordingSid: RecordingSid,
+            ...voicemailFields,
           }) as callRepository.UpdateCallInput,
         )
       }
 
       if (!updated && CallSid) {
-        updated = await dialerService.updateCallRecording(
-          CallSid,
-          recordingUrl,
-          RecordingSid,
-        )
+        updated = isVoicemail
+          ? await callRepository.updateByTwilioCallSid(
+              CallSid,
+              compactDefined({
+                recordingUrl,
+                recordingSid: RecordingSid,
+                ...voicemailFields,
+              }) as callRepository.UpdateCallInput,
+            )
+          : await dialerService.updateCallRecording(
+              CallSid,
+              recordingUrl,
+              RecordingSid,
+            )
       }
 
       if (!updated && ConferenceSid) {
@@ -1138,6 +1174,7 @@ router.post('/recording', async (req: Request, res: Response) => {
           compactDefined({
             recordingUrl,
             recordingSid: RecordingSid,
+            ...voicemailFields,
           }) as callRepository.UpdateCallInput,
         )
       }

@@ -118,14 +118,39 @@ export class DialBuilder {
 /**
  * Drop-in replacement for `twilio.twiml.VoiceResponse`, emitting TeXML.
  */
+/**
+ * Voice applied to every `<Say>` that doesn't name one explicitly.
+ *
+ * Telnyx's basic voices (`man`/`woman`/`alice`) are the robotic-sounding ones.
+ * Setting a provider-prefixed neural voice here (e.g. `Polly.Joanna-Neural`)
+ * upgrades every prompt in the app at once, rather than having each of the
+ * ~20 `say()` call sites remember to pass one.
+ */
+let defaultVoice: string | undefined
+
+export const setDefaultVoice = (voice: string | undefined): void => {
+  defaultVoice = voice || undefined
+}
+
 export class VoiceResponse {
   private readonly root = new TexmlNode('Response')
 
   say(attributesOrText: Attributes | string, text?: string): this {
     if (typeof attributesOrText === 'string') {
-      this.root.addChild('Say', undefined, attributesOrText)
+      this.root.addChild(
+        'Say',
+        defaultVoice ? { voice: defaultVoice } : undefined,
+        attributesOrText,
+      )
     } else {
-      this.root.addChild('Say', attributesOrText, text)
+      // An explicit voice on the call site always wins over the default.
+      this.root.addChild(
+        'Say',
+        defaultVoice
+          ? { voice: defaultVoice, ...attributesOrText }
+          : attributesOrText,
+        text,
+      )
     }
     return this
   }
