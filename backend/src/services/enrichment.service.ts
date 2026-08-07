@@ -1173,10 +1173,9 @@ export const bulkProspeoMobileEnrichList = async (
 
       const phoneCandidates = Array.from(
         new Set(
-          [
-            prospeoResult.phone,
-            ...(prospeoResult.phoneNumbers ?? []),
-          ].filter((value): value is string => !!value),
+          [prospeoResult.phone, ...(prospeoResult.phoneNumbers ?? [])].filter(
+            (value): value is string => !!value,
+          ),
         ),
       )
       const normalizedMobile = phoneCandidates
@@ -1230,7 +1229,14 @@ export const bulkProspeoMobileEnrichList = async (
         .where('organizationId', '=', organizationId)
         .execute()
 
-      await addContactInfo(lead.id, 'mobile', normalizedMobile, 'prospeo', true, true)
+      await addContactInfo(
+        lead.id,
+        'mobile',
+        normalizedMobile,
+        'prospeo',
+        true,
+        true,
+      )
 
       await recordEnrichmentHistory(
         organizationId,
@@ -1248,7 +1254,9 @@ export const bulkProspeoMobileEnrichList = async (
 
       crmService
         .autoSyncAfterEnrichment(organizationId, lead.id)
-        .catch((err) => console.error('[Enrichment] Auto CRM sync failed:', err))
+        .catch((err) =>
+          console.error('[Enrichment] Auto CRM sync failed:', err),
+        )
 
       results.push({
         leadId: lead.id,
