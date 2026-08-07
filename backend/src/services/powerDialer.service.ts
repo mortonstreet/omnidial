@@ -3,6 +3,7 @@ import * as leadListEntryRepo from '@/repositories/leadListEntry.repository'
 import * as leadListRepo from '@/repositories/leadList.repository'
 import * as campaignListRepo from '@/repositories/campaignList.repository'
 import * as callingNotificationService from '@/services/callingNotification.service'
+import type { PowerDialerTimezonePriority } from '@shared/types/src'
 
 // Special marker for campaign-level (all lists) mode
 const CAMPAIGN_ALL_LISTS = 'campaign-all'
@@ -12,6 +13,7 @@ export interface GetProgressParams {
   campaignId: string
   listId?: string // Optional - if not provided, uses all campaign lists
   organizationId: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 export const getProgress = async (params: GetProgressParams) => {
@@ -33,7 +35,9 @@ export const getProgress = async (params: GetProgressParams) => {
       totalLeads = await campaignListRepo.getActiveCampaignLeadCount(campaignId)
     } else {
       const list = await leadListRepo.findById(effectiveListId, organizationId)
-      totalLeads = list?.leadCount || 0
+      totalLeads = list
+        ? await leadListEntryRepo.getActiveLeadCount(effectiveListId)
+        : 0
     }
 
     return {
@@ -72,10 +76,12 @@ export interface StartSessionParams {
   campaignId: string
   listId?: string
   organizationId: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 export const startSession = async (params: StartSessionParams) => {
-  const { userId, campaignId, listId, organizationId } = params
+  const { userId, campaignId, listId, organizationId, timezonePriority } =
+    params
   const effectiveListId = listId || CAMPAIGN_ALL_LISTS
 
   // Get total leads count - from campaign or specific list
@@ -83,14 +89,17 @@ export const startSession = async (params: StartSessionParams) => {
   if (effectiveListId === CAMPAIGN_ALL_LISTS) {
     totalLeads = await campaignListRepo.getActiveCampaignLeadCount(campaignId)
     if (totalLeads === 0) {
-      throw new Error('No leads found in campaign lists')
+      throw new Error('No dialable leads found in campaign lists')
     }
   } else {
     const list = await leadListRepo.findById(effectiveListId, organizationId)
     if (!list) {
       throw new Error('List not found')
     }
-    totalLeads = list.leadCount || 0
+    totalLeads = await leadListEntryRepo.getActiveLeadCount(effectiveListId)
+    if (totalLeads === 0) {
+      throw new Error('No dialable leads found in list')
+    }
   }
 
   // Create or update progress with isPaused = false
@@ -101,6 +110,7 @@ export const startSession = async (params: StartSessionParams) => {
     {
       totalLeads,
       isPaused: false,
+      ...(timezonePriority ? { currentIndex: 0 } : {}),
     },
   )
 
@@ -147,10 +157,12 @@ export interface GetNextLeadParams {
   campaignId: string
   listId?: string
   organizationId: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 export const getNextLead = async (params: GetNextLeadParams) => {
-  const { userId, campaignId, listId, organizationId } = params
+  const { userId, campaignId, listId, organizationId, timezonePriority } =
+    params
   const effectiveListId = listId || CAMPAIGN_ALL_LISTS
   const isCampaignMode = effectiveListId === CAMPAIGN_ALL_LISTS
 
@@ -170,7 +182,7 @@ export const getNextLead = async (params: GetNextLeadParams) => {
       if (!list) {
         throw new Error('List not found')
       }
-      totalLeads = list.leadCount || 0
+      totalLeads = await leadListEntryRepo.getActiveLeadCount(effectiveListId)
     }
 
     progress = await progressRepo.create({
@@ -219,6 +231,7 @@ export const getNextLead = async (params: GetNextLeadParams) => {
       campaignId,
       effectiveIndex,
       1,
+      { timezonePriority },
     )
     lead = leads.length > 0 ? leads[0] : null
   } else {
@@ -231,6 +244,7 @@ export const getNextLead = async (params: GetNextLeadParams) => {
         limit: 1,
         offset: effectiveIndex,
       },
+      { timezonePriority, dialableOnly: true },
     )
     lead = entries.data?.length > 0 ? entries.data[0] : null
   }
@@ -251,10 +265,11 @@ export interface SkipLeadParams {
   userId: string
   campaignId: string
   listId?: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 export const skipLead = async (params: SkipLeadParams) => {
-  const { userId, campaignId, listId } = params
+  const { userId, campaignId, listId, timezonePriority } = params
   const effectiveListId = listId || CAMPAIGN_ALL_LISTS
   const isCampaignMode = effectiveListId === CAMPAIGN_ALL_LISTS
 
@@ -309,6 +324,7 @@ export const skipLead = async (params: SkipLeadParams) => {
       campaignId,
       effectiveIndex,
       1,
+      { timezonePriority },
     )
     lead = leads.length > 0 ? leads[0] : null
   } else {
@@ -320,6 +336,7 @@ export const skipLead = async (params: SkipLeadParams) => {
         limit: 1,
         offset: effectiveIndex,
       },
+      { timezonePriority, dialableOnly: true },
     )
     lead = entries.data?.length > 0 ? entries.data[0] : null
   }
@@ -340,6 +357,7 @@ export interface AdvanceToNextParams {
   userId: string
   campaignId: string
   listId?: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 export const advanceToNext = async (params: AdvanceToNextParams) => {
@@ -365,10 +383,11 @@ export interface GoToPreviousParams {
   userId: string
   campaignId: string
   listId?: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 export const goToPrevious = async (params: GoToPreviousParams) => {
-  const { userId, campaignId, listId } = params
+  const { userId, campaignId, listId, timezonePriority } = params
   const effectiveListId = listId || CAMPAIGN_ALL_LISTS
   const isCampaignMode = effectiveListId === CAMPAIGN_ALL_LISTS
 
@@ -445,6 +464,7 @@ export const goToPrevious = async (params: GoToPreviousParams) => {
       campaignId,
       effectiveIndex,
       1,
+      { timezonePriority },
     )
     lead = leads.length > 0 ? leads[0] : null
   } else {
@@ -456,6 +476,7 @@ export const goToPrevious = async (params: GoToPreviousParams) => {
         limit: 1,
         offset: effectiveIndex,
       },
+      { timezonePriority, dialableOnly: true },
     )
     lead = entries.data?.length > 0 ? entries.data[0] : null
   }

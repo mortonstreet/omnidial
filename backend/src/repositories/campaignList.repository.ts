@@ -1,5 +1,59 @@
 import { db } from '@/lib/db'
 import { withId } from './utils'
+import type { PowerDialerTimezonePriority } from '@shared/types/src'
+import { sql } from 'kysely'
+
+const TIMEZONE_GROUPS: Record<PowerDialerTimezonePriority, string[]> = {
+  eastern: [
+    'America/New_York',
+    'America/Detroit',
+    'America/Toronto',
+    'America/Indiana/Indianapolis',
+    'America/Kentucky/Louisville',
+  ],
+  central: ['America/Chicago', 'America/Winnipeg', 'America/Mexico_City'],
+  mountain: [
+    'America/Denver',
+    'America/Phoenix',
+    'America/Boise',
+    'America/Edmonton',
+  ],
+  pacific: ['America/Los_Angeles', 'America/Vancouver'],
+}
+
+const TIMEZONE_ORDER: Record<
+  PowerDialerTimezonePriority,
+  PowerDialerTimezonePriority[]
+> = {
+  eastern: ['eastern', 'central', 'mountain', 'pacific'],
+  central: ['central', 'mountain', 'pacific', 'eastern'],
+  mountain: ['mountain', 'pacific', 'eastern', 'central'],
+  pacific: ['pacific', 'eastern', 'central', 'mountain'],
+}
+
+const timezoneInSql = (timezones: string[]) =>
+  sql<boolean>`lead.timezone in (${sql.join(timezones)})`
+
+const timezonePriorityRankSql = (priority: PowerDialerTimezonePriority) => {
+  const order = TIMEZONE_ORDER[priority]
+
+  return sql<number>`case
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[0]])} then 0
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[1]])} then 1
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[2]])} then 2
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[3]])} then 3
+    else 4
+  end`
+}
+
+const dialableLeadWhereSql = sql<boolean>`(
+  btrim(coalesce(lead.phone, '')) <> ''
+  and (
+    btrim(coalesce(lead."firstName", '')) <> ''
+    or btrim(coalesce(lead."lastName", '')) <> ''
+    or btrim(coalesce(lead.company, '')) <> ''
+  )
+)`
 
 export const addListToCampaign = async (campaignId: string, listId: string) => {
   return db
@@ -93,6 +147,7 @@ export const getActiveCampaignLeadCount = async (
     .where('campaign_list.campaignId', '=', campaignId)
     .where('lead_list_entry.removedAt', 'is', null)
     .where('lead.deletedAt', 'is', null)
+    .where(dialableLeadWhereSql)
     .select((eb) => eb.fn.countAll().as('count'))
     .executeTakeFirst()
 
@@ -104,8 +159,9 @@ export const findCampaignLeadsWithOffset = async (
   campaignId: string,
   offset: number,
   limit: number = 1,
+  options: { timezonePriority?: PowerDialerTimezonePriority } = {},
 ) => {
-  const leads = await db
+  let query = db
     .selectFrom('campaign_list')
     .innerJoin(
       'lead_list_entry',
@@ -116,6 +172,7 @@ export const findCampaignLeadsWithOffset = async (
     .where('campaign_list.campaignId', '=', campaignId)
     .where('lead_list_entry.removedAt', 'is', null)
     .where('lead.deletedAt', 'is', null)
+    .where(dialableLeadWhereSql)
     .select([
       'lead.id',
       'lead.firstName',
@@ -136,6 +193,15 @@ export const findCampaignLeadsWithOffset = async (
       'lead.createdAt',
       'lead_list_entry.listId',
     ])
+
+  if (options.timezonePriority) {
+    query = query.orderBy(
+      timezonePriorityRankSql(options.timezonePriority),
+      'asc',
+    )
+  }
+
+  const leads = await query
     .orderBy('campaign_list.addedAt', 'asc')
     .orderBy('lead_list_entry.sortOrder', 'asc')
     .offset(offset)

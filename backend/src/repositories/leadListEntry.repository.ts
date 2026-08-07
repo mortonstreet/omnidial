@@ -1,6 +1,60 @@
 import { db } from '@/lib/db'
 import { withId, withPagination } from './utils'
 import { DBPagination } from '@shared/db/src/types'
+import type { PowerDialerTimezonePriority } from '@shared/types/src'
+import { sql } from 'kysely'
+
+const TIMEZONE_GROUPS: Record<PowerDialerTimezonePriority, string[]> = {
+  eastern: [
+    'America/New_York',
+    'America/Detroit',
+    'America/Toronto',
+    'America/Indiana/Indianapolis',
+    'America/Kentucky/Louisville',
+  ],
+  central: ['America/Chicago', 'America/Winnipeg', 'America/Mexico_City'],
+  mountain: [
+    'America/Denver',
+    'America/Phoenix',
+    'America/Boise',
+    'America/Edmonton',
+  ],
+  pacific: ['America/Los_Angeles', 'America/Vancouver'],
+}
+
+const TIMEZONE_ORDER: Record<
+  PowerDialerTimezonePriority,
+  PowerDialerTimezonePriority[]
+> = {
+  eastern: ['eastern', 'central', 'mountain', 'pacific'],
+  central: ['central', 'mountain', 'pacific', 'eastern'],
+  mountain: ['mountain', 'pacific', 'eastern', 'central'],
+  pacific: ['pacific', 'eastern', 'central', 'mountain'],
+}
+
+const timezoneInSql = (timezones: string[]) =>
+  sql<boolean>`lead.timezone in (${sql.join(timezones)})`
+
+const timezonePriorityRankSql = (priority: PowerDialerTimezonePriority) => {
+  const order = TIMEZONE_ORDER[priority]
+
+  return sql<number>`case
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[0]])} then 0
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[1]])} then 1
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[2]])} then 2
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[3]])} then 3
+    else 4
+  end`
+}
+
+const dialableLeadWhereSql = sql<boolean>`(
+  btrim(coalesce(lead.phone, '')) <> ''
+  and (
+    btrim(coalesce(lead."firstName", '')) <> ''
+    or btrim(coalesce(lead."lastName", '')) <> ''
+    or btrim(coalesce(lead.company, '')) <> ''
+  )
+)`
 
 export const addLeads = async (listId: string, leadIds: string[]) => {
   if (leadIds.length === 0) return 0
@@ -82,6 +136,10 @@ export const findByList = async (
   listId: string,
   filters: { search?: string },
   pagination: DBPagination,
+  options: {
+    dialableOnly?: boolean
+    timezonePriority?: PowerDialerTimezonePriority
+  } = {},
 ) => {
   let query = db
     .selectFrom('lead_list_entry')
@@ -89,6 +147,10 @@ export const findByList = async (
     .where('lead_list_entry.listId', '=', listId)
     .where('lead_list_entry.removedAt', 'is', null) // Exclude soft-removed entries
     .where('lead.deletedAt', 'is', null)
+
+  if (options.dialableOnly) {
+    query = query.where(dialableLeadWhereSql)
+  }
 
   if (filters.search) {
     query = query.where((eb) =>
@@ -106,7 +168,7 @@ export const findByList = async (
     .select((eb) => eb.fn.countAll().as('count'))
     .executeTakeFirstOrThrow()
 
-  const leads = await withPagination(
+  let leadQuery = withPagination(
     pagination,
     query.select([
       'lead_list_entry.id as entryId',
@@ -130,6 +192,15 @@ export const findByList = async (
       'lead.createdAt',
     ]),
   )
+
+  if (options.timezonePriority) {
+    leadQuery = leadQuery.orderBy(
+      timezonePriorityRankSql(options.timezonePriority),
+      'asc',
+    )
+  }
+
+  const leads = await leadQuery
     .orderBy('lead_list_entry.sortOrder', 'asc')
     .execute()
 
@@ -216,6 +287,7 @@ export const getActiveLeadCount = async (listId: string): Promise<number> => {
     .where('lead_list_entry.listId', '=', listId)
     .where('lead_list_entry.removedAt', 'is', null)
     .where('lead.deletedAt', 'is', null)
+    .where(dialableLeadWhereSql)
     .select((eb) => eb.fn.countAll().as('count'))
     .executeTakeFirst()
 

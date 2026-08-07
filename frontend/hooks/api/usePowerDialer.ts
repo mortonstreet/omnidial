@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useActiveOrganization } from '@/lib/auth-client';
 import { ENDPOINTS, QUERY_KEYS } from '@/lib/config';
 import { get, post } from '@/lib/api';
+import type { PowerDialerTimezonePriority } from '@shared/types/src';
+
+export type TimezonePriority = PowerDialerTimezonePriority;
 
 export interface PowerDialerProgress {
   id?: string;
@@ -56,12 +59,22 @@ export interface NextLeadResponse {
   };
 }
 
-export function usePowerDialerProgress(campaignId?: string, listId?: string) {
+interface PowerDialerMutationParams {
+  campaignId: string;
+  listId?: string;
+  timezonePriority?: TimezonePriority;
+}
+
+export function usePowerDialerProgress(
+  campaignId?: string,
+  listId?: string,
+  timezonePriority?: TimezonePriority
+) {
   const activeOrganization = useActiveOrganization();
   const orgId = activeOrganization?.data?.id;
 
   return useQuery({
-    queryKey: QUERY_KEYS.powerDialerProgress(campaignId, listId),
+    queryKey: QUERY_KEYS.powerDialerProgress(campaignId, listId, timezonePriority),
     queryFn: async () => {
       try {
         const params = new URLSearchParams({
@@ -70,6 +83,9 @@ export function usePowerDialerProgress(campaignId?: string, listId?: string) {
         });
         if (listId) {
           params.set('listId', listId);
+        }
+        if (timezonePriority) {
+          params.set('timezonePriority', timezonePriority);
         }
         return await get<PowerDialerProgress>(
           `${ENDPOINTS.POWER_DIALER.PROGRESS}?${params.toString()}`
@@ -89,12 +105,16 @@ export function usePowerDialerProgress(campaignId?: string, listId?: string) {
   });
 }
 
-export function useNextLead(campaignId?: string, listId?: string) {
+export function useNextLead(
+  campaignId?: string,
+  listId?: string,
+  timezonePriority?: TimezonePriority
+) {
   const activeOrganization = useActiveOrganization();
   const orgId = activeOrganization?.data?.id;
 
   return useQuery({
-    queryKey: QUERY_KEYS.powerDialerNextLead(campaignId, listId),
+    queryKey: QUERY_KEYS.powerDialerNextLead(campaignId, listId, timezonePriority),
     queryFn: async () => {
       try {
         const params = new URLSearchParams({
@@ -103,6 +123,9 @@ export function useNextLead(campaignId?: string, listId?: string) {
         });
         if (listId) {
           params.set('listId', listId);
+        }
+        if (timezonePriority) {
+          params.set('timezonePriority', timezonePriority);
         }
         return await get<NextLeadResponse>(
           `${ENDPOINTS.POWER_DIALER.NEXT_LEAD}?${params.toString()}`
@@ -129,6 +152,7 @@ export function useStartPowerDialer() {
       campaignId: string;
       listId?: string;
       delaySeconds?: number;
+      timezonePriority?: TimezonePriority;
     }) => {
       return post<PowerDialerProgress>(ENDPOINTS.POWER_DIALER.START, {
         ...params,
@@ -139,13 +163,15 @@ export function useStartPowerDialer() {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.powerDialerProgress(
           variables.campaignId,
-          variables.listId
+          variables.listId,
+          variables.timezonePriority
         ),
       });
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.powerDialerNextLead(
           variables.campaignId,
-          variables.listId
+          variables.listId,
+          variables.timezonePriority
         ),
       });
     },
@@ -158,9 +184,10 @@ export function useStopPowerDialer() {
   const orgId = activeOrganization?.data?.id;
 
   return useMutation({
-    mutationFn: async (params: { campaignId: string; listId?: string }) => {
+    mutationFn: async (params: PowerDialerMutationParams) => {
       return post<{ success: boolean }>(ENDPOINTS.POWER_DIALER.STOP, {
-        ...params,
+        campaignId: params.campaignId,
+        listId: params.listId,
         organizationId: orgId,
       });
     },
@@ -168,8 +195,35 @@ export function useStopPowerDialer() {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.powerDialerProgress(
           variables.campaignId,
-          variables.listId
+          variables.listId,
+          variables.timezonePriority
         ),
+      });
+    },
+  });
+}
+
+export function useUpdatePowerDialerProgress() {
+  const queryClient = useQueryClient();
+  const activeOrganization = useActiveOrganization();
+  const orgId = activeOrganization?.data?.id;
+
+  return useMutation({
+    mutationFn: async (params: {
+      campaignId: string;
+      listId?: string;
+      currentIndex?: number;
+      dialedCount?: number;
+      isPaused?: boolean;
+    }) => {
+      return post<PowerDialerProgress>(ENDPOINTS.POWER_DIALER.PROGRESS, {
+        ...params,
+        organizationId: orgId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'power-dialer',
       });
     },
   });
@@ -181,7 +235,7 @@ export function useSkipLead() {
   const orgId = activeOrganization?.data?.id;
 
   return useMutation({
-    mutationFn: async (params: { campaignId: string; listId?: string }) => {
+    mutationFn: async (params: PowerDialerMutationParams) => {
       return post<NextLeadResponse>(ENDPOINTS.POWER_DIALER.SKIP, {
         ...params,
         organizationId: orgId,
@@ -190,24 +244,24 @@ export function useSkipLead() {
     onMutate: async (variables) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+        queryKey: QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
       });
       await queryClient.cancelQueries({
-        queryKey: QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId),
+        queryKey: QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority),
       });
 
       // Snapshot the previous value
       const previousNextLead = queryClient.getQueryData<NextLeadResponse>(
-        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId)
+        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority)
       );
       const previousProgress = queryClient.getQueryData<PowerDialerProgress>(
-        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId)
+        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority)
       );
 
       // Optimistically update the current index
       if (previousNextLead) {
         queryClient.setQueryData<NextLeadResponse>(
-          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
           {
             ...previousNextLead,
             progress: {
@@ -224,13 +278,13 @@ export function useSkipLead() {
       // Roll back on error
       if (context?.previousNextLead) {
         queryClient.setQueryData(
-          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
           context.previousNextLead
         );
       }
       if (context?.previousProgress) {
         queryClient.setQueryData(
-          QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId),
+          QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority),
           context.previousProgress
         );
       }
@@ -238,12 +292,12 @@ export function useSkipLead() {
     onSuccess: (data, variables) => {
       // Update both caches with actual data from server
       queryClient.setQueryData(
-        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
         data
       );
       // Also update progress cache to avoid refetch delay
       queryClient.setQueryData<PowerDialerProgress>(
-        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId),
+        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority),
         (prev) => prev ? {
           ...prev,
           currentIndex: data.progress.currentIndex,
@@ -260,7 +314,7 @@ export function useAdvanceToNext() {
   const orgId = activeOrganization?.data?.id;
 
   return useMutation({
-    mutationFn: async (params: { campaignId: string; listId?: string }) => {
+    mutationFn: async (params: PowerDialerMutationParams) => {
       return post<PowerDialerProgress>(ENDPOINTS.POWER_DIALER.ADVANCE, {
         ...params,
         organizationId: orgId,
@@ -270,13 +324,15 @@ export function useAdvanceToNext() {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.powerDialerProgress(
           variables.campaignId,
-          variables.listId
+          variables.listId,
+          variables.timezonePriority
         ),
       });
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.powerDialerNextLead(
           variables.campaignId,
-          variables.listId
+          variables.listId,
+          variables.timezonePriority
         ),
       });
     },
@@ -289,7 +345,7 @@ export function useGoToPrevious() {
   const orgId = activeOrganization?.data?.id;
 
   return useMutation({
-    mutationFn: async (params: { campaignId: string; listId?: string }) => {
+    mutationFn: async (params: PowerDialerMutationParams) => {
       return post<NextLeadResponse>(ENDPOINTS.POWER_DIALER.PREVIOUS, {
         ...params,
         organizationId: orgId,
@@ -298,18 +354,18 @@ export function useGoToPrevious() {
     onMutate: async (variables) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+        queryKey: QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
       });
       await queryClient.cancelQueries({
-        queryKey: QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId),
+        queryKey: QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority),
       });
 
       // Snapshot the previous value
       const previousNextLead = queryClient.getQueryData<NextLeadResponse>(
-        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId)
+        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority)
       );
       const previousProgress = queryClient.getQueryData<PowerDialerProgress>(
-        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId)
+        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority)
       );
 
       // Optimistically update the current index (server handles wrapping)
@@ -323,7 +379,7 @@ export function useGoToPrevious() {
           : currentIndex - 1;
 
         queryClient.setQueryData<NextLeadResponse>(
-          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
           {
             ...previousNextLead,
             progress: {
@@ -340,13 +396,13 @@ export function useGoToPrevious() {
       // Roll back on error
       if (context?.previousNextLead) {
         queryClient.setQueryData(
-          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+          QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
           context.previousNextLead
         );
       }
       if (context?.previousProgress) {
         queryClient.setQueryData(
-          QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId),
+          QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority),
           context.previousProgress
         );
       }
@@ -354,12 +410,12 @@ export function useGoToPrevious() {
     onSuccess: (data, variables) => {
       // Update both caches with actual data from server
       queryClient.setQueryData(
-        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId),
+        QUERY_KEYS.powerDialerNextLead(variables.campaignId, variables.listId, variables.timezonePriority),
         data
       );
       // Also update progress cache to avoid refetch delay
       queryClient.setQueryData<PowerDialerProgress>(
-        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId),
+        QUERY_KEYS.powerDialerProgress(variables.campaignId, variables.listId, variables.timezonePriority),
         (prev) => prev ? {
           ...prev,
           currentIndex: data.progress.currentIndex,

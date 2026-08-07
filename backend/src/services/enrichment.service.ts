@@ -7,6 +7,8 @@ import type {
   ContactInfoResponse,
   EnrichLeadResponse,
   BulkEnrichResponse,
+  BulkProspeoListMobileEnrichResponse,
+  BulkProspeoListMobileEnrichLeadResult,
   EnrichmentHistoryRecordResponse,
   DataVendorProvider,
   ContactInfoType,
@@ -993,6 +995,310 @@ export const bulkEnrich = async (
   }
 }
 
+export const bulkProspeoMobileEnrichList = async (
+  organizationId: string,
+  listId: string,
+  options: { leadIds?: string[] } = {},
+): Promise<BulkProspeoListMobileEnrichResponse> => {
+  const list = await db
+    .selectFrom('lead_list')
+    .where('id', '=', listId)
+    .where('organizationId', '=', organizationId)
+    .select('id')
+    .executeTakeFirst()
+
+  if (!list) {
+    throw new Error('List not found')
+  }
+
+  const connection = await db
+    .selectFrom('data_vendor_connection')
+    .where('organizationId', '=', organizationId)
+    .where('provider', '=', 'prospeo')
+    .where('isActive', '=', true)
+    .selectAll()
+    .orderBy('priority', 'asc')
+    .executeTakeFirst()
+
+  if (!connection) {
+    throw new Error(
+      'No active Prospeo connection available. Go to Settings > Data Vendors to add your Prospeo API key.',
+    )
+  }
+
+  if (
+    connection.creditsLimit &&
+    connection.creditsUsed >= connection.creditsLimit
+  ) {
+    throw new Error('Prospeo credit limit reached for this organization')
+  }
+
+  const requestedLeadIds = options.leadIds
+    ? Array.from(new Set(options.leadIds))
+    : null
+
+  let leadsQuery = db
+    .selectFrom('lead_list_entry as lle')
+    .innerJoin('lead as l', 'l.id', 'lle.leadId')
+    .where('lle.listId', '=', listId)
+    .where('lle.removedAt', 'is', null)
+    .where('l.organizationId', '=', organizationId)
+    .where('l.deletedAt', 'is', null)
+
+  if (requestedLeadIds) {
+    leadsQuery = leadsQuery.where('l.id', 'in', requestedLeadIds)
+  }
+
+  const leads = await leadsQuery
+    .select([
+      'l.id',
+      'l.phone',
+      'l.normalizedPhone',
+      'l.linkedInUrl',
+      'l.enrichmentSources',
+      'lle.sortOrder',
+    ])
+    .orderBy('lle.sortOrder', 'asc')
+    .execute()
+
+  const results: BulkProspeoListMobileEnrichLeadResult[] = []
+  const totalRequested = requestedLeadIds?.length ?? leads.length
+  const apiKey = decrypt(connection.apiKeyEncrypted)
+  let connectionCreditsUsed = connection.creditsUsed
+  let totalEligible = 0
+  let totalUpdated = 0
+  let totalSkipped = 0
+  let totalFailed = 0
+  let totalCreditsUsed = 0
+
+  if (requestedLeadIds) {
+    const matchedLeadIds = new Set(leads.map((lead) => lead.id))
+    for (const leadId of requestedLeadIds) {
+      if (!matchedLeadIds.has(leadId)) {
+        results.push({
+          leadId,
+          linkedInUrl: null,
+          success: false,
+          phoneAdded: null,
+          creditsUsed: 0,
+          skippedReason: 'not_in_list',
+          errorMessage: 'Lead is not an active member of this list.',
+        })
+        totalSkipped++
+      }
+    }
+  }
+
+  const updateConnectionUsage = async (creditsUsed: number) => {
+    connectionCreditsUsed += creditsUsed
+    await db
+      .updateTable('data_vendor_connection')
+      .set({
+        creditsUsed: connectionCreditsUsed,
+        lastSyncAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where('id', '=', connection.id)
+      .execute()
+  }
+
+  for (const lead of leads) {
+    const linkedInUrl = lead.linkedInUrl?.trim() || null
+
+    if (!linkedInUrl) {
+      results.push({
+        leadId: lead.id,
+        linkedInUrl: null,
+        success: false,
+        phoneAdded: null,
+        creditsUsed: 0,
+        skippedReason: 'missing_linkedin_url',
+        errorMessage: 'Lead is missing a LinkedIn URL.',
+      })
+      totalSkipped++
+      continue
+    }
+
+    totalEligible++
+    const startTime = Date.now()
+
+    try {
+      const prospeoResult = await executeWithVendorPolicy({
+        organizationId,
+        provider: 'prospeo',
+        requestMode: 'bulk',
+        estimatedCredits: 10,
+        operation: () =>
+          prospeoClient.enrichFromLinkedIn(apiKey, linkedInUrl, {
+            includeMobile: true,
+            requireMobile: true,
+            onlyVerifiedMobile: true,
+          }),
+        classifyResult: classifyVendorResultByMessage,
+        extractCreditsUsed: (vendorResult) => vendorResult.creditsUsed ?? 0,
+      })
+      const responseTimeMs = Date.now() - startTime
+      const creditsUsed = prospeoResult.creditsUsed ?? 0
+      totalCreditsUsed += creditsUsed
+      await updateConnectionUsage(creditsUsed)
+
+      if (!prospeoResult.success) {
+        const errorMessage =
+          prospeoResult.errorMessage ?? 'Prospeo enrichment failed.'
+        await recordEnrichmentHistory(
+          organizationId,
+          lead.id,
+          connection.id,
+          'prospeo',
+          'person',
+          ['phone'],
+          [],
+          creditsUsed,
+          false,
+          errorMessage,
+          responseTimeMs,
+        )
+        results.push({
+          leadId: lead.id,
+          linkedInUrl,
+          success: false,
+          phoneAdded: null,
+          creditsUsed,
+          skippedReason: null,
+          errorMessage,
+        })
+        totalFailed++
+        continue
+      }
+
+      const phoneCandidates = Array.from(
+        new Set(
+          [
+            prospeoResult.phone,
+            ...(prospeoResult.phoneNumbers ?? []),
+          ].filter((value): value is string => !!value),
+        ),
+      )
+      const normalizedMobile = phoneCandidates
+        .map((phone) => validateAndNormalizePhone(phone))
+        .find((phone): phone is string => !!phone)
+
+      if (!normalizedMobile) {
+        const errorMessage =
+          prospeoResult.errorMessage ??
+          'Prospeo did not return a valid verified mobile number.'
+        await recordEnrichmentHistory(
+          organizationId,
+          lead.id,
+          connection.id,
+          'prospeo',
+          'person',
+          ['phone'],
+          [],
+          creditsUsed,
+          true,
+          errorMessage,
+          responseTimeMs,
+        )
+        results.push({
+          leadId: lead.id,
+          linkedInUrl,
+          success: false,
+          phoneAdded: null,
+          creditsUsed,
+          skippedReason: 'no_valid_mobile_returned',
+          errorMessage,
+        })
+        totalSkipped++
+        continue
+      }
+
+      const enrichmentSources = new Set(lead.enrichmentSources || [])
+      enrichmentSources.add('prospeo')
+
+      await db
+        .updateTable('lead')
+        .set({
+          phone: normalizedMobile,
+          normalizedPhone: normalizedMobile,
+          phoneType: 'mobile',
+          enrichmentStatus: 'enriched',
+          enrichmentSources: Array.from(enrichmentSources),
+          updatedAt: new Date(),
+        })
+        .where('id', '=', lead.id)
+        .where('organizationId', '=', organizationId)
+        .execute()
+
+      await addContactInfo(lead.id, 'mobile', normalizedMobile, 'prospeo', true, true)
+
+      await recordEnrichmentHistory(
+        organizationId,
+        lead.id,
+        connection.id,
+        'prospeo',
+        'person',
+        ['phone'],
+        ['phone'],
+        creditsUsed,
+        true,
+        null,
+        responseTimeMs,
+      )
+
+      crmService
+        .autoSyncAfterEnrichment(organizationId, lead.id)
+        .catch((err) => console.error('[Enrichment] Auto CRM sync failed:', err))
+
+      results.push({
+        leadId: lead.id,
+        linkedInUrl,
+        success: true,
+        phoneAdded: normalizedMobile,
+        creditsUsed,
+        skippedReason: null,
+        errorMessage: null,
+      })
+      totalUpdated++
+    } catch (error) {
+      const errorMessage = formatVendorErrorForHistory(error)
+      await recordEnrichmentHistory(
+        organizationId,
+        lead.id,
+        connection.id,
+        'prospeo',
+        'person',
+        ['phone'],
+        [],
+        0,
+        false,
+        errorMessage,
+        Date.now() - startTime,
+      )
+      results.push({
+        leadId: lead.id,
+        linkedInUrl,
+        success: false,
+        phoneAdded: null,
+        creditsUsed: 0,
+        skippedReason: null,
+        errorMessage,
+      })
+      totalFailed++
+    }
+  }
+
+  return {
+    totalRequested,
+    totalEligible,
+    totalUpdated,
+    totalSkipped,
+    totalFailed,
+    totalCreditsUsed,
+    results,
+  }
+}
+
 // === Contact Info Management ===
 
 export const getLeadContactInfo = async (
@@ -1072,6 +1378,7 @@ async function addContactInfo(
   value: string,
   source: string,
   isPrimary = false,
+  isVerified = false,
 ) {
   // Normalize phone for dedup check
   const normalizedValue = ['mobile', 'direct_dial', 'office'].includes(type)
@@ -1088,6 +1395,27 @@ async function addContactInfo(
     .executeTakeFirst()
 
   if (existing) {
+    const updateData: Record<string, any> = {}
+    if (isPrimary && !existing.isPrimary) {
+      updateData.isPrimary = true
+    }
+    if (isVerified && !existing.isVerified) {
+      updateData.isVerified = true
+    }
+    if (source && existing.source !== source) {
+      updateData.source = source
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      updateData.updatedAt = new Date()
+      return db
+        .updateTable('lead_contact_info')
+        .set(updateData)
+        .where('id', '=', existing.id)
+        .returningAll()
+        .executeTakeFirst()
+    }
+
     return existing
   }
 
@@ -1099,7 +1427,7 @@ async function addContactInfo(
       type,
       value: normalizedValue,
       isPrimary,
-      isVerified: false,
+      isVerified,
       source,
       createdAt: new Date(),
       updatedAt: new Date(),

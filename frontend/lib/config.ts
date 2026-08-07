@@ -438,6 +438,7 @@ export const ENDPOINTS = {
     VENDOR_TEST: (vendorId: string) => `/enrichment/vendors/${vendorId}/test`,
     LEAD_ENRICH: (leadId: string) => `/enrichment/leads/${leadId}/enrich`,
     BULK_ENRICH: '/enrichment/bulk-enrich',
+    PROSPEO_LIST_MOBILE: (listId: string) => `/enrichment/lists/${listId}/prospeo-mobile`,
     LEAD_CONTACTS: (leadId: string) => `/enrichment/leads/${leadId}/contacts`,
     HISTORY: '/enrichment/history',
   },
@@ -656,8 +657,8 @@ export const QUERY_KEYS = {
   scripts: (orgId?: string, campaignId?: string) => ['scripts', orgId, campaignId] as const,
   script: (id?: string) => ['script', id] as const,
   // Power Dialer
-  powerDialerProgress: (campaignId?: string, listId?: string) => ['power-dialer', 'progress', campaignId, listId] as const,
-  powerDialerNextLead: (campaignId?: string, listId?: string) => ['power-dialer', 'next-lead', campaignId, listId] as const,
+  powerDialerProgress: (campaignId?: string, listId?: string, timezonePriority?: string) => ['power-dialer', 'progress', campaignId, listId, timezonePriority] as const,
+  powerDialerNextLead: (campaignId?: string, listId?: string, timezonePriority?: string) => ['power-dialer', 'next-lead', campaignId, listId, timezonePriority] as const,
   // Dialer Sessions
   activeSessions: (orgId?: string) => ['dialer', 'sessions', orgId] as const,
   mySession: () => ['dialer', 'session', 'me'] as const,

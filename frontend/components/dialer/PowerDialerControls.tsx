@@ -13,7 +13,9 @@ import {
   useSkipLead,
   useAdvanceToNext,
   useGoToPrevious,
+  useUpdatePowerDialerProgress,
   type Lead,
+  type TimezonePriority,
 } from "@/hooks/api/usePowerDialer";
 import { useSoftRemoveLeadFromList } from "@/hooks/api/useLists";
 import { useGenerateCompanySummary, useResolveTimezone } from "@/hooks/api/useLeads";
@@ -30,6 +32,52 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
+
+const TIMEZONE_PRIORITY_OPTIONS: Array<{
+  value: TimezonePriority | undefined;
+  label: string;
+  order: string;
+}> = [
+  { value: undefined, label: "List", order: "List order" },
+  { value: "eastern", label: "EST", order: "EST -> CST -> MST -> PST" },
+  { value: "central", label: "CST", order: "CST -> MST -> PST -> EST" },
+  { value: "mountain", label: "MST", order: "MST -> PST -> EST -> CST" },
+  { value: "pacific", label: "PST", order: "PST -> EST -> CST -> MST" },
+];
+
+const TIMEZONE_BUCKETS: Record<TimezonePriority, string[]> = {
+  eastern: [
+    "America/New_York",
+    "America/Detroit",
+    "America/Toronto",
+    "America/Indiana/Indianapolis",
+    "America/Kentucky/Louisville",
+  ],
+  central: ["America/Chicago", "America/Winnipeg", "America/Mexico_City"],
+  mountain: ["America/Denver", "America/Phoenix", "America/Boise", "America/Edmonton"],
+  pacific: ["America/Los_Angeles", "America/Vancouver"],
+};
+
+const TIMEZONE_SHORT_LABELS: Record<TimezonePriority, string> = {
+  eastern: "EST",
+  central: "CST",
+  mountain: "MST",
+  pacific: "PST",
+};
+
+const getLeadDisplayName = (lead: Lead) =>
+  [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
+  lead.company ||
+  "Unnamed lead";
+
+const getTimezoneBucket = (timezone?: string | null): TimezonePriority | null => {
+  if (!timezone) return null;
+
+  const bucket = (Object.entries(TIMEZONE_BUCKETS) as Array<[TimezonePriority, string[]]>)
+    .find(([, zones]) => zones.includes(timezone));
+
+  return bucket?.[0] ?? null;
+};
 
 interface PowerDialerControlsProps {
   campaignId?: string;
@@ -55,6 +103,7 @@ export function PowerDialerControls({
   const [isRunning, setIsRunning] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [selectedDelay, setSelectedDelay] = useState(delaySeconds);
+  const [timezonePriority, setTimezonePriority] = useState<TimezonePriority | undefined>();
 
   // Track the last processed call end count to detect new call ends
   const lastProcessedCallEndRef = useRef(callEndedCount);
@@ -63,17 +112,20 @@ export function PowerDialerControls({
 
   const { data: progress } = usePowerDialerProgress(
     campaignId,
-    listId
+    listId,
+    timezonePriority
   );
   const { data: nextLeadData } = useNextLead(
     campaignId,
-    listId
+    listId,
+    timezonePriority
   );
   const startMutation = useStartPowerDialer();
   const stopMutation = useStopPowerDialer();
   const skipMutation = useSkipLead();
   const advanceMutation = useAdvanceToNext();
   const previousMutation = useGoToPrevious();
+  const updateProgressMutation = useUpdatePowerDialerProgress();
   const softRemoveMutation = useSoftRemoveLeadFromList();
   const generateSummaryMutation = useGenerateCompanySummary();
   const resolveTimezoneMutation = useResolveTimezone();
@@ -82,6 +134,11 @@ export function PowerDialerControls({
   const isEnabled = !!campaignId;
   const currentLead = nextLeadData?.lead;
   const progressData = nextLeadData?.progress || progress;
+  const currentLeadTimezone = currentLead?.timezone || resolveTimezoneMutation.data?.timezone || null;
+  const currentLeadTimezoneBucket = getTimezoneBucket(currentLeadTimezone);
+  const selectedTimezoneOrder = TIMEZONE_PRIORITY_OPTIONS.find(
+    (option) => option.value === timezonePriority
+  )?.order;
 
   // Track the previous lead ID to detect lead changes
   const previousLeadIdRef = useRef<string | undefined>(undefined);
@@ -126,11 +183,31 @@ export function PowerDialerControls({
     }
   }, [countdown, isRunning, currentLead, onCallInitiated]);
 
+  const handleTimezonePriorityChange = useCallback((nextPriority?: TimezonePriority) => {
+    if (isRunning) return;
+
+    setTimezonePriority(nextPriority);
+    setCountdown(null);
+
+    if (campaignId) {
+      updateProgressMutation.mutate({
+        campaignId,
+        listId,
+        currentIndex: 0,
+      });
+    }
+  }, [campaignId, listId, isRunning, updateProgressMutation]);
+
   const handleStart = useCallback(async () => {
     if (!campaignId) return;
 
     try {
-      await startMutation.mutateAsync({ campaignId, listId, delaySeconds: selectedDelay });
+      await startMutation.mutateAsync({
+        campaignId,
+        listId,
+        delaySeconds: selectedDelay,
+        timezonePriority,
+      });
       setIsRunning(true);
       // Start countdown for first call
       setCountdown(selectedDelay);
@@ -143,26 +220,26 @@ export function PowerDialerControls({
         userMessage = "Could not create dialer session. Please refresh and try again.";
       } else if (rawMessage.includes("network") || rawMessage.includes("fetch")) {
         userMessage = "Network error. Please check your connection.";
-      } else if (rawMessage.includes("No leads found")) {
-        userMessage = "No leads found in this campaign. Add lists with leads to the campaign first.";
+      } else if (rawMessage.includes("No dialable leads found") || rawMessage.includes("No leads found")) {
+        userMessage = "No dialable leads found. Add named leads with phone numbers first.";
       }
 
       toast.error(userMessage);
     }
-  }, [campaignId, listId, startMutation, selectedDelay]);
+  }, [campaignId, listId, startMutation, selectedDelay, timezonePriority]);
 
   const handleStop = useCallback(async () => {
     if (!campaignId) return;
 
     try {
-      await stopMutation.mutateAsync({ campaignId, listId });
+      await stopMutation.mutateAsync({ campaignId, listId, timezonePriority });
       setIsRunning(false);
       setCountdown(null);
     } catch (error) {
       console.error("Failed to stop power dialer:", error);
       toast.error("Failed to stop power dialer. You can refresh the page to reset.");
     }
-  }, [campaignId, listId, stopMutation]);
+  }, [campaignId, listId, stopMutation, timezonePriority]);
 
   const handleSkip = useCallback(() => {
     if (!campaignId) return;
@@ -173,7 +250,7 @@ export function PowerDialerControls({
       onEndCall();
     }
 
-    skipMutation.mutate({ campaignId, listId }, {
+    skipMutation.mutate({ campaignId, listId, timezonePriority }, {
       onSuccess: () => {
         // Reset countdown for next lead
         if (isRunning) {
@@ -185,7 +262,7 @@ export function PowerDialerControls({
         toast.error("Failed to skip to next lead. Please try again.");
       },
     });
-  }, [campaignId, listId, skipMutation, isRunning, selectedDelay, callState, onEndCall]);
+  }, [campaignId, listId, skipMutation, isRunning, selectedDelay, callState, onEndCall, timezonePriority]);
 
   // Handle "Call Now" - immediately initiate call, canceling countdown
   const handleCallNow = useCallback(() => {
@@ -198,7 +275,7 @@ export function PowerDialerControls({
   const handlePrevious = useCallback(() => {
     if (!campaignId) return;
 
-    previousMutation.mutate({ campaignId, listId }, {
+    previousMutation.mutate({ campaignId, listId, timezonePriority }, {
       onSuccess: () => {
         // If running, don't auto-start countdown for previous lead
         // Let user decide when to call
@@ -209,21 +286,21 @@ export function PowerDialerControls({
         toast.error("Failed to go to previous lead. Please try again.");
       },
     });
-  }, [campaignId, listId, previousMutation]);
+  }, [campaignId, listId, previousMutation, timezonePriority]);
 
   // Called when a call ends to advance to next lead
   const handleCallComplete = useCallback(async () => {
     if (!campaignId) return;
 
     try {
-      await advanceMutation.mutateAsync({ campaignId, listId });
+      await advanceMutation.mutateAsync({ campaignId, listId, timezonePriority });
       // Mark that we're waiting for call state to be idle before starting countdown
       pendingCountdownRef.current = true;
     } catch (error) {
       console.error("Failed to advance to next:", error);
       toast.error("Failed to advance to next lead. Use the Next button to continue.");
     }
-  }, [campaignId, listId, advanceMutation]);
+  }, [campaignId, listId, advanceMutation, timezonePriority]);
 
   // When call ends and power dialer is running, advance to next lead
   useEffect(() => {
@@ -255,7 +332,7 @@ export function PowerDialerControls({
       await softRemoveMutation.mutateAsync({ listId: effectiveListId, leadId: currentLead.id });
       toast.success("Lead removed from list");
       // Always skip to next lead after removing for better UX
-      await skipMutation.mutateAsync({ campaignId, listId });
+      await skipMutation.mutateAsync({ campaignId, listId, timezonePriority });
       // Only start countdown if power dialer is running
       if (isRunning) {
         setCountdown(selectedDelay);
@@ -273,7 +350,7 @@ export function PowerDialerControls({
 
       toast.error(userMessage);
     }
-  }, [listId, currentLead, campaignId, softRemoveMutation, isRunning, skipMutation, selectedDelay]);
+  }, [listId, currentLead, campaignId, softRemoveMutation, isRunning, skipMutation, selectedDelay, timezonePriority]);
 
   // Handle generating AI company summary
   const handleGenerateSummary = useCallback(async (forceRegenerate = false) => {
@@ -442,6 +519,40 @@ export function PowerDialerControls({
         </div>
       )}
 
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-xs text-muted-foreground">
+            Timezone priority
+          </label>
+          {selectedTimezoneOrder && (
+            <span className="text-[11px] text-muted-foreground truncate">
+              {selectedTimezoneOrder}
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-5 gap-1">
+          {TIMEZONE_PRIORITY_OPTIONS.map((option) => {
+            const isSelected = option.value === timezonePriority;
+            return (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => handleTimezonePriorityChange(option.value)}
+                disabled={isRunning || updateProgressMutation.isPending}
+                title={isRunning ? "Stop the dialer to change timezone priority" : option.order}
+                className={`h-8 rounded-md border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border/60 bg-muted/40 text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Empty list state */}
       {progressData?.isEmpty && (
         <div className="p-4 bg-muted/50 border border-border/50 rounded-xl">
@@ -450,7 +561,7 @@ export function PowerDialerControls({
             <div>
               <p className="font-medium text-foreground">No leads available</p>
               <p className="text-sm">
-                All leads have been removed from this list. Add more leads to continue dialing.
+                Add named leads with phone numbers to continue dialing.
               </p>
             </div>
           </div>
@@ -482,7 +593,7 @@ export function PowerDialerControls({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Remove from list?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will remove {currentLead.firstName} {currentLead.lastName} from the current list.
+                      This will remove {getLeadDisplayName(currentLead)} from the current list.
                       The lead data will be preserved and can still be found in the global leads view.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
@@ -528,7 +639,7 @@ export function PowerDialerControls({
                 href={`/dashboard/leads/${currentLead.id}`}
                 className="font-semibold text-base hover:text-primary hover:underline transition-colors"
               >
-                {currentLead.firstName} {currentLead.lastName}
+                {getLeadDisplayName(currentLead)}
               </Link>
               {currentLead.linkedInUrl && (
                 <a
@@ -555,9 +666,17 @@ export function PowerDialerControls({
                 </a>
               )}
               {/* Prospect local time */}
-              {(currentLead.timezone || resolveTimezoneMutation.data?.timezone) && (
+              {currentLeadTimezoneBucket && (
+                <span
+                  className="inline-flex items-center rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                  title="Lead timezone bucket"
+                >
+                  {TIMEZONE_SHORT_LABELS[currentLeadTimezoneBucket]}
+                </span>
+              )}
+              {currentLeadTimezone && (
                 <ProspectLocalTime
-                  timezone={(currentLead.timezone || resolveTimezoneMutation.data?.timezone)!}
+                  timezone={currentLeadTimezone}
                 />
               )}
               {resolveTimezoneMutation.isPending && (

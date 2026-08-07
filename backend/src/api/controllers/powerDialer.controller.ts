@@ -12,7 +12,7 @@ import {
 export const getProgress: AuthRequestHandler<
   GetPowerDialerProgressRequest
 > = async (req, res) => {
-  const { organizationId, campaignId, listId } = req.validated
+  const { organizationId, campaignId, listId, timezonePriority } = req.validated
   const userId = req.user.id
 
   const progress = await powerDialerService.getProgress({
@@ -20,6 +20,7 @@ export const getProgress: AuthRequestHandler<
     campaignId,
     listId,
     organizationId,
+    timezonePriority,
   })
 
   res.json(progress)
@@ -48,7 +49,7 @@ export const startSession: AuthRequestHandler<StartPowerDialerRequest> = async (
   req,
   res,
 ) => {
-  const { organizationId, campaignId, listId } = req.validated
+  const { organizationId, campaignId, listId, timezonePriority } = req.validated
   const userId = req.user.id
 
   try {
@@ -57,6 +58,7 @@ export const startSession: AuthRequestHandler<StartPowerDialerRequest> = async (
       campaignId,
       listId,
       organizationId,
+      timezonePriority,
     })
     res.json(progress)
   } catch (error) {
@@ -87,7 +89,7 @@ export const getNextLead: AuthRequestHandler<GetNextLeadRequest> = async (
   req,
   res,
 ) => {
-  const { organizationId, campaignId, listId } = req.validated
+  const { organizationId, campaignId, listId, timezonePriority } = req.validated
   const userId = req.user.id
 
   try {
@@ -96,6 +98,7 @@ export const getNextLead: AuthRequestHandler<GetNextLeadRequest> = async (
       campaignId,
       listId,
       organizationId,
+      timezonePriority,
     })
     res.json(result)
   } catch (error) {
@@ -114,7 +117,7 @@ export const skipLead: AuthRequestHandler<SkipLeadRequest> = async (
   req,
   res,
 ) => {
-  const { campaignId, listId } = req.validated
+  const { campaignId, listId, timezonePriority } = req.validated
   const userId = req.user.id
 
   try {
@@ -122,6 +125,7 @@ export const skipLead: AuthRequestHandler<SkipLeadRequest> = async (
       userId,
       campaignId,
       listId,
+      timezonePriority,
     })
     res.json(progress)
   } catch (error) {
@@ -136,7 +140,7 @@ export const advanceToNext: AuthRequestHandler<SkipLeadRequest> = async (
   req,
   res,
 ) => {
-  const { campaignId, listId } = req.validated
+  const { campaignId, listId, timezonePriority } = req.validated
   const userId = req.user.id
 
   try {
@@ -144,6 +148,7 @@ export const advanceToNext: AuthRequestHandler<SkipLeadRequest> = async (
       userId,
       campaignId,
       listId,
+      timezonePriority,
     })
     res.json(progress)
   } catch (error) {
@@ -159,7 +164,7 @@ export const goToPrevious: AuthRequestHandler<SkipLeadRequest> = async (
   req,
   res,
 ) => {
-  const { campaignId, listId } = req.validated
+  const { campaignId, listId, timezonePriority } = req.validated
   const userId = req.user.id
 
   try {
@@ -167,6 +172,7 @@ export const goToPrevious: AuthRequestHandler<SkipLeadRequest> = async (
       userId,
       campaignId,
       listId,
+      timezonePriority,
     })
     res.json(progress)
   } catch (error) {

@@ -232,8 +232,24 @@ export function LeadTable({
                         <DropdownMenuItem
                           onClick={async () => {
                             try {
-                              await enrichLead.mutateAsync({ leadId: lead.id });
-                              toast.success("Lead enriched");
+                              const result = await enrichLead.mutateAsync({
+                                leadId: lead.id,
+                              });
+                              if (
+                                result.success &&
+                                result.fieldsEnriched.length > 0
+                              ) {
+                                toast.success("Lead enriched");
+                              } else if (result.success) {
+                                toast.info(
+                                  result.errorMessage ||
+                                    "No missing data found for this lead"
+                                );
+                              } else {
+                                toast.error(
+                                  result.errorMessage || "Enrichment failed"
+                                );
+                              }
                             } catch {
                               toast.error("Enrichment failed");
                             }
@@ -241,7 +257,7 @@ export function LeadTable({
                           disabled={enrichLead.isPending}
                         >
                           <Sparkles className="w-4 h-4" />
-                          Enrich
+                          Enrich Missing Data
                         </DropdownMenuItem>
                         {onDelete && (
                           <DropdownMenuItem

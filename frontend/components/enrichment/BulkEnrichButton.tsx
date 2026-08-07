@@ -27,12 +27,16 @@ export function BulkEnrichButton({
       let totalEnriched = 0;
       let totalFailed = 0;
       let totalCredits = 0;
+      let firstError: string | null = null;
 
       if (leadIds.length <= 100) {
         const result = await bulkEnrich.mutateAsync({ leadIds });
         totalEnriched = result.totalEnriched;
         totalFailed = result.totalFailed;
         totalCredits = result.totalCreditsUsed;
+        firstError =
+          result.results.find((leadResult) => !leadResult.success)
+            ?.errorMessage ?? null;
       } else {
         const chunks: string[][] = [];
         for (let i = 0; i < leadIds.length; i += 100) {
@@ -45,13 +49,37 @@ export function BulkEnrichButton({
           totalEnriched += result.totalEnriched;
           totalFailed += result.totalFailed;
           totalCredits += result.totalCreditsUsed;
+          firstError =
+            firstError ??
+            result.results.find((leadResult) => !leadResult.success)
+              ?.errorMessage ??
+            null;
         }
         setProgress(null);
       }
 
-      toast.success(
-        `Enriched ${totalEnriched} of ${leadIds.length} leads${totalFailed > 0 ? ` (${totalFailed} failed)` : ""} (${totalCredits} credits used)`
-      );
+      const totalNoUpdate = leadIds.length - totalEnriched - totalFailed;
+      const creditsText = `${totalCredits} credit${totalCredits === 1 ? "" : "s"} used`;
+
+      if (totalEnriched > 0) {
+        toast.success(
+          `Updated ${totalEnriched} of ${leadIds.length} leads${
+            totalFailed > 0 ? ` (${totalFailed} failed)` : ""
+          }${totalNoUpdate > 0 ? ` (${totalNoUpdate} unchanged)` : ""} (${creditsText})`
+        );
+      } else if (totalFailed > 0) {
+        toast.error(
+          firstError
+            ? `No leads were enriched. ${firstError}`
+            : `No leads were enriched. ${totalFailed} failed.`
+        );
+      } else {
+        toast.info(
+          `No missing contact data found for ${leadIds.length} selected lead${
+            leadIds.length === 1 ? "" : "s"
+          }. (${creditsText})`
+        );
+      }
       onClearSelection?.();
       onComplete?.();
     } catch {
@@ -75,7 +103,7 @@ export function BulkEnrichButton({
       ) : (
         <>
           <Sparkles className="h-4 w-4 mr-1" />
-          Enrich ({leadIds.length})
+          Enrich Missing Data ({leadIds.length})
         </>
       )}
     </Button>

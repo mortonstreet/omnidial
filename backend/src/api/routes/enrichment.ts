@@ -13,6 +13,7 @@ import {
   ListVendorConnectionsRequestSchema,
   EnrichLeadRequestSchema,
   BulkEnrichRequestSchema,
+  BulkProspeoListMobileEnrichRequestSchema,
   GetEnrichmentHistoryRequestSchema,
 } from '@shared/types/src'
 
@@ -186,6 +187,34 @@ router.post(
           providers: data.providers,
           dataTypes: data.dataTypes,
           forceRefresh: data.forceRefresh,
+        },
+      )
+
+      res.json(result)
+    } catch (error) {
+      next(error)
+    }
+  },
+)
+
+router.post(
+  '/lists/:listId/prospeo-mobile',
+  withBetterAuth,
+  bulkEnrichmentRateLimit,
+  async (req, res: Response, next: NextFunction) => {
+    try {
+      const authReq = req as AuthRequest<unknown>
+      const data = BulkProspeoListMobileEnrichRequestSchema.parse({
+        listId: req.params.listId,
+        ...req.body,
+        organizationId: getOrgId(authReq),
+      })
+
+      const result = await enrichmentService.bulkProspeoMobileEnrichList(
+        data.organizationId,
+        data.listId,
+        {
+          leadIds: data.leadIds,
         },
       )
 

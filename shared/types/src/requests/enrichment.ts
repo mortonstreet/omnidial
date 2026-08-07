@@ -114,6 +114,15 @@ export const BulkEnrichRequestSchema = z.object({
 })
 export type BulkEnrichRequest = z.infer<typeof BulkEnrichRequestSchema>
 
+export const BulkProspeoListMobileEnrichRequestSchema = z.object({
+  organizationId: z.string().min(1),
+  listId: z.string().uuid(),
+  leadIds: z.array(z.string().uuid()).min(1).max(1000).optional(),
+})
+export type BulkProspeoListMobileEnrichRequest = z.infer<
+  typeof BulkProspeoListMobileEnrichRequestSchema
+>
+
 export const GetLeadContactInfoRequestSchema = z.object({
   leadId: z.string().uuid(),
 })
@@ -234,6 +243,31 @@ export interface BulkEnrichResponse {
   totalFailed: number
   totalCreditsUsed: number
   results: EnrichLeadResponse[]
+}
+
+export type BulkProspeoListMobileEnrichSkippedReason =
+  | 'not_in_list'
+  | 'missing_linkedin_url'
+  | 'no_valid_mobile_returned'
+
+export interface BulkProspeoListMobileEnrichLeadResult {
+  leadId: string
+  linkedInUrl: string | null
+  success: boolean
+  phoneAdded: string | null
+  creditsUsed: number
+  skippedReason: BulkProspeoListMobileEnrichSkippedReason | null
+  errorMessage: string | null
+}
+
+export interface BulkProspeoListMobileEnrichResponse {
+  totalRequested: number
+  totalEligible: number
+  totalUpdated: number
+  totalSkipped: number
+  totalFailed: number
+  totalCreditsUsed: number
+  results: BulkProspeoListMobileEnrichLeadResult[]
 }
 
 export interface EnrichmentHistoryRecordResponse {

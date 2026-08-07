@@ -47,6 +47,8 @@ interface Lead {
   aiBusinessContext: AIBusinessContext | null;
   aiSummaryGeneratedAt: Date | null;
   aiSummaryProvider: string | null;
+  timezone: string | null;
+  timezoneResolvedAt: string | null;
   clientId: string | null;
   createdById: string | null;
   lastModifiedById: string | null;
@@ -526,6 +528,7 @@ export function useResolveTimezone() {
         QUERY_KEYS.leadTimezone(leadId),
         data
       );
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lead(leadId) });
       // Update power dialer next-lead cache to include timezone
       queryClient.invalidateQueries({
         predicate: (query) =>

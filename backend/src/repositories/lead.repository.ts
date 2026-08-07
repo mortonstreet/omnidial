@@ -88,6 +88,8 @@ export interface LeadWithClient {
   pipelineStageId: string | null
   dealValue: string | null
   aiCompanySummary: string | null
+  timezone: string | null
+  timezoneResolvedAt: Date | null
   clientId: string | null
   createdById: string | null
   lastModifiedById: string | null

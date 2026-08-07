@@ -1,10 +1,21 @@
 import { z } from 'zod';
 
+export const PowerDialerTimezonePrioritySchema = z.enum([
+  'eastern',
+  'central',
+  'mountain',
+  'pacific',
+]);
+export type PowerDialerTimezonePriority = z.infer<
+  typeof PowerDialerTimezonePrioritySchema
+>;
+
 // Get power dialer progress
 export const GetPowerDialerProgressRequestSchema = z.object({
   organizationId: z.string().min(1),
   campaignId: z.string().uuid(),
   listId: z.string().uuid().optional(),
+  timezonePriority: PowerDialerTimezonePrioritySchema.optional(),
 });
 export type GetPowerDialerProgressRequest = z.infer<typeof GetPowerDialerProgressRequestSchema>;
 
@@ -24,6 +35,7 @@ export const GetNextLeadRequestSchema = z.object({
   organizationId: z.string().min(1),
   campaignId: z.string().uuid(),
   listId: z.string().uuid().optional(),
+  timezonePriority: PowerDialerTimezonePrioritySchema.optional(),
 });
 export type GetNextLeadRequest = z.infer<typeof GetNextLeadRequestSchema>;
 
@@ -32,6 +44,7 @@ export const SkipLeadRequestSchema = z.object({
   organizationId: z.string().min(1),
   campaignId: z.string().uuid(),
   listId: z.string().uuid().optional(),
+  timezonePriority: PowerDialerTimezonePrioritySchema.optional(),
 });
 export type SkipLeadRequest = z.infer<typeof SkipLeadRequestSchema>;
 
@@ -40,6 +53,7 @@ export const StartPowerDialerRequestSchema = z.object({
   organizationId: z.string().min(1),
   campaignId: z.string().uuid(),
   listId: z.string().uuid().optional(),
+  timezonePriority: PowerDialerTimezonePrioritySchema.optional(),
   delaySeconds: z.number().int().min(0).max(30).default(5),
 });
 export type StartPowerDialerRequest = z.infer<typeof StartPowerDialerRequestSchema>;

@@ -25,6 +25,7 @@ import {
 import { Logo3DSpinner } from "@/components/ui/Logo3DSpinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -77,6 +78,7 @@ import { ENDPOINTS, env } from "@/lib/config";
 import { getAuthHeaders } from "@/lib/api";
 import { useQuickCall } from "@/hooks/useQuickCall";
 import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
+import { useBulkProspeoListMobileEnrich } from "@/hooks/api/useEnrichment";
 
 export default function ListDetailPage() {
   const params = useParams();
@@ -94,6 +96,9 @@ export default function ListDetailPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
   const [showSheetsExport, setShowSheetsExport] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(
+    new Set()
+  );
 
   const { data: list, isLoading: isLoadingList, refetch } = useList(listId);
   const { data: leadsData, isLoading: isLoadingLeads } = useListLeads({
@@ -109,12 +114,25 @@ export default function ListDetailPage() {
   const deleteMutation = useDeleteList();
   const linkCampaignMutation = useAddListToCampaign();
   const updateLeadMutation = useUpdateLead(listId);
+  const prospeoMobileMutation = useBulkProspeoListMobileEnrich();
   const canManageLists = useOrganizationAdmin();
 
   const leads = leadsData?.data ?? [];
   const pagination = leadsData?.pagination;
   const campaigns = campaignsData?.data ?? [];
   const pipelineStages = stagesData?.data ?? [];
+  const eligibleLeadIdsOnPage = leads
+    .filter((lead) => !!lead.linkedInUrl?.trim())
+    .map((lead) => lead.id);
+  const selectedLeadCount = selectedLeadIds.size;
+  const selectedEligibleOnPageCount = eligibleLeadIdsOnPage.filter((leadId) =>
+    selectedLeadIds.has(leadId)
+  ).length;
+  const allEligibleOnPageSelected =
+    eligibleLeadIdsOnPage.length > 0 &&
+    selectedEligibleOnPageCount === eligibleLeadIdsOnPage.length;
+  const someEligibleOnPageSelected =
+    selectedEligibleOnPageCount > 0 && !allEligibleOnPageSelected;
 
   const handleEdit = async () => {
     if (!editName.trim()) {
@@ -165,6 +183,91 @@ export default function ListDetailPage() {
       setSelectedCampaignId("");
     } catch {
       toast.error("Failed to link list to campaign");
+    }
+  };
+
+  const handleToggleLeadSelection = (leadId: string, checked: boolean) => {
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(leadId);
+      } else {
+        next.delete(leadId);
+      }
+      return next;
+    });
+  };
+
+  const handleTogglePageSelection = (checked: boolean) => {
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      eligibleLeadIdsOnPage.forEach((leadId) => {
+        if (checked) {
+          next.add(leadId);
+        } else {
+          next.delete(leadId);
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleSelectEligiblePage = () => {
+    handleTogglePageSelection(true);
+  };
+
+  const handleProspeoMobileEnrich = async () => {
+    if (!list) return;
+
+    const leadIds = Array.from(selectedLeadIds);
+    const scope =
+      leadIds.length > 0
+        ? `${leadIds.length.toLocaleString()} selected lead${
+            leadIds.length === 1 ? "" : "s"
+          }`
+        : `all ${list.leadCount.toLocaleString()} leads in this list`;
+
+    if (
+      !confirm(
+        `Run Prospeo verified mobile enrichment for ${scope}? Leads without LinkedIn URLs will be skipped.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const result = await prospeoMobileMutation.mutateAsync({
+        listId,
+        leadIds: leadIds.length > 0 ? leadIds : undefined,
+      });
+      const skippedText =
+        result.totalSkipped > 0
+          ? ` ${result.totalSkipped.toLocaleString()} skipped.`
+          : "";
+      const failedText =
+        result.totalFailed > 0
+          ? ` ${result.totalFailed.toLocaleString()} failed.`
+          : "";
+
+      if (result.totalUpdated > 0) {
+        toast.success(
+          `Added verified mobiles to ${result.totalUpdated.toLocaleString()} lead${
+            result.totalUpdated === 1 ? "" : "s"
+          }.${skippedText}${failedText}`
+        );
+      } else if (result.totalFailed > 0) {
+        toast.error(`Prospeo enrichment failed.${skippedText}${failedText}`);
+      } else {
+        toast.info(`No valid mobile numbers returned.${skippedText}`);
+      }
+
+      setSelectedLeadIds(new Set());
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to run Prospeo enrichment"
+      );
     }
   };
 
@@ -336,6 +439,22 @@ export default function ListDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleProspeoMobileEnrich}
+            disabled={prospeoMobileMutation.isPending || list.leadCount === 0}
+          >
+            {prospeoMobileMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Phone className="w-4 h-4 mr-2" />
+            )}
+            Prospeo Mobile
+            {selectedLeadCount > 0 && (
+              <span>({selectedLeadCount.toLocaleString()})</span>
+            )}
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -419,19 +538,65 @@ export default function ListDetailPage() {
 
       {/* Leads Table */}
       <div className="bg-card border rounded-xl">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="font-semibold">Leads</h2>
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search leads..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="pl-9"
-            />
+        <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold">Leads</h2>
+            {selectedLeadCount > 0 && (
+              <Badge variant="secondary">
+                {selectedLeadCount.toLocaleString()} selected
+              </Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {eligibleLeadIdsOnPage.length > 0 && selectedLeadCount === 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSelectEligiblePage}
+                disabled={prospeoMobileMutation.isPending}
+              >
+                Select LinkedIn Page
+              </Button>
+            )}
+            {selectedLeadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedLeadIds(new Set())}
+              >
+                Clear
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleProspeoMobileEnrich}
+              disabled={
+                prospeoMobileMutation.isPending || list.leadCount === 0
+              }
+            >
+              {prospeoMobileMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Phone className="w-4 h-4 mr-2" />
+              )}
+              Prospeo Mobile
+              {selectedLeadCount > 0 && (
+                <span>({selectedLeadCount.toLocaleString()})</span>
+              )}
+            </Button>
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search leads..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="pl-9"
+              />
+            </div>
           </div>
         </div>
 
@@ -452,6 +617,25 @@ export default function ListDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={
+                        allEligibleOnPageSelected
+                          ? true
+                          : someEligibleOnPageSelected
+                          ? "indeterminate"
+                          : false
+                      }
+                      disabled={
+                        eligibleLeadIdsOnPage.length === 0 ||
+                        prospeoMobileMutation.isPending
+                      }
+                      onCheckedChange={(checked) =>
+                        handleTogglePageSelection(checked === true)
+                      }
+                      aria-label="Select eligible leads on this page"
+                    />
+                  </TableHead>
                   <TableHead>First Name</TableHead>
                   <TableHead>Last Name</TableHead>
                   <TableHead>Phone</TableHead>
@@ -462,98 +646,149 @@ export default function ListDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leads.map((lead) => (
-                  <TableRow key={lead.entryId}>
-                    <TableCell>
-                      <EditableCell
-                        value={lead.firstName}
-                        onSave={(v) => handleUpdateLead(lead.id, "firstName", v)}
-                        placeholder="-"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <EditableCell
-                        value={lead.lastName}
-                        onSave={(v) => handleUpdateLead(lead.id, "lastName", v)}
-                        placeholder="-"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <EditableCell
-                        value={lead.phone}
-                        onSave={(v) => handleUpdateLead(lead.id, "phone", v)}
-                        type="phone"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <EditableCell
-                        value={lead.email}
-                        onSave={(v) => handleUpdateLead(lead.id, "email", v)}
-                        placeholder="-"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <EditableCell
-                        value={lead.company}
-                        onSave={(v) => handleUpdateLead(lead.id, "company", v)}
-                        placeholder="-"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <EditableCell
-                        value={lead.title}
-                        onSave={(v) => handleUpdateLead(lead.id, "title", v)}
-                        placeholder="-"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/leads/${lead.id}`}>
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Lead
-                            </Link>
-                          </DropdownMenuItem>
-                          {lead.phone && (
-                            <DropdownMenuItem
-                              onClick={() => handleCallLead(lead.phone, lead.id, [lead.firstName, lead.lastName].filter(Boolean).join(" "))}
+                {leads.map((lead) => {
+                  const hasLinkedInUrl = !!lead.linkedInUrl?.trim();
+                  const isSelected = selectedLeadIds.has(lead.id);
+
+                  return (
+                    <TableRow
+                      key={lead.entryId}
+                      className={isSelected ? "bg-muted/50" : undefined}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={isSelected}
+                          disabled={
+                            !hasLinkedInUrl || prospeoMobileMutation.isPending
+                          }
+                          onCheckedChange={(checked) =>
+                            handleToggleLeadSelection(
+                              lead.id,
+                              checked === true
+                            )
+                          }
+                          aria-label={
+                            hasLinkedInUrl
+                              ? "Select lead for Prospeo mobile enrichment"
+                              : "Lead requires a LinkedIn URL for Prospeo mobile enrichment"
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EditableCell
+                          value={lead.firstName}
+                          onSave={(v) =>
+                            handleUpdateLead(lead.id, "firstName", v)
+                          }
+                          placeholder="-"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EditableCell
+                          value={lead.lastName}
+                          onSave={(v) =>
+                            handleUpdateLead(lead.id, "lastName", v)
+                          }
+                          placeholder="-"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EditableCell
+                          value={lead.phone}
+                          onSave={(v) => handleUpdateLead(lead.id, "phone", v)}
+                          type="phone"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EditableCell
+                          value={lead.email}
+                          onSave={(v) => handleUpdateLead(lead.id, "email", v)}
+                          placeholder="-"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EditableCell
+                          value={lead.company}
+                          onSave={(v) =>
+                            handleUpdateLead(lead.id, "company", v)
+                          }
+                          placeholder="-"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EditableCell
+                          value={lead.title}
+                          onSave={(v) => handleUpdateLead(lead.id, "title", v)}
+                          placeholder="-"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
                             >
-                              <Phone className="w-4 h-4 mr-2" />
-                              Call
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/leads/${lead.id}`}>
+                                <Eye className="w-4 h-4 mr-2" />
+                                View Lead
+                              </Link>
                             </DropdownMenuItem>
-                          )}
-                          {pipelineStages.length > 0 && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                                <GitBranch className="w-3 h-3 inline mr-1" />
-                                Add to Pipeline
-                              </DropdownMenuLabel>
-                              {pipelineStages.map((stage) => (
-                                <DropdownMenuItem
-                                  key={stage.id}
-                                  onClick={() => handleAddToPipeline(lead.id, stage.id, stage.label)}
-                                >
-                                  <div
-                                    className="w-2 h-2 rounded-full mr-2"
-                                    style={{ backgroundColor: stage.color }}
-                                  />
-                                  {stage.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                            {lead.phone && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleCallLead(
+                                    lead.phone,
+                                    lead.id,
+                                    [lead.firstName, lead.lastName]
+                                      .filter(Boolean)
+                                      .join(" ")
+                                  )
+                                }
+                              >
+                                <Phone className="w-4 h-4 mr-2" />
+                                Call
+                              </DropdownMenuItem>
+                            )}
+                            {pipelineStages.length > 0 && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                                  <GitBranch className="w-3 h-3 inline mr-1" />
+                                  Add to Pipeline
+                                </DropdownMenuLabel>
+                                {pipelineStages.map((stage) => (
+                                  <DropdownMenuItem
+                                    key={stage.id}
+                                    onClick={() =>
+                                      handleAddToPipeline(
+                                        lead.id,
+                                        stage.id,
+                                        stage.label
+                                      )
+                                    }
+                                  >
+                                    <div
+                                      className="w-2 h-2 rounded-full mr-2"
+                                      style={{ backgroundColor: stage.color }}
+                                    />
+                                    {stage.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
 

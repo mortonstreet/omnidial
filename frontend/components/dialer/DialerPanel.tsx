@@ -20,9 +20,10 @@ import { VoicemailDropButton } from './VoicemailDropButton'
 import { useTwilioPhoneNumbers } from '@/hooks/api/useDialer'
 import { useDialablePhoneNumbers } from '@/hooks/api/usePhoneNumberAssignments'
 import { useDispositions } from '@/hooks/api/useCalls'
-import { useLeads } from '@/hooks/api/useLeads'
+import { useLead, useLeads, useResolveTimezone } from '@/hooks/api/useLeads'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useDialerContext } from '@/components/providers/DialerProvider'
+import { ProspectLocalTime } from './ProspectLocalTime'
 import { toast } from 'sonner'
 
 interface DialerClient {
@@ -37,6 +38,9 @@ interface DialerLeadMatch {
   company: string | null
   phone: string | null
   normalizedPhone: string | null
+  linkedInUrl?: string | null
+  timezone?: string | null
+  timezoneResolvedAt?: string | null
 }
 
 interface DialerPanelProps {
@@ -162,10 +166,59 @@ export function DialerPanel({
     limit: 6,
     enabled: shouldSearchLeads,
   })
+  const { data: loadedLead } = useLead(leadId)
+  const resolveTimezoneMutation = useResolveTimezone()
   const leadSuggestions = useMemo(
     () => (leadSearchData?.data || []) as DialerLeadMatch[],
     [leadSearchData?.data],
   )
+  const selectedLeadTimezone =
+    selectedLeadMatch?.timezone ||
+    resolveTimezoneMutation.data?.timezone ||
+    null
+
+  useEffect(() => {
+    if (!loadedLead || loadedLead.id !== leadId) return
+
+    const nextMatch: DialerLeadMatch = {
+      id: loadedLead.id,
+      firstName: loadedLead.firstName,
+      lastName: loadedLead.lastName,
+      company: loadedLead.company,
+      phone: loadedLead.phone,
+      normalizedPhone: loadedLead.normalizedPhone,
+      linkedInUrl: loadedLead.linkedInUrl,
+      timezone: loadedLead.timezone,
+      timezoneResolvedAt: loadedLead.timezoneResolvedAt,
+    }
+    const phone = getLeadPhone(nextMatch)
+
+    queueMicrotask(() => {
+      setSelectedLeadMatch(nextMatch)
+      if (!isCallActive) {
+        setDialQuery(formatLeadInputValue(nextMatch))
+        setDialNumber(phone)
+      }
+    })
+  }, [loadedLead, leadId, isCallActive])
+
+  useEffect(() => {
+    resolveTimezoneMutation.reset()
+
+    if (
+      selectedLeadMatch?.linkedInUrl &&
+      !selectedLeadMatch.timezone &&
+      !selectedLeadMatch.timezoneResolvedAt
+    ) {
+      resolveTimezoneMutation.mutate(selectedLeadMatch.id)
+    }
+  }, [
+    selectedLeadMatch?.id,
+    selectedLeadMatch?.linkedInUrl,
+    selectedLeadMatch?.timezone,
+    selectedLeadMatch?.timezoneResolvedAt,
+    resolveTimezoneMutation,
+  ])
 
   useEffect(() => {
     if (!shouldSearchLeads || selectedLeadMatch || !trimmedDialQuery) {
@@ -808,9 +861,16 @@ export function DialerPanel({
                 )}
             </div>
             {selectedLeadMatch && dialNumber && !isCallActive && (
-              <p className="mt-2 text-xs text-emerald-400">
-                Matched {getLeadName(selectedLeadMatch)} - {dialNumber}
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="text-emerald-400">
+                  Matched {getLeadName(selectedLeadMatch)} - {dialNumber}
+                </span>
+                {selectedLeadTimezone ? (
+                  <ProspectLocalTime timezone={selectedLeadTimezone} />
+                ) : resolveTimezoneMutation.isPending ? (
+                  <ProspectLocalTime timezone="America/New_York" isResolving />
+                ) : null}
+              </div>
             )}
             {(showNoNumberFound || showNoLeadMatch) && (
               <p className="mt-2 text-xs text-amber-400">No number found</p>

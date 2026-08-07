@@ -9,6 +9,7 @@ import type {
   VendorConnectionResponse,
   EnrichLeadResponse,
   BulkEnrichResponse,
+  BulkProspeoListMobileEnrichResponse,
   LeadContactInfoResponse,
   EnrichmentHistoryResponse,
   VendorDataType,
@@ -176,6 +177,41 @@ export function useBulkEnrich() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
       queryClient.invalidateQueries({ queryKey: ['enrichment', 'history'] })
+    },
+  })
+}
+
+export function useBulkProspeoListMobileEnrich() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      listId,
+      leadIds,
+    }: {
+      listId: string
+      leadIds?: string[]
+    }) => {
+      return await post<BulkProspeoListMobileEnrichResponse>(
+        ENDPOINTS.ENRICHMENT.PROSPEO_LIST_MOBILE(listId),
+        leadIds?.length ? { leadIds } : {},
+      )
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.listLeads(variables.listId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.list(variables.listId),
+      })
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment', 'history'] })
+      variables.leadIds?.forEach((leadId) => {
+        queryClient.invalidateQueries({ queryKey: ['lead', leadId] })
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.leadContactInfo(leadId),
+        })
+      })
     },
   })
 }
