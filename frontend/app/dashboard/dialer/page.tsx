@@ -1,8 +1,8 @@
-"use client";
+'use client'
 
-import { Suspense, useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
-import { CarrierStatusBanner } from "@/components/dialer/CarrierStatusBanner";
+import { Suspense, useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { CarrierStatusBanner } from '@/components/dialer/CarrierStatusBanner'
 import {
   Phone,
   PhoneIncoming,
@@ -17,7 +17,7 @@ import {
   Headphones,
   PhoneMissed,
   Voicemail,
-} from "lucide-react";
+} from 'lucide-react'
 import {
   DialerPanel,
   CallHistory,
@@ -33,68 +33,91 @@ import {
   DialerLoader,
   VoicemailInboxPanel,
   VoicemailGreetingManager,
-} from "@/components/dialer";
-import { CoachCardOverlay } from "@/components/live-coach/CoachCardOverlay";
-import { useMyAssignedClients } from "@/hooks/api/useClientUserAssignments";
-import { useDialerConfig } from "@/hooks/api/useDialer";
-import { useVoicemailDrops, useDeleteVoicemailDrop } from "@/hooks/api/useCalls";
-import { useVoicemailInbox } from "@/hooks/api/useVoicemailInbox";
-import { useActiveOrganization, useSession } from "@/lib/auth-client";
-import { useListOrganizationMembers } from "@/hooks/api/useOrganization";
-import { useSuperAdmin } from "@/hooks/useSuperAdmin";
-import { ExperimentalBadge } from "@/components/ui/ExperimentalBadge";
-import { useDialerContext } from "@/components/providers/DialerProvider";
-import { Button } from "@/components/ui/button";
-import { ClientUserAssignmentManager } from "@/components/settings/ClientUserAssignmentManager";
-import { toast } from "sonner";
-import type { Lead } from "@/hooks/api/usePowerDialer";
+} from '@/components/dialer'
+import { CoachCardOverlay } from '@/components/live-coach/CoachCardOverlay'
+import { useMyAssignedClients } from '@/hooks/api/useClientUserAssignments'
+import { useDialerConfig } from '@/hooks/api/useDialer'
+import { useLeadByPhone } from '@/hooks/api/useLeads'
+import { useVoicemailDrops, useDeleteVoicemailDrop } from '@/hooks/api/useCalls'
+import { useVoicemailInbox } from '@/hooks/api/useVoicemailInbox'
+import { useActiveOrganization, useSession } from '@/lib/auth-client'
+import { useListOrganizationMembers } from '@/hooks/api/useOrganization'
+import { useSuperAdmin } from '@/hooks/useSuperAdmin'
+import { ExperimentalBadge } from '@/components/ui/ExperimentalBadge'
+import { useDialerContext } from '@/components/providers/DialerProvider'
+import { Button } from '@/components/ui/button'
+import { ClientUserAssignmentManager } from '@/components/settings/ClientUserAssignmentManager'
+import { toast } from 'sonner'
+import type { Lead } from '@/hooks/api/usePowerDialer'
 
-type TabType = "dialer" | "power-dialer" | "parallel-dialer" | "inbound" | "voicemail" | "history" | "live-monitor" | "settings";
+type TabType =
+  | 'dialer'
+  | 'power-dialer'
+  | 'parallel-dialer'
+  | 'inbound'
+  | 'voicemail'
+  | 'history'
+  | 'live-monitor'
+  | 'settings'
 
 interface Member {
-  id: string;
-  userId: string;
-  role: string;
+  id: string
+  userId: string
+  role: string
 }
 
 interface Selection {
-  clientId?: string;
-  campaignId?: string;
-  listId?: string;
+  clientId?: string
+  campaignId?: string
+  listId?: string
 }
 
 function DialerPageContent() {
-  const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabType>("dialer");
-  const { data: session } = useSession();
-  const isSuperAdminUser = useSuperAdmin();
-  const activeOrganization = useActiveOrganization();
-  const organizationId = activeOrganization?.data?.id;
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState<TabType>('dialer')
+  const { data: session } = useSession()
+  const isSuperAdminUser = useSuperAdmin()
+  const activeOrganization = useActiveOrganization()
+  const organizationId = activeOrganization?.data?.id
 
   // Get phone and leadId from URL params (for click-to-call from other pages)
-  const urlPhone = searchParams.get("phone") || undefined;
-  const urlLeadId = searchParams.get("leadId") || undefined;
-  const urlTab = searchParams.get("tab") as TabType | null;
+  const urlPhone = searchParams.get('phone') || undefined
+  const urlLeadId = searchParams.get('leadId') || undefined
+  const urlTab = searchParams.get('tab') as TabType | null
 
   // Set active tab from URL parameter
   useEffect(() => {
-    if (urlTab && ["dialer", "power-dialer", "parallel-dialer", "inbound", "voicemail", "history", "live-monitor", "settings"].includes(urlTab)) {
-      queueMicrotask(() => setActiveTab(urlTab));
+    if (
+      urlTab &&
+      [
+        'dialer',
+        'power-dialer',
+        'parallel-dialer',
+        'inbound',
+        'voicemail',
+        'history',
+        'live-monitor',
+        'settings',
+      ].includes(urlTab)
+    ) {
+      queueMicrotask(() => setActiveTab(urlTab))
     }
-  }, [urlTab]);
+  }, [urlTab])
 
   // Show toast when phone number is loaded from URL (e.g. from Chrome extension)
   useEffect(() => {
     if (urlPhone) {
-      toast.info(`Phone number loaded: ${urlPhone}`, { duration: 3000 });
+      toast.info(`Phone number loaded: ${urlPhone}`, { duration: 3000 })
     }
-  }, [urlPhone]);
+  }, [urlPhone])
 
   // Track whether the initial device setup has completed (loader dismissed)
-  const [hasCompletedFirstLoad, setHasCompletedFirstLoad] = useState(false);
+  const [hasCompletedFirstLoad, setHasCompletedFirstLoad] = useState(false)
 
   // Manual dialer state
-  const [manualDialerClientId, setManualDialerClientId] = useState<string | undefined>(undefined);
+  const [manualDialerClientId, setManualDialerClientId] = useState<
+    string | undefined
+  >(undefined)
 
   // Dialer context - must be before using its values
   const {
@@ -117,157 +140,242 @@ function DialerPageContent() {
     setParallelSession,
     // For floating widget
     setCurrentLeadInfo,
-  } = useDialerContext();
+  } = useDialerContext()
+
+  // Match an incoming caller to a saved lead so the ring screen shows a name
+  // instead of "Unknown Caller". Resolves to null for numbers not in the CRM.
+  const incomingCallerNumber = incomingCall?.options?.remoteCallerNumber ?? null
+  const { data: incomingLead } = useLeadByPhone(incomingCallerNumber)
 
   // If device is already ready on mount (e.g. navigating back), skip loader
   useEffect(() => {
     if (isReady && !hasCompletedFirstLoad) {
-      queueMicrotask(() => setHasCompletedFirstLoad(true));
+      queueMicrotask(() => setHasCompletedFirstLoad(true))
     }
-  }, [isReady, hasCompletedFirstLoad]);
+  }, [isReady, hasCompletedFirstLoad])
 
   // Power dialer state - use dialerSelection from context for persistence
-  const selection = dialerSelection;
-  const setSelection = useCallback((newSelection: Selection) => {
-    setDialerSelection(newSelection);
-  }, [setDialerSelection]);
-  const [currentLead, setCurrentLead] = useState<Lead | null>(null);
-  const [powerDialerPhone, setPowerDialerPhone] = useState<string>("");
+  const selection = dialerSelection
+  const setSelection = useCallback(
+    (newSelection: Selection) => {
+      setDialerSelection(newSelection)
+    },
+    [setDialerSelection],
+  )
+  const [currentLead, setCurrentLead] = useState<Lead | null>(null)
+  const [powerDialerPhone, setPowerDialerPhone] = useState<string>('')
   // Use a counter instead of boolean to ensure each call end is detected
-  const [callEndedCount, setCallEndedCount] = useState(0);
+  const [callEndedCount, setCallEndedCount] = useState(0)
   // Counter to trigger auto-dial (separate from display)
-  const [dialTrigger, setDialTrigger] = useState(0);
+  const [dialTrigger, setDialTrigger] = useState(0)
 
   // Fetch clients for manual dialer selector (role-aware: admins get all, members get assigned only)
-  const { data: clients } = useMyAssignedClients();
+  const { data: clients } = useMyAssignedClients()
 
   // Get organization members to check user role
-  const { data: membersData } = useListOrganizationMembers();
-  const members = (membersData?.data?.members || []) as Member[];
+  const { data: membersData } = useListOrganizationMembers()
+  const members = (membersData?.data?.members || []) as Member[]
 
   // Check if current user is admin or owner
-  const currentUserMember = members.find((m) => m.userId === session?.user?.id);
-  const isSuperAdmin = useSuperAdmin();
-  const isAdminOrOwner = isSuperAdmin || currentUserMember?.role === 'admin' || currentUserMember?.role === 'owner';
+  const currentUserMember = members.find((m) => m.userId === session?.user?.id)
+  const isSuperAdmin = useSuperAdmin()
+  const isAdminOrOwner =
+    isSuperAdmin ||
+    currentUserMember?.role === 'admin' ||
+    currentUserMember?.role === 'owner'
 
   // Fetch voicemail inbox for unread count badge
-  const { data: voicemailInboxData } = useVoicemailInbox({ page: 1, limit: 1 });
-  const voicemailUnreadCount = voicemailInboxData?.unreadCount || 0;
+  const { data: voicemailInboxData } = useVoicemailInbox({ page: 1, limit: 1 })
+  const voicemailUnreadCount = voicemailInboxData?.unreadCount || 0
 
   // Handle selection changes from ClientCampaignListSelector
-  const handleSelectionChange = useCallback((newSelection: Selection) => {
-    setSelection(newSelection);
-    // Clear current lead and phone when selection changes
-    setCurrentLead(null);
-    setPowerDialerPhone("");
-  }, [setSelection, setCurrentLead]);
+  const handleSelectionChange = useCallback(
+    (newSelection: Selection) => {
+      setSelection(newSelection)
+      // Clear current lead and phone when selection changes
+      setCurrentLead(null)
+      setPowerDialerPhone('')
+    },
+    [setSelection, setCurrentLead],
+  )
 
   // Handle lead selection from PowerDialerControls
   const handleLeadSelect = useCallback((lead: Lead) => {
-    setCurrentLead(lead);
+    setCurrentLead(lead)
     // Update phone display immediately when lead changes
-    setPowerDialerPhone(lead.phone);
-  }, []);
+    setPowerDialerPhone(lead.phone)
+  }, [])
 
   // Handle call initiated from PowerDialerControls (countdown finished, ready to dial)
-  const handleCallInitiated = useCallback((lead: Lead) => {
-    setPowerDialerPhone(lead.phone);
-    // Set extended lead info for the floating widget
-    setCurrentLeadInfo({
-      id: lead.id,
-      name: `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Unknown',
-      phone: lead.phone,
-      firstName: lead.firstName,
-      lastName: lead.lastName,
-      linkedInUrl: lead.linkedInUrl,
-      website: lead.website,
-      timezone: lead.timezone,
-      campaignId: selection.campaignId,
-      listId: selection.listId || lead.listId || undefined,
-    });
-    // Trigger the dial by incrementing the counter
-    setDialTrigger(prev => prev + 1);
-  }, [setCurrentLeadInfo, selection.campaignId, selection.listId]);
+  const handleCallInitiated = useCallback(
+    (lead: Lead) => {
+      setPowerDialerPhone(lead.phone)
+      // Set extended lead info for the floating widget
+      setCurrentLeadInfo({
+        id: lead.id,
+        name:
+          `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Unknown',
+        phone: lead.phone,
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        linkedInUrl: lead.linkedInUrl,
+        website: lead.website,
+        timezone: lead.timezone,
+        campaignId: selection.campaignId,
+        listId: selection.listId || lead.listId || undefined,
+      })
+      // Trigger the dial by incrementing the counter
+      setDialTrigger((prev) => prev + 1)
+    },
+    [setCurrentLeadInfo, selection.campaignId, selection.listId],
+  )
 
   // Handle call end - signal to PowerDialerControls (don't clear phone - next lead's phone will be set)
   const handlePowerDialerCallEnd = useCallback(() => {
     // Increment counter to signal call ended - PowerDialerControls watches this
     // The new lead's phone will be set via handleLeadSelect when advanceToNext completes
-    setCallEndedCount(prev => prev + 1);
-  }, []);
+    setCallEndedCount((prev) => prev + 1)
+  }, [])
 
   // Handle callback from inbound calls panel
   const handleCallBack = useCallback((phoneNumber: string, leadId?: string) => {
-    setActiveTab("dialer");
+    setActiveTab('dialer')
     // Small delay to let tab switch, then the URL params will trigger the dial
     setTimeout(() => {
-      window.history.pushState({}, "", `/dashboard/dialer?phone=${encodeURIComponent(phoneNumber)}${leadId ? `&leadId=${leadId}` : ""}`);
-      window.location.reload();
-    }, 100);
-  }, []);
+      window.history.pushState(
+        {},
+        '',
+        `/dashboard/dialer?phone=${encodeURIComponent(phoneNumber)}${leadId ? `&leadId=${leadId}` : ''}`,
+      )
+      window.location.reload()
+    }, 100)
+  }, [])
 
   // Live Coach state for overlay
   const [activeCoachCard, setActiveCoachCard] = useState<{
-    id: string;
-    triggerId: string;
-    title: string;
-    category: string;
-    content: string;
-    tips?: string[];
-    triggerPhrase: string;
-  } | null>(null);
+    id: string
+    triggerId: string
+    title: string
+    category: string
+    content: string
+    tips?: string[]
+    triggerPhrase: string
+  } | null>(null)
 
   // Parallel dialer state - use context for persistence across tab switches
-  const parallelSessionActive = parallelSession.isActive;
-  const parallelSessionId = parallelSession.sessionId;
-  const setParallelSessionState = useCallback((updates: { isActive?: boolean; sessionId?: string; conferenceId?: string }) => {
-    setParallelSession((prev) => ({ ...prev, ...updates }));
-  }, [setParallelSession]);
-  const [parallelConnectedLead, setParallelConnectedLead] = useState<Lead | null>(null);
+  const parallelSessionActive = parallelSession.isActive
+  const parallelSessionId = parallelSession.sessionId
+  const setParallelSessionState = useCallback(
+    (updates: {
+      isActive?: boolean
+      sessionId?: string
+      conferenceId?: string
+    }) => {
+      setParallelSession((prev) => ({ ...prev, ...updates }))
+    },
+    [setParallelSession],
+  )
+  const [parallelConnectedLead, setParallelConnectedLead] =
+    useState<Lead | null>(null)
 
   // Handle parallel dialer call connected
-  const handleParallelLeadConnected = useCallback((attempt: { leadId: string; leadName: string | null; leadCompany: string | null }) => {
-    // Create a minimal lead object from the attempt data
-    if (attempt.leadId) {
-      setParallelConnectedLead({
-        id: attempt.leadId,
-        firstName: attempt.leadName?.split(' ')[0] || '',
-        lastName: attempt.leadName?.split(' ').slice(1).join(' ') || '',
-        company: attempt.leadCompany || undefined,
-        phone: '', // We don't have phone in the attempt response
-      } as Lead);
-    }
-  }, []);
+  const handleParallelLeadConnected = useCallback(
+    (attempt: {
+      leadId: string
+      leadName: string | null
+      leadCompany: string | null
+    }) => {
+      // Create a minimal lead object from the attempt data
+      if (attempt.leadId) {
+        setParallelConnectedLead({
+          id: attempt.leadId,
+          firstName: attempt.leadName?.split(' ')[0] || '',
+          lastName: attempt.leadName?.split(' ').slice(1).join(' ') || '',
+          company: attempt.leadCompany || undefined,
+          phone: '', // We don't have phone in the attempt response
+        } as Lead)
+      }
+    },
+    [],
+  )
 
   // Handle parallel dialer session end
   const handleParallelSessionEnd = useCallback(() => {
-    setParallelSessionState({ isActive: false, sessionId: undefined, conferenceId: undefined });
-    setParallelConnectedLead(null);
-  }, [setParallelSessionState]);
+    setParallelSessionState({
+      isActive: false,
+      sessionId: undefined,
+      conferenceId: undefined,
+    })
+    setParallelConnectedLead(null)
+  }, [setParallelSessionState])
 
   // Build tabs - settings available to all (content is role-filtered)
   // Parallel Dialer and Live Monitor are experimental (superadmin only)
   const baseTabs = [
-    { id: "dialer" as const, label: "Manual Dialer", icon: Phone, experimental: false },
-    { id: "power-dialer" as const, label: "Power Dialer", icon: Zap, experimental: false },
-    { id: "inbound" as const, label: "Inbound", icon: PhoneIncoming, experimental: false },
-    { id: "voicemail" as const, label: "Voicemail", icon: Voicemail, experimental: false, badge: voicemailUnreadCount },
-    { id: "history" as const, label: "History", icon: History, experimental: false },
-  ];
+    {
+      id: 'dialer' as const,
+      label: 'Manual Dialer',
+      icon: Phone,
+      experimental: false,
+    },
+    {
+      id: 'power-dialer' as const,
+      label: 'Power Dialer',
+      icon: Zap,
+      experimental: false,
+    },
+    {
+      id: 'inbound' as const,
+      label: 'Inbound',
+      icon: PhoneIncoming,
+      experimental: false,
+    },
+    {
+      id: 'voicemail' as const,
+      label: 'Voicemail',
+      icon: Voicemail,
+      experimental: false,
+      badge: voicemailUnreadCount,
+    },
+    {
+      id: 'history' as const,
+      label: 'History',
+      icon: History,
+      experimental: false,
+    },
+  ]
 
-  const experimentalTabs = isSuperAdmin ? [
-    { id: "parallel-dialer" as const, label: "Parallel Dialer", icon: PhoneMissed, experimental: true },
-    { id: "live-monitor" as const, label: "Live Monitor", icon: Headphones, experimental: true },
-  ] : [];
+  const experimentalTabs = isSuperAdmin
+    ? [
+        {
+          id: 'parallel-dialer' as const,
+          label: 'Parallel Dialer',
+          icon: PhoneMissed,
+          experimental: true,
+        },
+        {
+          id: 'live-monitor' as const,
+          label: 'Live Monitor',
+          icon: Headphones,
+          experimental: true,
+        },
+      ]
+    : []
 
   const tabs = [
     ...baseTabs,
     ...experimentalTabs,
-    { id: "settings" as const, label: "Settings", icon: Settings, experimental: false },
-  ];
+    {
+      id: 'settings' as const,
+      label: 'Settings',
+      icon: Settings,
+      experimental: false,
+    },
+  ]
 
   // Fetch dialer config to check if dialer is provisioned for this org
-  const { data: dialerConfigData, isLoading: isConfigLoading } = useDialerConfig(organizationId);
+  const { data: dialerConfigData, isLoading: isConfigLoading } =
+    useDialerConfig(organizationId)
 
   // Access gate: allow superadmin always; allow members only if their org has dialer configured
   if (session && !isSuperAdminUser && !isConfigLoading && !dialerConfigData) {
@@ -279,11 +387,12 @@ function DialerPageContent() {
           </div>
           <h2 className="text-xl font-semibold mb-2">Dialer Not Configured</h2>
           <p className="text-muted-foreground text-sm">
-            The dialer has not been set up for your organization. Contact your administrator to configure Telnyx credentials.
+            The dialer has not been set up for your organization. Contact your
+            administrator to configure Telnyx credentials.
           </p>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -291,7 +400,9 @@ function DialerPageContent() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="font-display font-semibold text-2xl md:text-3xl tracking-tight text-foreground">Dialer</h1>
+          <h1 className="font-display font-semibold text-2xl md:text-3xl tracking-tight text-foreground">
+            Dialer
+          </h1>
         </div>
       </div>
 
@@ -313,15 +424,20 @@ function DialerPageContent() {
           <div>
             {currentUserMember?.role === 'admin' ? (
               <>
-                <p className="text-sm font-medium text-destructive">Connection Error</p>
+                <p className="text-sm font-medium text-destructive">
+                  Connection Error
+                </p>
                 <p className="text-xs text-destructive/80 mt-1">{error}</p>
               </>
             ) : (
               <>
-                <p className="text-sm font-medium text-destructive">Unable to Connect</p>
+                <p className="text-sm font-medium text-destructive">
+                  Unable to Connect
+                </p>
                 <p className="text-xs text-destructive/80 mt-1">
-                  The dialer is having trouble connecting. Please wait a moment and try again.
-                  If this issue persists, contact your administrator.
+                  The dialer is having trouble connecting. Please wait a moment
+                  and try again. If this issue persists, contact your
+                  administrator.
                 </p>
               </>
             )}
@@ -330,21 +446,34 @@ function DialerPageContent() {
       )}
 
       {/* Mobile Tab Selector */}
-      <div className={`sm:hidden mb-6 ${!hasCompletedFirstLoad ? "hidden" : ""}`}>
+      <div
+        className={`sm:hidden mb-6 ${!hasCompletedFirstLoad ? 'hidden' : ''}`}
+      >
         <select
           value={activeTab}
           onChange={(e) => setActiveTab(e.target.value as TabType)}
           className="w-full h-12 px-4 bg-muted border border-border rounded-xl text-foreground appearance-none"
-          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 12px center',
+            backgroundSize: '20px',
+          }}
         >
           {tabs.map((tab) => (
-            <option key={tab.id} value={tab.id}>{tab.label}</option>
+            <option key={tab.id} value={tab.id}>
+              {tab.label}
+            </option>
           ))}
         </select>
       </div>
 
       {/* Desktop Tabs */}
-      <div role="tablist" aria-label="Dialer sections" className={`sm:flex gap-1 p-1 bg-muted/30 rounded-xl w-fit mb-8 ${!hasCompletedFirstLoad ? "hidden" : "hidden sm:flex"}`}>
+      <div
+        role="tablist"
+        aria-label="Dialer sections"
+        className={`sm:flex gap-1 p-1 bg-muted/30 rounded-xl w-fit mb-8 ${!hasCompletedFirstLoad ? 'hidden' : 'hidden sm:flex'}`}
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -353,25 +482,29 @@ function DialerPageContent() {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
               activeTab === tab.id
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <tab.icon className="w-4 h-4" />
             {tab.label}
             {tab.experimental && <ExperimentalBadge />}
-            {'badge' in tab && typeof tab.badge === 'number' && tab.badge > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full min-w-[18px] text-center">
-                {tab.badge}
-              </span>
-            )}
+            {'badge' in tab &&
+              typeof tab.badge === 'number' &&
+              tab.badge > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full min-w-[18px] text-center">
+                  {tab.badge}
+                </span>
+              )}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div className={`flex-1 min-h-0 ${!hasCompletedFirstLoad ? "hidden" : ""}`}>
-        {activeTab === "dialer" && (
+      <div
+        className={`flex-1 min-h-0 ${!hasCompletedFirstLoad ? 'hidden' : ''}`}
+      >
+        {activeTab === 'dialer' && (
           <div className="h-full flex items-start justify-center pt-4">
             <div className="w-full sm:max-w-md">
               <DialerPanel
@@ -385,7 +518,7 @@ function DialerPageContent() {
           </div>
         )}
 
-        {activeTab === "power-dialer" && (
+        {activeTab === 'power-dialer' && (
           <PowerDialerTab
             selection={selection}
             currentLead={currentLead}
@@ -401,7 +534,7 @@ function DialerPageContent() {
           />
         )}
 
-        {activeTab === "parallel-dialer" && isSuperAdmin && (
+        {activeTab === 'parallel-dialer' && isSuperAdmin && (
           <div className="h-full flex flex-col lg:grid lg:grid-cols-2 gap-6">
             {/* Left Column - Selection & Controls */}
             <div className="space-y-4 order-2 lg:order-1">
@@ -428,7 +561,11 @@ function DialerPageContent() {
                   isSessionActive={parallelSessionActive}
                   currentSessionId={parallelSessionId}
                   onSessionStart={(sessionId, conferenceId) => {
-                    setParallelSessionState({ isActive: true, sessionId, conferenceId });
+                    setParallelSessionState({
+                      isActive: true,
+                      sessionId,
+                      conferenceId,
+                    })
                   }}
                   onSessionEnd={handleParallelSessionEnd}
                   onLeadConnected={handleParallelLeadConnected}
@@ -456,10 +593,13 @@ function DialerPageContent() {
                         </div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg">
-                            {parallelConnectedLead.firstName} {parallelConnectedLead.lastName}
+                            {parallelConnectedLead.firstName}{' '}
+                            {parallelConnectedLead.lastName}
                           </h3>
                           {parallelConnectedLead.company && (
-                            <p className="text-sm text-muted-foreground">{parallelConnectedLead.company}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {parallelConnectedLead.company}
+                            </p>
                           )}
                           <div className="flex items-center gap-2 text-green-500 text-sm font-medium mt-1">
                             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -470,7 +610,8 @@ function DialerPageContent() {
 
                       {/* Call info */}
                       <div className="text-xs text-muted-foreground border-t border-border pt-3 mt-3">
-                        Connected via parallel dialer conference. Use the controls in the panel to manage the call.
+                        Connected via parallel dialer conference. Use the
+                        controls in the panel to manage the call.
                       </div>
                     </div>
 
@@ -480,7 +621,7 @@ function DialerPageContent() {
                       campaignId={selection.campaignId}
                       clientId={selection.clientId}
                       onCallEnd={() => {
-                        setParallelConnectedLead(null);
+                        setParallelConnectedLead(null)
                       }}
                     />
                   </>
@@ -490,9 +631,12 @@ function DialerPageContent() {
                     <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-4">
                       <PhoneMissed className="w-8 h-8 text-green-500 animate-pulse" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">Parallel Dialing Active</h3>
+                    <h3 className="text-lg font-semibold mb-2">
+                      Parallel Dialing Active
+                    </h3>
                     <p className="text-muted-foreground text-sm">
-                      Click &quot;Dial Next Batch&quot; to start dialing. First answered call will be connected.
+                      Click &quot;Dial Next Batch&quot; to start dialing. First
+                      answered call will be connected.
                     </p>
                   </div>
                 ) : (
@@ -501,9 +645,12 @@ function DialerPageContent() {
                     <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                       <PhoneMissed className="w-8 h-8 text-muted-foreground" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">Parallel Dialer</h3>
+                    <h3 className="text-lg font-semibold mb-2">
+                      Parallel Dialer
+                    </h3>
                     <p className="text-muted-foreground text-sm">
-                      Select a client and campaign, then start parallel dialing to reach leads faster.
+                      Select a client and campaign, then start parallel dialing
+                      to reach leads faster.
                     </p>
                   </div>
                 )}
@@ -512,7 +659,7 @@ function DialerPageContent() {
           </div>
         )}
 
-        {activeTab === "inbound" && (
+        {activeTab === 'inbound' && (
           <div className="h-full overflow-auto max-w-4xl">
             <InboundCallsPanel
               incomingCall={incomingCall}
@@ -530,27 +677,30 @@ function DialerPageContent() {
           </div>
         )}
 
-        {activeTab === "voicemail" && (
+        {activeTab === 'voicemail' && (
           <div className="h-full overflow-auto max-w-2xl">
             <VoicemailInboxPanel onCallBack={handleCallBack} />
           </div>
         )}
 
-        {activeTab === "history" && (
+        {activeTab === 'history' && (
           <div className="h-full overflow-auto">
             <CallHistory />
           </div>
         )}
 
-        {activeTab === "live-monitor" && isSuperAdmin && (
+        {activeTab === 'live-monitor' && isSuperAdmin && (
           <div className="h-full overflow-auto max-w-2xl">
             <LiveMonitorPanel />
           </div>
         )}
 
-        {activeTab === "settings" && (
+        {activeTab === 'settings' && (
           <div className="max-w-2xl">
-            <DialerSettings organizationId={organizationId} isAdminOrOwner={isAdminOrOwner} />
+            <DialerSettings
+              organizationId={organizationId}
+              isAdminOrOwner={isAdminOrOwner}
+            />
           </div>
         )}
       </div>
@@ -564,15 +714,21 @@ function DialerPageContent() {
       )}
 
       {/* Incoming call modal - only show when not on inbound tab since InboundCallsPanel handles it */}
-      {incomingCall && activeTab !== "inbound" && (
+      {incomingCall && activeTab !== 'inbound' && (
         <IncomingCallModal
-          callerNumber={incomingCall.options.remoteCallerNumber || "Unknown"}
+          callerNumber={incomingCall.options.remoteCallerNumber || 'Unknown'}
+          callerName={
+            [incomingLead?.firstName, incomingLead?.lastName]
+              .filter(Boolean)
+              .join(' ') || undefined
+          }
+          callerCompany={incomingLead?.company ?? undefined}
           onAnswer={answerIncomingCall}
           onDecline={rejectIncomingCall}
         />
       )}
     </div>
-  );
+  )
 }
 
 // Power Dialer Tab Component
@@ -589,17 +745,17 @@ function PowerDialerTab({
   onCallEnd,
   onEndCall,
 }: {
-  selection: Selection;
-  currentLead: Lead | null;
-  powerDialerPhone: string;
-  callEndedCount: number;
-  callState: string;
-  dialTrigger: number;
-  onSelectionChange: (selection: Selection) => void;
-  onLeadSelect: (lead: Lead) => void;
-  onCallInitiated: (lead: Lead) => void;
-  onCallEnd: () => void;
-  onEndCall: () => Promise<void>;
+  selection: Selection
+  currentLead: Lead | null
+  powerDialerPhone: string
+  callEndedCount: number
+  callState: string
+  dialTrigger: number
+  onSelectionChange: (selection: Selection) => void
+  onLeadSelect: (lead: Lead) => void
+  onCallInitiated: (lead: Lead) => void
+  onCallEnd: () => void
+  onEndCall: () => Promise<void>
 }) {
   return (
     <div className="h-full flex flex-col lg:grid lg:grid-cols-2 lg:grid-rows-[auto_1fr_auto] gap-4">
@@ -648,37 +804,44 @@ function PowerDialerTab({
 
       {/* Script Panel - shows fourth on mobile */}
       <div className="lg:row-start-2 lg:col-start-2 order-4">
-        <ScriptPanel
-          campaignId={selection.campaignId}
-          lead={currentLead}
-        />
+        <ScriptPanel campaignId={selection.campaignId} lead={currentLead} />
       </div>
 
       {/* Keyboard shortcuts bar */}
       <div className="lg:col-span-2 order-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-4 py-3 bg-muted/40 border border-border/50 rounded-xl text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <kbd className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">↑</kbd>
-          <kbd className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">↓</kbd>
+          <kbd className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">
+            ↑
+          </kbd>
+          <kbd className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">
+            ↓
+          </kbd>
           Navigate leads
         </span>
         <span className="hidden sm:inline text-border/60">|</span>
         <span className="flex items-center gap-1.5">
-          <kbd className="inline-flex items-center justify-center h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">Enter</kbd>
+          <kbd className="inline-flex items-center justify-center h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">
+            Enter
+          </kbd>
           Call / End call
         </span>
         <span className="hidden sm:inline text-border/60">|</span>
         <span className="flex items-center gap-1.5">
-          <kbd className="inline-flex items-center justify-center h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">⌘L</kbd>
+          <kbd className="inline-flex items-center justify-center h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">
+            ⌘L
+          </kbd>
           Open LinkedIn
         </span>
         <span className="hidden sm:inline text-border/60">|</span>
         <span className="flex items-center gap-1.5">
-          <kbd className="inline-flex items-center justify-center h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">⌘J</kbd>
+          <kbd className="inline-flex items-center justify-center h-[22px] px-1.5 bg-muted border border-border rounded font-mono text-[11px] text-foreground/70">
+            ⌘J
+          </kbd>
           Open website
         </span>
       </div>
     </div>
-  );
+  )
 }
 
 // Settings card component
@@ -687,9 +850,9 @@ function SettingsCard({
   description,
   children,
 }: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
+  title: string
+  description: string
+  children: React.ReactNode
 }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-6">
@@ -697,46 +860,53 @@ function SettingsCard({
       <p className="text-sm text-muted-foreground mb-5">{description}</p>
       {children}
     </div>
-  );
+  )
 }
 
 // Dialer settings component - with role-based sections
-function DialerSettings({ organizationId, isAdminOrOwner }: { organizationId?: string; isAdminOrOwner: boolean }) {
-  const [playingVoicemail, setPlayingVoicemail] = useState<string | null>(null);
+function DialerSettings({
+  organizationId,
+  isAdminOrOwner,
+}: {
+  organizationId?: string
+  isAdminOrOwner: boolean
+}) {
+  const [playingVoicemail, setPlayingVoicemail] = useState<string | null>(null)
 
   // Fetch existing config (only for admin/owner)
-  const { data: config } = useDialerConfig(organizationId);
+  const { data: config } = useDialerConfig(organizationId)
 
   // Fetch voicemail drops
-  const { data: voicemailDropsData, isLoading: voicemailsLoading } = useVoicemailDrops();
-  const voicemailDrops = voicemailDropsData?.data || [];
-  const deleteVoicemail = useDeleteVoicemailDrop();
+  const { data: voicemailDropsData, isLoading: voicemailsLoading } =
+    useVoicemailDrops()
+  const voicemailDrops = voicemailDropsData?.data || []
+  const deleteVoicemail = useDeleteVoicemailDrop()
 
   const handlePlayVoicemail = (id: string, url: string) => {
     if (playingVoicemail === id) {
-      setPlayingVoicemail(null);
+      setPlayingVoicemail(null)
     } else {
-      setPlayingVoicemail(id);
-      const audio = new Audio(url);
-      audio.onended = () => setPlayingVoicemail(null);
-      audio.play();
+      setPlayingVoicemail(id)
+      const audio = new Audio(url)
+      audio.onended = () => setPlayingVoicemail(null)
+      audio.play()
     }
-  };
+  }
 
   const handleDeleteVoicemail = async (id: string) => {
     try {
-      await deleteVoicemail.mutateAsync(id);
-      toast.success("Voicemail deleted");
+      await deleteVoicemail.mutateAsync(id)
+      toast.success('Voicemail deleted')
     } catch {
-      toast.error("Failed to delete voicemail");
+      toast.error('Failed to delete voicemail')
     }
-  };
+  }
 
   const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
 
   return (
     <div className="space-y-6">
@@ -774,38 +944,55 @@ function DialerSettings({ organizationId, isAdminOrOwner }: { organizationId?: s
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           ) : voicemailDrops.length > 0 ? (
-            voicemailDrops.map((vm: { id: string; name: string; recordingUrl: string; duration: number }) => (
-              <div
-                key={vm.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border group"
-              >
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handlePlayVoicemail(vm.id, vm.recordingUrl)}
-                    aria-label={playingVoicemail === vm.id ? "Playing voicemail" : `Play voicemail: ${vm.name}`}
-                    className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition"
-                  >
-                    {playingVoicemail === vm.id ? (
-                      <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                    ) : (
-                      <Play className="w-5 h-5 text-primary" />
-                    )}
-                  </button>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{vm.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatDuration(vm.duration)}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleDeleteVoicemail(vm.id)}
-                  disabled={deleteVoicemail.isPending}
-                  aria-label={`Delete voicemail: ${vm.name}`}
-                  className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+            voicemailDrops.map(
+              (vm: {
+                id: string
+                name: string
+                recordingUrl: string
+                duration: number
+              }) => (
+                <div
+                  key={vm.id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border group"
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() =>
+                        handlePlayVoicemail(vm.id, vm.recordingUrl)
+                      }
+                      aria-label={
+                        playingVoicemail === vm.id
+                          ? 'Playing voicemail'
+                          : `Play voicemail: ${vm.name}`
+                      }
+                      className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition"
+                    >
+                      {playingVoicemail === vm.id ? (
+                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                      ) : (
+                        <Play className="w-5 h-5 text-primary" />
+                      )}
+                    </button>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {vm.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDuration(vm.duration)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteVoicemail(vm.id)}
+                    disabled={deleteVoicemail.isPending}
+                    aria-label={`Delete voicemail: ${vm.name}`}
+                    className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ),
+            )
           ) : (
             <div className="text-center py-4 text-muted-foreground text-sm">
               No voicemail drops configured
@@ -842,8 +1029,12 @@ function DialerSettings({ organizationId, isAdminOrOwner }: { organizationId?: s
         >
           <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border">
             <div>
-              <p className="text-sm font-medium text-foreground">Auto-record all calls</p>
-              <p className="text-xs text-muted-foreground">Automatically record all outbound and inbound calls</p>
+              <p className="text-sm font-medium text-foreground">
+                Auto-record all calls
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Automatically record all outbound and inbound calls
+              </p>
             </div>
             <button
               className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary transition-colors"
@@ -852,9 +1043,9 @@ function DialerSettings({ organizationId, isAdminOrOwner }: { organizationId?: s
               aria-label="Auto-record all calls"
               tabIndex={0}
               onKeyDown={(e) => {
-                if (e.key === " " || e.key === "Enter") {
-                  e.preventDefault();
-                  e.currentTarget.click();
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault()
+                  e.currentTarget.click()
                 }
               }}
             >
@@ -864,13 +1055,13 @@ function DialerSettings({ organizationId, isAdminOrOwner }: { organizationId?: s
         </SettingsCard>
       )}
     </div>
-  );
+  )
 }
 
 function LoadingState() {
   return (
     <div className="py-24 text-center text-muted-foreground">Loading...</div>
-  );
+  )
 }
 
 export default function DialerPage() {
@@ -878,5 +1069,5 @@ export default function DialerPage() {
     <Suspense fallback={<LoadingState />}>
       <DialerPageContent />
     </Suspense>
-  );
+  )
 }

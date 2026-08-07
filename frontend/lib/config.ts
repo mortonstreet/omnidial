@@ -1,82 +1,93 @@
-import { z } from "zod";
+import { z } from 'zod'
 
-const DEV_API_FALLBACK = "http://localhost:8080/api";
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const DEV_API_FALLBACK = 'http://localhost:8080/api'
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 
 const assertProductionApiUrl = (message: string): never => {
   throw new Error(
     `[config] ${message}. Set NEXT_PUBLIC_API_URL as a frontend build variable (for example, https://api.example.com/api).`,
-  );
-};
+  )
+}
 
 const normalizePublicApiUrl = (
   rawApiUrl: string | undefined,
   nodeEnv: string | undefined,
   ci: string | undefined,
 ): string => {
-  const isProduction = nodeEnv === "production";
+  const isProduction = nodeEnv === 'production'
   const enforceProductionValidation =
-    isProduction && (ci === "true" || ci === "1");
-  const candidate = rawApiUrl?.trim();
+    isProduction && (ci === 'true' || ci === '1')
+  const candidate = rawApiUrl?.trim()
 
   if (!candidate) {
     if (enforceProductionValidation) {
       return assertProductionApiUrl(
-        "NEXT_PUBLIC_API_URL is required in production builds",
-      );
+        'NEXT_PUBLIC_API_URL is required in production builds',
+      )
     }
-    return DEV_API_FALLBACK;
+    return DEV_API_FALLBACK
   }
 
-  let parsed: URL;
+  let parsed: URL
   try {
-    parsed = new URL(candidate);
+    parsed = new URL(candidate)
   } catch {
     if (enforceProductionValidation) {
       return assertProductionApiUrl(
         `NEXT_PUBLIC_API_URL is not a valid URL (received ${candidate})`,
-      );
+      )
     }
-    return DEV_API_FALLBACK;
+    return DEV_API_FALLBACK
   }
 
-  const host = parsed.hostname.toLowerCase();
+  const host = parsed.hostname.toLowerCase()
 
   if (enforceProductionValidation && LOCAL_HOSTS.has(host)) {
     return assertProductionApiUrl(
       `NEXT_PUBLIC_API_URL cannot use a localhost host in production (received ${candidate})`,
-    );
+    )
   }
 
   if (
-    host === "omnidial.io" ||
-    host === "www.omnidial.io" ||
-    host === "app.omnidial.io"
+    host === 'omnidial.io' ||
+    host === 'www.omnidial.io' ||
+    host === 'app.omnidial.io'
   ) {
-    parsed.hostname = "api.omnidial.io";
+    parsed.hostname = 'api.omnidial.io'
   }
 
-  if (!parsed.pathname || parsed.pathname === "/") {
-    parsed.pathname = "/api";
+  if (!parsed.pathname || parsed.pathname === '/') {
+    parsed.pathname = '/api'
   } else {
-    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '')
   }
 
-  return parsed.toString().replace(/\/$/, "");
-};
+  return parsed.toString().replace(/\/$/, '')
+}
 
 const envSchema = z.object({
   API_URL: z.string().url(),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NODE_ENV: z
+    .enum(['development', 'production', 'test'])
+    .default('development'),
   // Pusher
-  PUSHER_ENABLED: z.string().default('false').transform((val) => val === 'true'),
+  PUSHER_ENABLED: z
+    .string()
+    .default('false')
+    .transform((val) => val === 'true'),
   PUSHER_KEY: z.string().default('app-key'),
   PUSHER_HOST: z.string().default('localhost'),
   PUSHER_PORT: z.coerce.number().default(6001),
-  PUSHER_USE_TLS: z.string().default('false').transform((val) => val === 'true'),
+  PUSHER_USE_TLS: z
+    .string()
+    .default('false')
+    .transform((val) => val === 'true'),
   // PostHog
-  POSTHOG_ENABLED: z.string().default('false').transform((val) => val === 'true'),
-});
+  POSTHOG_ENABLED: z
+    .string()
+    .default('false')
+    .transform((val) => val === 'true'),
+})
 
 export const env = envSchema.parse({
   API_URL: normalizePublicApiUrl(
@@ -91,7 +102,7 @@ export const env = envSchema.parse({
   PUSHER_PORT: process.env.NEXT_PUBLIC_PUSHER_PORT,
   PUSHER_USE_TLS: process.env.NEXT_PUBLIC_PUSHER_USE_TLS,
   POSTHOG_ENABLED: process.env.NEXT_PUBLIC_POSTHOG_ENABLED,
-});
+})
 
 export const ENDPOINTS = {
   USER: {
@@ -115,9 +126,11 @@ export const ENDPOINTS = {
     STATS: '/admin/stats',
     USERS: '/admin/users',
     ORGANIZATIONS: '/admin/organizations',
-    ADD_CREDITS: (organizationId: string) => `/admin/organizations/${organizationId}/credits`,
+    ADD_CREDITS: (organizationId: string) =>
+      `/admin/organizations/${organizationId}/credits`,
     DELETE_USER: (userId: string) => `/admin/users/${userId}`,
-    DELETE_ORGANIZATION: (organizationId: string) => `/admin/organizations/${organizationId}`,
+    DELETE_ORGANIZATION: (organizationId: string) =>
+      `/admin/organizations/${organizationId}`,
     REASSIGN_USER: (userId: string) => `/admin/users/${userId}/reassign`,
     CREATE_ORGANIZATION: '/admin/organizations',
     REMOVE_USER_FROM_ORG: (organizationId: string, userId: string) =>
@@ -135,12 +148,15 @@ export const ENDPOINTS = {
     LOGS_CALL_DETAIL: (id: string) => `/admin/logs/calls/${id}`,
     LOGS_RECORDINGS: '/admin/logs/recordings',
     LOGS_TRANSCRIPTIONS: '/admin/logs/transcriptions',
-    LOGS_TRANSCRIPTION_DETAIL: (id: string) => `/admin/logs/transcriptions/${id}`,
+    LOGS_TRANSCRIPTION_DETAIL: (id: string) =>
+      `/admin/logs/transcriptions/${id}`,
     LOGS_ACTIVITY: '/admin/logs/activity',
     PHONE_PROVISIONING: '/admin/phone-provisioning',
     PROVISION_ORG: (orgId: string) => `/admin/organizations/${orgId}/provision`,
-    MARK_MAIN_ACCOUNT: (orgId: string) => `/admin/organizations/${orgId}/mark-main-account`,
-    RELEASE_NUMBER: (orgId: string) => `/admin/organizations/${orgId}/release-number`,
+    MARK_MAIN_ACCOUNT: (orgId: string) =>
+      `/admin/organizations/${orgId}/mark-main-account`,
+    RELEASE_NUMBER: (orgId: string) =>
+      `/admin/organizations/${orgId}/release-number`,
   },
   NOTIFICATIONS: {
     LIST: '/notifications',
@@ -210,7 +226,8 @@ export const ENDPOINTS = {
     UPDATE_CONFIG: (orgId: string) => `/dialer/config/${orgId}`,
     PHONE_NUMBERS: (orgId: string) => `/dialer/phone-numbers/${orgId}`,
     // Phone number assignments
-    PHONE_NUMBER_ASSIGNMENTS: (orgId: string) => `/dialer/phone-numbers/${orgId}/assignments`,
+    PHONE_NUMBER_ASSIGNMENTS: (orgId: string) =>
+      `/dialer/phone-numbers/${orgId}/assignments`,
     ASSIGN_PHONE_NUMBER: '/dialer/phone-numbers/assign',
     UNASSIGN_PHONE_NUMBER: (orgId: string, phoneNumber: string) =>
       `/dialer/phone-numbers/${orgId}/assign/${encodeURIComponent(phoneNumber)}`,
@@ -282,7 +299,8 @@ export const ENDPOINTS = {
     EXPORT: (id: string) => `/lists/${id}/export`,
     // List leads
     LEADS: (id: string) => `/lists/${id}/leads`,
-    SOFT_REMOVE_LEAD: (listId: string, leadId: string) => `/lists/${listId}/leads/${leadId}`,
+    SOFT_REMOVE_LEAD: (listId: string, leadId: string) =>
+      `/lists/${listId}/leads/${leadId}`,
     // Campaign linking
     CAMPAIGN_LISTS: (campaignId: string) => `/lists/campaigns/${campaignId}`,
     ADD_TO_CAMPAIGN: (campaignId: string) => `/lists/campaigns/${campaignId}`,
@@ -305,8 +323,10 @@ export const ENDPOINTS = {
   },
   CLIENT_USER_ASSIGNMENTS: {
     MY_CLIENTS: '/client-user-assignments/my-clients',
-    CLIENT_USERS: (clientId: string) => `/client-user-assignments/clients/${clientId}/users`,
-    USER_CLIENTS: (userId: string) => `/client-user-assignments/users/${userId}/clients`,
+    CLIENT_USERS: (clientId: string) =>
+      `/client-user-assignments/clients/${clientId}/users`,
+    USER_CLIENTS: (userId: string) =>
+      `/client-user-assignments/users/${userId}/clients`,
     ASSIGN: '/client-user-assignments/assign',
     UNASSIGN: (clientId: string, userId: string) =>
       `/client-user-assignments/clients/${clientId}/users/${userId}`,
@@ -329,7 +349,8 @@ export const ENDPOINTS = {
     // Google Sheets specific
     GOOGLE_SHEETS: {
       LIST: '/integrations/google_sheets/sheets',
-      COLUMNS: (sheetId: string) => `/integrations/google_sheets/columns/${sheetId}`,
+      COLUMNS: (sheetId: string) =>
+        `/integrations/google_sheets/columns/${sheetId}`,
       IMPORT: '/integrations/google_sheets/import',
       WRITE_ACCESS: '/integrations/google_sheets/write-access',
       EXPORT_LEADS: '/integrations/google_sheets/export/leads',
@@ -348,7 +369,8 @@ export const ENDPOINTS = {
       DISCONNECT: '/integrations/enrichengine',
       TEST: '/integrations/enrichengine/test',
       LISTS: '/integrations/enrichengine/lists',
-      LIST_LEADS: (listId: string) => `/integrations/enrichengine/lists/${listId}/leads`,
+      LIST_LEADS: (listId: string) =>
+        `/integrations/enrichengine/lists/${listId}/leads`,
       IMPORT: '/integrations/enrichengine/import',
     },
   },
@@ -379,7 +401,8 @@ export const ENDPOINTS = {
     GENERATE: (callId: string) => `/coaching/calls/${callId}/generate`,
   },
   CALL_INTELLIGENCE: {
-    ELIGIBILITY: (callId: string) => `/call-intelligence/calls/${callId}/eligibility`,
+    ELIGIBILITY: (callId: string) =>
+      `/call-intelligence/calls/${callId}/eligibility`,
     GET: (callId: string) => `/call-intelligence/calls/${callId}`,
     GENERATE: (callId: string) => `/call-intelligence/calls/${callId}/generate`,
     BY_LEAD: (leadId: string) => `/call-intelligence/leads/${leadId}`,
@@ -388,16 +411,22 @@ export const ENDPOINTS = {
   PARALLEL_DIALER: {
     SESSIONS: '/parallel-dialer/sessions',
     SESSION: (sessionId: string) => `/parallel-dialer/sessions/${sessionId}`,
-    SESSION_END: (sessionId: string) => `/parallel-dialer/sessions/${sessionId}/end`,
-    SESSION_PAUSE: (sessionId: string) => `/parallel-dialer/sessions/${sessionId}/pause`,
-    SESSION_RESUME: (sessionId: string) => `/parallel-dialer/sessions/${sessionId}/resume`,
-    SESSION_DIAL: (sessionId: string) => `/parallel-dialer/sessions/${sessionId}/dial`,
-    SESSION_JOIN: (sessionId: string) => `/parallel-dialer/sessions/${sessionId}/join`,
+    SESSION_END: (sessionId: string) =>
+      `/parallel-dialer/sessions/${sessionId}/end`,
+    SESSION_PAUSE: (sessionId: string) =>
+      `/parallel-dialer/sessions/${sessionId}/pause`,
+    SESSION_RESUME: (sessionId: string) =>
+      `/parallel-dialer/sessions/${sessionId}/resume`,
+    SESSION_DIAL: (sessionId: string) =>
+      `/parallel-dialer/sessions/${sessionId}/dial`,
+    SESSION_JOIN: (sessionId: string) =>
+      `/parallel-dialer/sessions/${sessionId}/join`,
     ABANDONED_CALLS: '/parallel-dialer/abandoned-calls',
   },
   PREDICTIVE_SCORING: {
     CALCULATE: (listId: string) => `/predictive-scoring/calculate/${listId}`,
-    REORDER: (campaignId: string, listId: string) => `/predictive-scoring/reorder/${campaignId}/${listId}`,
+    REORDER: (campaignId: string, listId: string) =>
+      `/predictive-scoring/reorder/${campaignId}/${listId}`,
     LEAD_SCORE: (leadId: string) => `/predictive-scoring/lead/${leadId}`,
     PATTERNS: '/predictive-scoring/patterns',
     PHONE_TYPE: '/predictive-scoring/phone-type',
@@ -419,7 +448,8 @@ export const ENDPOINTS = {
     CARDS: '/live-coach/cards',
     CARD: (cardId: string) => `/live-coach/cards/${cardId}`,
     TRANSCRIPT: (callId: string) => `/live-coach/transcript/${callId}`,
-    TRIGGER_FEEDBACK: (triggerId: string) => `/live-coach/triggers/${triggerId}/feedback`,
+    TRIGGER_FEEDBACK: (triggerId: string) =>
+      `/live-coach/triggers/${triggerId}/feedback`,
     TRIGGER_STATS: '/live-coach/trigger-stats',
   },
   LOCAL_PRESENCE: {
@@ -438,7 +468,8 @@ export const ENDPOINTS = {
     VENDOR_TEST: (vendorId: string) => `/enrichment/vendors/${vendorId}/test`,
     LEAD_ENRICH: (leadId: string) => `/enrichment/leads/${leadId}/enrich`,
     BULK_ENRICH: '/enrichment/bulk-enrich',
-    PROSPEO_LIST_MOBILE: (listId: string) => `/enrichment/lists/${listId}/prospeo-mobile`,
+    PROSPEO_LIST_MOBILE: (listId: string) =>
+      `/enrichment/lists/${listId}/prospeo-mobile`,
     LEAD_CONTACTS: (leadId: string) => `/enrichment/leads/${leadId}/contacts`,
     HISTORY: '/enrichment/history',
   },
@@ -462,7 +493,8 @@ export const ENDPOINTS = {
     CREDITS: '/research/credits',
   },
   REP_PROFILES: {
-    STATS: (orgId: string, userId: string) => `/rep-profiles/${orgId}/${userId}/stats`,
+    STATS: (orgId: string, userId: string) =>
+      `/rep-profiles/${orgId}/${userId}/stats`,
   },
   NOTIFICATION_SETTINGS: {
     GET: '/notification-settings',
@@ -481,7 +513,8 @@ export const ENDPOINTS = {
     TEST_NOTIFICATION: '/slack/test-notification',
     // App Directory flow linking
     LINK_VALIDATE: (token: string) => `/slack/link/validate?token=${token}`,
-    LINK_ORGANIZATIONS: (token: string) => `/slack/link/organizations?token=${token}`,
+    LINK_ORGANIZATIONS: (token: string) =>
+      `/slack/link/organizations?token=${token}`,
     LINK_COMPLETE: '/slack/link/complete',
   },
   AGENTS: {
@@ -504,10 +537,14 @@ export const ENDPOINTS = {
     SMS_ACTIVATE: (agentId: string) => `/agents/${agentId}/sms/activate`,
     // Workflows
     WORKFLOWS: (agentId: string) => `/agents/${agentId}/workflows`,
-    WORKFLOW: (agentId: string, workflowId: string) => `/agents/${agentId}/workflows/${workflowId}`,
-    WORKFLOW_ACTIVATE: (agentId: string, workflowId: string) => `/agents/${agentId}/workflows/${workflowId}/activate`,
-    WORKFLOW_DEACTIVATE: (agentId: string, workflowId: string) => `/agents/${agentId}/workflows/${workflowId}/deactivate`,
-    WORKFLOW_EXECUTE: (agentId: string, workflowId: string) => `/agents/${agentId}/workflows/${workflowId}/execute`,
+    WORKFLOW: (agentId: string, workflowId: string) =>
+      `/agents/${agentId}/workflows/${workflowId}`,
+    WORKFLOW_ACTIVATE: (agentId: string, workflowId: string) =>
+      `/agents/${agentId}/workflows/${workflowId}/activate`,
+    WORKFLOW_DEACTIVATE: (agentId: string, workflowId: string) =>
+      `/agents/${agentId}/workflows/${workflowId}/deactivate`,
+    WORKFLOW_EXECUTE: (agentId: string, workflowId: string) =>
+      `/agents/${agentId}/workflows/${workflowId}/execute`,
     // Qualifications
     QUALIFICATIONS: '/agents/qualifications',
     QUALIFICATION: (id: string) => `/agents/qualifications/${id}`,
@@ -517,18 +554,25 @@ export const ENDPOINTS = {
     // Orchestration Jobs
     JOBS: (agentId: string) => `/agents/${agentId}/jobs`,
     JOB: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}`,
-    JOB_START: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}/start`,
-    JOB_PAUSE: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}/pause`,
-    JOB_RESUME: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}/resume`,
-    JOB_CANCEL: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}/cancel`,
-    JOB_PROGRESS: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}/progress`,
-    JOB_STEPS: (agentId: string, jobId: string) => `/agents/${agentId}/jobs/${jobId}/steps`,
+    JOB_START: (agentId: string, jobId: string) =>
+      `/agents/${agentId}/jobs/${jobId}/start`,
+    JOB_PAUSE: (agentId: string, jobId: string) =>
+      `/agents/${agentId}/jobs/${jobId}/pause`,
+    JOB_RESUME: (agentId: string, jobId: string) =>
+      `/agents/${agentId}/jobs/${jobId}/resume`,
+    JOB_CANCEL: (agentId: string, jobId: string) =>
+      `/agents/${agentId}/jobs/${jobId}/cancel`,
+    JOB_PROGRESS: (agentId: string, jobId: string) =>
+      `/agents/${agentId}/jobs/${jobId}/progress`,
+    JOB_STEPS: (agentId: string, jobId: string) =>
+      `/agents/${agentId}/jobs/${jobId}/steps`,
     // Conversations
     CONVERSATIONS: (agentId: string) => `/agents/${agentId}/conversations`,
     // SMS Autonomous
     SMS_AUTONOMOUS: (agentId: string) => `/agents/${agentId}/sms/autonomous`,
     // Gmail OAuth
-    GMAIL_AUTH_URL: (agentId: string) => `/agents/${agentId}/email/gmail/auth-url`,
+    GMAIL_AUTH_URL: (agentId: string) =>
+      `/agents/${agentId}/email/gmail/auth-url`,
     GMAIL_STATUS: (agentId: string) => `/agents/${agentId}/email/gmail/status`,
     GMAIL_DISCONNECT: (agentId: string) => `/agents/${agentId}/email/gmail`,
     GMAIL_TEST: (agentId: string) => `/agents/${agentId}/email/gmail/test`,
@@ -553,12 +597,15 @@ export const ENDPOINTS = {
     DEFINITION: (id: string) => `/orchestration/definitions/${id}`,
     // Invocation
     INVOKE: '/orchestration/invoke',
-    INVOKE_AGENT: (definitionId: string) => `/orchestration/invoke/${definitionId}`,
-    INVOKE_BY_TYPE: (agentType: string) => `/orchestration/invoke/type/${agentType}`,
+    INVOKE_AGENT: (definitionId: string) =>
+      `/orchestration/invoke/${definitionId}`,
+    INVOKE_BY_TYPE: (agentType: string) =>
+      `/orchestration/invoke/type/${agentType}`,
     // Executions
     EXECUTIONS: '/orchestration/executions',
     EXECUTION: (id: string) => `/orchestration/executions/${id}`,
-    EXECUTION_CHILDREN: (id: string) => `/orchestration/executions/${id}/children`,
+    EXECUTION_CHILDREN: (id: string) =>
+      `/orchestration/executions/${id}/children`,
     // Approvals
     APPROVALS: '/orchestration/approvals',
     APPROVAL: (id: string) => `/orchestration/approvals/${id}`,
@@ -568,67 +615,90 @@ export const ENDPOINTS = {
     TOOLS: '/orchestration/tools',
     TOOLS_BY_CATEGORY: (category: string) => `/orchestration/tools/${category}`,
   },
-};
+}
 
 export const QUERY_KEYS = {
   organizations: () => ['organizations'] as const,
   userAccount: () => ['user', 'account'] as const,
   onboardingStatus: () => ['user', 'onboarding-status'] as const,
-  organizationMembers: (orgId?: string) => ['organization', 'members', orgId] as const,
-  organizationInvitations: (orgId?: string) => ['organization', 'invitations', orgId] as const,
-  organizationCreditBalance: (orgId?: string) => ['organization', 'credit-balance', orgId] as const,
-  organizationSubscription: (orgId?: string) => ['organization', 'subscription', orgId] as const,
+  organizationMembers: (orgId?: string) =>
+    ['organization', 'members', orgId] as const,
+  organizationInvitations: (orgId?: string) =>
+    ['organization', 'invitations', orgId] as const,
+  organizationCreditBalance: (orgId?: string) =>
+    ['organization', 'credit-balance', orgId] as const,
+  organizationSubscription: (orgId?: string) =>
+    ['organization', 'subscription', orgId] as const,
   adminStats: () => ['admin', 'stats'] as const,
   adminUsers: () => ['admin', 'users'] as const,
   adminOrganizations: () => ['admin', 'organizations'] as const,
-  adminAddCredits: (organizationId?: string) => ['admin', 'organizations', organizationId, 'credits'] as const,
-  adminErrorLogs: (filters?: Record<string, unknown>) => ['admin', 'error-logs', filters] as const,
+  adminAddCredits: (organizationId?: string) =>
+    ['admin', 'organizations', organizationId, 'credits'] as const,
+  adminErrorLogs: (filters?: Record<string, unknown>) =>
+    ['admin', 'error-logs', filters] as const,
   adminErrorLog: (id?: string) => ['admin', 'error-log', id] as const,
-  adminErrorLogStats: (params?: Record<string, unknown>) => ['admin', 'error-log-stats', params] as const,
-  adminLogsCalls: (filters?: Record<string, unknown>) => ['admin', 'logs', 'calls', filters] as const,
+  adminErrorLogStats: (params?: Record<string, unknown>) =>
+    ['admin', 'error-log-stats', params] as const,
+  adminLogsCalls: (filters?: Record<string, unknown>) =>
+    ['admin', 'logs', 'calls', filters] as const,
   adminLogsCallDetail: (id?: string) => ['admin', 'logs', 'call', id] as const,
-  adminLogsRecordings: (filters?: Record<string, unknown>) => ['admin', 'logs', 'recordings', filters] as const,
-  adminLogsTranscriptions: (filters?: Record<string, unknown>) => ['admin', 'logs', 'transcriptions', filters] as const,
-  adminLogsTranscriptionDetail: (id?: string) => ['admin', 'logs', 'transcription', id] as const,
-  adminLogsActivity: (filters?: Record<string, unknown>) => ['admin', 'logs', 'activity', filters] as const,
+  adminLogsRecordings: (filters?: Record<string, unknown>) =>
+    ['admin', 'logs', 'recordings', filters] as const,
+  adminLogsTranscriptions: (filters?: Record<string, unknown>) =>
+    ['admin', 'logs', 'transcriptions', filters] as const,
+  adminLogsTranscriptionDetail: (id?: string) =>
+    ['admin', 'logs', 'transcription', id] as const,
+  adminLogsActivity: (filters?: Record<string, unknown>) =>
+    ['admin', 'logs', 'activity', filters] as const,
   notifications: () => ['notifications'] as const,
   notificationsUnreadCount: () => ['notifications', 'unread-count'] as const,
   // CRM
   pipelineStages: () => ['pipeline-stages'] as const,
-  tasks: (params?: { leadId?: string; userId?: string; completed?: string }) => ['tasks', params] as const,
+  tasks: (params?: { leadId?: string; userId?: string; completed?: string }) =>
+    ['tasks', params] as const,
   task: (id: string) => ['tasks', id] as const,
   notes: (leadId: string) => ['notes', leadId] as const,
   // Campaigns
   campaigns: (orgId?: string) => ['campaigns', orgId] as const,
   campaign: (id?: string) => ['campaign', id] as const,
-  campaignLeads: (campaignId?: string) => ['campaign', campaignId, 'leads'] as const,
+  campaignLeads: (campaignId?: string) =>
+    ['campaign', campaignId, 'leads'] as const,
   // Leads (shared)
   leads: (orgId?: string) => ['leads', orgId] as const,
   lead: (id?: string) => ['lead', id] as const,
+  leadByPhone: (phone?: string) => ['lead', 'by-phone', phone] as const,
   leadActivity: (leadId: string) => ['lead', leadId, 'activity'] as const,
-  leadCompanySummary: (leadId: string) => ['lead', leadId, 'company-summary'] as const,
+  leadCompanySummary: (leadId: string) =>
+    ['lead', leadId, 'company-summary'] as const,
   leadTimezone: (leadId: string) => ['lead', leadId, 'timezone'] as const,
   connectedCrms: (orgId?: string) => ['crm', 'connected', orgId] as const,
-  crmPresence: (orgId?: string, leadId?: string) => ['crm', 'presence', orgId, leadId] as const,
+  crmPresence: (orgId?: string, leadId?: string) =>
+    ['crm', 'presence', orgId, leadId] as const,
   // Dialer
   dialerToken: () => ['dialer', 'token'] as const,
   dialerConfig: (orgId?: string) => ['dialer', 'config', orgId] as const,
-  dialerPhoneNumbers: (orgId?: string) => ['dialer', 'phone-numbers', orgId] as const,
-  phoneNumberAssignments: (orgId?: string) => ['phone-number-assignments', orgId] as const,
-  dialablePhoneNumbers: (orgId?: string, clientId?: string) => ['dialable-phone-numbers', orgId, clientId] as const,
+  dialerPhoneNumbers: (orgId?: string) =>
+    ['dialer', 'phone-numbers', orgId] as const,
+  phoneNumberAssignments: (orgId?: string) =>
+    ['phone-number-assignments', orgId] as const,
+  dialablePhoneNumbers: (orgId?: string, clientId?: string) =>
+    ['dialable-phone-numbers', orgId, clientId] as const,
   calls: (filters?: Record<string, unknown>) => ['calls', filters] as const,
   call: (id: string) => ['calls', id] as const,
   voicemailDrops: () => ['voicemail-drops'] as const,
   voicemailGreetings: () => ['voicemail-greetings'] as const,
-  voicemailInbox: (filters?: Record<string, unknown>) => ['voicemail-inbox', filters] as const,
+  voicemailInbox: (filters?: Record<string, unknown>) =>
+    ['voicemail-inbox', filters] as const,
   voicemailInboxUnread: () => ['voicemail-inbox', 'unread'] as const,
   dispositions: () => ['dispositions'] as const,
   // Lists
   listFolders: (orgId?: string) => ['list-folders', orgId] as const,
-  lists: (orgId?: string, folderId?: string) => ['lists', orgId, folderId] as const,
+  lists: (orgId?: string, folderId?: string) =>
+    ['lists', orgId, folderId] as const,
   list: (id?: string) => ['list', id] as const,
   listLeads: (listId?: string) => ['list', listId, 'leads'] as const,
-  campaignLists: (campaignId?: string) => ['campaign', campaignId, 'lists'] as const,
+  campaignLists: (campaignId?: string) =>
+    ['campaign', campaignId, 'lists'] as const,
   listFavorites: (orgId?: string) => ['list-favorites', orgId] as const,
   listFavoriteIds: (orgId?: string) => ['list-favorite-ids', orgId] as const,
   listRecents: (orgId?: string) => ['list-recents', orgId] as const,
@@ -636,9 +706,12 @@ export const QUERY_KEYS = {
   clients: (orgId?: string) => ['clients', orgId] as const,
   client: (id?: string) => ['client', id] as const,
   // Client-User Assignments
-  myAssignedClients: (orgId?: string) => ['my-assigned-clients', orgId] as const,
-  clientUserAssignments: (orgId?: string, clientId?: string) => ['client-user-assignments', orgId, clientId] as const,
-  userClientAssignments: (orgId?: string, userId?: string) => ['user-client-assignments', orgId, userId] as const,
+  myAssignedClients: (orgId?: string) =>
+    ['my-assigned-clients', orgId] as const,
+  clientUserAssignments: (orgId?: string, clientId?: string) =>
+    ['client-user-assignments', orgId, clientId] as const,
+  userClientAssignments: (orgId?: string, userId?: string) =>
+    ['user-client-assignments', orgId, userId] as const,
   // API Keys
   apiKeys: (orgId?: string) => ['api-keys', orgId] as const,
   apiKey: (id?: string) => ['api-key', id] as const,
@@ -647,109 +720,203 @@ export const QUERY_KEYS = {
   integrations: (orgId?: string) => ['integrations', orgId] as const,
   integrationStatus: (provider?: string) => ['integration', provider] as const,
   googleSheets: (orgId?: string) => ['google-sheets', orgId] as const,
-  googleSheetColumns: (sheetId?: string) => ['google-sheet-columns', sheetId] as const,
-  googleSheetsWriteAccess: (orgId?: string) => ['google-sheets-write-access', orgId] as const,
-  hubspotContactsSummary: (orgId?: string) => ['hubspot-contacts-summary', orgId] as const,
-  enrichEngineStatus: (orgId?: string) => ['enrichengine-status', orgId] as const,
+  googleSheetColumns: (sheetId?: string) =>
+    ['google-sheet-columns', sheetId] as const,
+  googleSheetsWriteAccess: (orgId?: string) =>
+    ['google-sheets-write-access', orgId] as const,
+  hubspotContactsSummary: (orgId?: string) =>
+    ['hubspot-contacts-summary', orgId] as const,
+  enrichEngineStatus: (orgId?: string) =>
+    ['enrichengine-status', orgId] as const,
   enrichEngineLists: (orgId?: string) => ['enrichengine-lists', orgId] as const,
-  enrichEngineListLeads: (listId?: string) => ['enrichengine-list-leads', listId] as const,
+  enrichEngineListLeads: (listId?: string) =>
+    ['enrichengine-list-leads', listId] as const,
   // Scripts
-  scripts: (orgId?: string, campaignId?: string) => ['scripts', orgId, campaignId] as const,
+  scripts: (orgId?: string, campaignId?: string) =>
+    ['scripts', orgId, campaignId] as const,
   script: (id?: string) => ['script', id] as const,
   // Power Dialer
-  powerDialerProgress: (campaignId?: string, listId?: string, timezonePriority?: string) => ['power-dialer', 'progress', campaignId, listId, timezonePriority] as const,
-  powerDialerNextLead: (campaignId?: string, listId?: string, timezonePriority?: string) => ['power-dialer', 'next-lead', campaignId, listId, timezonePriority] as const,
+  powerDialerProgress: (
+    campaignId?: string,
+    listId?: string,
+    timezonePriority?: string,
+  ) =>
+    ['power-dialer', 'progress', campaignId, listId, timezonePriority] as const,
+  powerDialerNextLead: (
+    campaignId?: string,
+    listId?: string,
+    timezonePriority?: string,
+  ) =>
+    [
+      'power-dialer',
+      'next-lead',
+      campaignId,
+      listId,
+      timezonePriority,
+    ] as const,
   // Dialer Sessions
   activeSessions: (orgId?: string) => ['dialer', 'sessions', orgId] as const,
   mySession: () => ['dialer', 'session', 'me'] as const,
   // Lead Calls
   leadCalls: (leadId?: string) => ['lead', leadId, 'calls'] as const,
   // Analytics
-  analyticsCalls: (orgId?: string, startDate?: string, endDate?: string, filters?: Record<string, unknown>) =>
-    ['analytics', 'calls', orgId, startDate, endDate, filters] as const,
-  analyticsLeaderboard: (orgId?: string, startDate?: string, endDate?: string, filters?: Record<string, unknown>) =>
+  analyticsCalls: (
+    orgId?: string,
+    startDate?: string,
+    endDate?: string,
+    filters?: Record<string, unknown>,
+  ) => ['analytics', 'calls', orgId, startDate, endDate, filters] as const,
+  analyticsLeaderboard: (
+    orgId?: string,
+    startDate?: string,
+    endDate?: string,
+    filters?: Record<string, unknown>,
+  ) =>
     ['analytics', 'leaderboard', orgId, startDate, endDate, filters] as const,
   // Coaching (Sales Coach)
-  coachingStats: (orgId?: string, userId?: string) => ['coaching', 'stats', orgId, userId] as const,
-  coachingRecent: (orgId?: string, filters?: Record<string, unknown>) => ['coaching', 'recent', orgId, filters] as const,
-  coachingHistory: (userId?: string, filters?: Record<string, unknown>) => ['coaching', 'history', userId, filters] as const,
-  coachingEligibility: (callId?: string) => ['coaching', 'eligibility', callId] as const,
+  coachingStats: (orgId?: string, userId?: string) =>
+    ['coaching', 'stats', orgId, userId] as const,
+  coachingRecent: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['coaching', 'recent', orgId, filters] as const,
+  coachingHistory: (userId?: string, filters?: Record<string, unknown>) =>
+    ['coaching', 'history', userId, filters] as const,
+  coachingEligibility: (callId?: string) =>
+    ['coaching', 'eligibility', callId] as const,
   callCoaching: (callId?: string) => ['coaching', 'call', callId] as const,
-  uncoachedCalls: (orgId?: string, filters?: Record<string, unknown>) => ['coaching', 'uncoached', orgId, filters] as const,
-  leadCoaching: (leadId?: string, filters?: Record<string, unknown>) => ['coaching', 'lead', leadId, filters] as const,
+  uncoachedCalls: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['coaching', 'uncoached', orgId, filters] as const,
+  leadCoaching: (leadId?: string, filters?: Record<string, unknown>) =>
+    ['coaching', 'lead', leadId, filters] as const,
   // Call Intelligence
-  intelligenceEligibility: (callId?: string) => ['intelligence', 'eligibility', callId] as const,
-  callIntelligence: (callId?: string) => ['intelligence', 'call', callId] as const,
-  leadIntelligence: (leadId?: string, filters?: Record<string, unknown>) => ['intelligence', 'lead', leadId, filters] as const,
+  intelligenceEligibility: (callId?: string) =>
+    ['intelligence', 'eligibility', callId] as const,
+  callIntelligence: (callId?: string) =>
+    ['intelligence', 'call', callId] as const,
+  leadIntelligence: (leadId?: string, filters?: Record<string, unknown>) =>
+    ['intelligence', 'lead', leadId, filters] as const,
   // OmniDial Enhancements
-  parallelDialerSession: (sessionId?: string) => ['parallel-dialer', 'session', sessionId] as const,
-  abandonedCalls: (orgId?: string, filters?: Record<string, unknown>) => ['parallel-dialer', 'abandoned-calls', orgId, filters] as const,
-  predictiveScorePatterns: (orgId?: string) => ['predictive-scoring', 'patterns', orgId] as const,
-  leadPredictiveScore: (leadId?: string) => ['predictive-scoring', 'lead', leadId] as const,
-  salesFloorStatus: (orgId?: string) => ['sales-floor', 'status', orgId] as const,
-  salesFloorLeaderboard: (orgId?: string, filters?: Record<string, unknown>) => ['sales-floor', 'leaderboard', orgId, filters] as const,
+  parallelDialerSession: (sessionId?: string) =>
+    ['parallel-dialer', 'session', sessionId] as const,
+  abandonedCalls: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['parallel-dialer', 'abandoned-calls', orgId, filters] as const,
+  predictiveScorePatterns: (orgId?: string) =>
+    ['predictive-scoring', 'patterns', orgId] as const,
+  leadPredictiveScore: (leadId?: string) =>
+    ['predictive-scoring', 'lead', leadId] as const,
+  salesFloorStatus: (orgId?: string) =>
+    ['sales-floor', 'status', orgId] as const,
+  salesFloorLeaderboard: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['sales-floor', 'leaderboard', orgId, filters] as const,
   blitzes: (orgId?: string) => ['sales-floor', 'blitzes', orgId] as const,
   blitz: (blitzId?: string) => ['sales-floor', 'blitz', blitzId] as const,
-  coachCards: (orgId?: string, filters?: Record<string, unknown>) => ['live-coach', 'cards', orgId, filters] as const,
+  coachCards: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['live-coach', 'cards', orgId, filters] as const,
   coachCard: (cardId?: string) => ['live-coach', 'card', cardId] as const,
-  liveTranscript: (callId?: string) => ['live-coach', 'transcript', callId] as const,
-  triggerStats: (orgId?: string, filters?: Record<string, unknown>) => ['live-coach', 'trigger-stats', orgId, filters] as const,
-  phonePool: (orgId?: string, filters?: Record<string, unknown>) => ['local-presence', 'phone-pool', orgId, filters] as const,
-  localPresencePreview: (leadPhone?: string) => ['local-presence', 'preview', leadPhone] as const,
-  areaCodeCoverage: (orgId?: string) => ['local-presence', 'coverage', orgId] as const,
-  missingAreaCodes: (orgId?: string, listId?: string) => ['local-presence', 'missing-area-codes', orgId, listId] as const,
-  enrichmentVendors: (orgId?: string) => ['enrichment', 'vendors', orgId] as const,
-  leadContactInfo: (leadId?: string) => ['enrichment', 'lead-contacts', leadId] as const,
-  enrichmentHistory: (orgId?: string, filters?: Record<string, unknown>) => ['enrichment', 'history', orgId, filters] as const,
+  liveTranscript: (callId?: string) =>
+    ['live-coach', 'transcript', callId] as const,
+  triggerStats: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['live-coach', 'trigger-stats', orgId, filters] as const,
+  phonePool: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['local-presence', 'phone-pool', orgId, filters] as const,
+  localPresencePreview: (leadPhone?: string) =>
+    ['local-presence', 'preview', leadPhone] as const,
+  areaCodeCoverage: (orgId?: string) =>
+    ['local-presence', 'coverage', orgId] as const,
+  missingAreaCodes: (orgId?: string, listId?: string) =>
+    ['local-presence', 'missing-area-codes', orgId, listId] as const,
+  enrichmentVendors: (orgId?: string) =>
+    ['enrichment', 'vendors', orgId] as const,
+  leadContactInfo: (leadId?: string) =>
+    ['enrichment', 'lead-contacts', leadId] as const,
+  enrichmentHistory: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['enrichment', 'history', orgId, filters] as const,
   // Research
-  researchTasks: (orgId?: string, filters?: Record<string, unknown>) => ['research', 'tasks', orgId, filters] as const,
+  researchTasks: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['research', 'tasks', orgId, filters] as const,
   researchTask: (taskId?: string) => ['research', 'task', taskId] as const,
-  researchApprovals: (orgId?: string, filters?: Record<string, unknown>) => ['research', 'approvals', orgId, filters] as const,
-  researchTemplates: (orgId?: string) => ['research', 'templates', orgId] as const,
-  researchTemplate: (templateId?: string) => ['research', 'template', templateId] as const,
+  researchApprovals: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['research', 'approvals', orgId, filters] as const,
+  researchTemplates: (orgId?: string) =>
+    ['research', 'templates', orgId] as const,
+  researchTemplate: (templateId?: string) =>
+    ['research', 'template', templateId] as const,
   researchFields: (orgId?: string) => ['research', 'fields', orgId] as const,
   researchCredits: (orgId?: string) => ['research', 'credits', orgId] as const,
   // Rep Profiles
-  repProfileStats: (orgId?: string, userId?: string, period?: string, filters?: Record<string, unknown>) =>
-    ['rep-profile', 'stats', orgId, userId, period, filters] as const,
+  repProfileStats: (
+    orgId?: string,
+    userId?: string,
+    period?: string,
+    filters?: Record<string, unknown>,
+  ) => ['rep-profile', 'stats', orgId, userId, period, filters] as const,
   // Notification Settings
-  notificationSettings: (orgId?: string) => ['notification-settings', orgId] as const,
+  notificationSettings: (orgId?: string) =>
+    ['notification-settings', orgId] as const,
   // Slack
   slackStatus: (orgId?: string) => ['slack', 'status', orgId] as const,
   slackChannels: (orgId?: string) => ['slack', 'channels', orgId] as const,
-  slackLinkValidate: (token?: string) => ['slack', 'link', 'validate', token] as const,
-  slackLinkOrganizations: (token?: string) => ['slack', 'link', 'organizations', token] as const,
+  slackLinkValidate: (token?: string) =>
+    ['slack', 'link', 'validate', token] as const,
+  slackLinkOrganizations: (token?: string) =>
+    ['slack', 'link', 'organizations', token] as const,
   // Agents
   agents: (orgId?: string) => ['agents', orgId] as const,
   agent: (id?: string) => ['agent', id] as const,
   agentStats: (id?: string) => ['agent', id, 'stats'] as const,
-  agentWorkflows: (agentId?: string) => ['agent', agentId, 'workflows'] as const,
-  agentWorkflow: (agentId?: string, workflowId?: string) => ['agent', agentId, 'workflow', workflowId] as const,
-  qualifications: (orgId?: string, filters?: Record<string, unknown>) => ['qualifications', orgId, filters] as const,
+  agentWorkflows: (agentId?: string) =>
+    ['agent', agentId, 'workflows'] as const,
+  agentWorkflow: (agentId?: string, workflowId?: string) =>
+    ['agent', agentId, 'workflow', workflowId] as const,
+  qualifications: (orgId?: string, filters?: Record<string, unknown>) =>
+    ['qualifications', orgId, filters] as const,
   qualification: (id?: string) => ['qualification', id] as const,
-  qualificationsPending: (orgId?: string) => ['qualifications', 'pending', orgId] as const,
-  qualificationsStats: (orgId?: string) => ['qualifications', 'stats', orgId] as const,
-  agentJobs: (agentId?: string, filters?: Record<string, unknown>) => ['agent', agentId, 'jobs', filters] as const,
-  agentJob: (agentId?: string, jobId?: string) => ['agent', agentId, 'job', jobId] as const,
-  agentJobProgress: (agentId?: string, jobId?: string) => ['agent', agentId, 'job', jobId, 'progress'] as const,
-  agentJobSteps: (agentId?: string, jobId?: string) => ['agent', agentId, 'job', jobId, 'steps'] as const,
-  agentConversations: (agentId?: string, leadId?: string) => ['agent', agentId, 'conversations', leadId] as const,
-  agentGmailStatus: (agentId?: string) => ['agent', agentId, 'gmail', 'status'] as const,
+  qualificationsPending: (orgId?: string) =>
+    ['qualifications', 'pending', orgId] as const,
+  qualificationsStats: (orgId?: string) =>
+    ['qualifications', 'stats', orgId] as const,
+  agentJobs: (agentId?: string, filters?: Record<string, unknown>) =>
+    ['agent', agentId, 'jobs', filters] as const,
+  agentJob: (agentId?: string, jobId?: string) =>
+    ['agent', agentId, 'job', jobId] as const,
+  agentJobProgress: (agentId?: string, jobId?: string) =>
+    ['agent', agentId, 'job', jobId, 'progress'] as const,
+  agentJobSteps: (agentId?: string, jobId?: string) =>
+    ['agent', agentId, 'job', jobId, 'steps'] as const,
+  agentConversations: (agentId?: string, leadId?: string) =>
+    ['agent', agentId, 'conversations', leadId] as const,
+  agentGmailStatus: (agentId?: string) =>
+    ['agent', agentId, 'gmail', 'status'] as const,
   // Billing
   billingUsage: (orgId?: string) => ['billing', 'usage', orgId] as const,
-  billingUsageHistory: (orgId?: string) => ['billing', 'usage-history', orgId] as const,
+  billingUsageHistory: (orgId?: string) =>
+    ['billing', 'usage-history', orgId] as const,
   // Phone Setup
-  phoneProvisioningStatus: (orgId?: string) => ['phone-setup', 'status', orgId] as const,
-  availableNumbers: (areaCode?: string) => ['phone-setup', 'search', areaCode] as const,
-  callerIdVerificationStatus: (orgId?: string) => ['phone-setup', 'verify', orgId] as const,
+  phoneProvisioningStatus: (orgId?: string) =>
+    ['phone-setup', 'status', orgId] as const,
+  availableNumbers: (areaCode?: string) =>
+    ['phone-setup', 'search', areaCode] as const,
+  callerIdVerificationStatus: (orgId?: string) =>
+    ['phone-setup', 'verify', orgId] as const,
   adminPhoneProvisioning: () => ['admin', 'phone-provisioning'] as const,
   // Orchestration
-  orchestrationDefinitions: (orgId?: string, filters?: Record<string, unknown>) => ['orchestration', 'definitions', orgId, filters] as const,
-  orchestrationDefinition: (id?: string) => ['orchestration', 'definition', id] as const,
-  orchestrationExecutions: (orgId?: string, filters?: Record<string, unknown>) => ['orchestration', 'executions', orgId, filters] as const,
-  orchestrationExecution: (id?: string) => ['orchestration', 'execution', id] as const,
-  orchestrationExecutionChildren: (id?: string) => ['orchestration', 'execution', id, 'children'] as const,
-  orchestrationApprovals: (orgId?: string) => ['orchestration', 'approvals', orgId] as const,
-  orchestrationApproval: (id?: string) => ['orchestration', 'approval', id] as const,
-  orchestrationTools: (orgId?: string, category?: string) => ['orchestration', 'tools', orgId, category] as const,
-};
+  orchestrationDefinitions: (
+    orgId?: string,
+    filters?: Record<string, unknown>,
+  ) => ['orchestration', 'definitions', orgId, filters] as const,
+  orchestrationDefinition: (id?: string) =>
+    ['orchestration', 'definition', id] as const,
+  orchestrationExecutions: (
+    orgId?: string,
+    filters?: Record<string, unknown>,
+  ) => ['orchestration', 'executions', orgId, filters] as const,
+  orchestrationExecution: (id?: string) =>
+    ['orchestration', 'execution', id] as const,
+  orchestrationExecutionChildren: (id?: string) =>
+    ['orchestration', 'execution', id, 'children'] as const,
+  orchestrationApprovals: (orgId?: string) =>
+    ['orchestration', 'approvals', orgId] as const,
+  orchestrationApproval: (id?: string) =>
+    ['orchestration', 'approval', id] as const,
+  orchestrationTools: (orgId?: string, category?: string) =>
+    ['orchestration', 'tools', orgId, category] as const,
+}
