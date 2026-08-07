@@ -19,6 +19,7 @@ import {
 } from "@/hooks/api/usePowerDialer";
 import { useSoftRemoveLeadFromList } from "@/hooks/api/useLists";
 import { useGenerateCompanySummary, useResolveTimezone } from "@/hooks/api/useLeads";
+import { getTimezoneBucket } from "@shared/types/src/constants/timezones";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,19 +46,6 @@ const TIMEZONE_PRIORITY_OPTIONS: Array<{
   { value: "pacific", label: "PST", order: "PST -> EST -> CST -> MST" },
 ];
 
-const TIMEZONE_BUCKETS: Record<TimezonePriority, string[]> = {
-  eastern: [
-    "America/New_York",
-    "America/Detroit",
-    "America/Toronto",
-    "America/Indiana/Indianapolis",
-    "America/Kentucky/Louisville",
-  ],
-  central: ["America/Chicago", "America/Winnipeg", "America/Mexico_City"],
-  mountain: ["America/Denver", "America/Phoenix", "America/Boise", "America/Edmonton"],
-  pacific: ["America/Los_Angeles", "America/Vancouver"],
-};
-
 const TIMEZONE_SHORT_LABELS: Record<TimezonePriority, string> = {
   eastern: "EST",
   central: "CST",
@@ -69,15 +57,6 @@ const getLeadDisplayName = (lead: Lead) =>
   [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
   lead.company ||
   "Unnamed lead";
-
-const getTimezoneBucket = (timezone?: string | null): TimezonePriority | null => {
-  if (!timezone) return null;
-
-  const bucket = (Object.entries(TIMEZONE_BUCKETS) as Array<[TimezonePriority, string[]]>)
-    .find(([, zones]) => zones.includes(timezone));
-
-  return bucket?.[0] ?? null;
-};
 
 interface PowerDialerControlsProps {
   campaignId?: string;

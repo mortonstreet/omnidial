@@ -2,41 +2,17 @@ import { db } from '@/lib/db'
 import { withId, withPagination } from './utils'
 import { DBPagination } from '@shared/db/src/types'
 import type { PowerDialerTimezonePriority } from '@shared/types/src'
+import {
+  TIMEZONE_GROUPS,
+  TIMEZONE_PRIORITY_ORDER,
+} from '@shared/types/src/constants/timezones'
 import { sql } from 'kysely'
-
-const TIMEZONE_GROUPS: Record<PowerDialerTimezonePriority, string[]> = {
-  eastern: [
-    'America/New_York',
-    'America/Detroit',
-    'America/Toronto',
-    'America/Indiana/Indianapolis',
-    'America/Kentucky/Louisville',
-  ],
-  central: ['America/Chicago', 'America/Winnipeg', 'America/Mexico_City'],
-  mountain: [
-    'America/Denver',
-    'America/Phoenix',
-    'America/Boise',
-    'America/Edmonton',
-  ],
-  pacific: ['America/Los_Angeles', 'America/Vancouver'],
-}
-
-const TIMEZONE_ORDER: Record<
-  PowerDialerTimezonePriority,
-  PowerDialerTimezonePriority[]
-> = {
-  eastern: ['eastern', 'central', 'mountain', 'pacific'],
-  central: ['central', 'mountain', 'pacific', 'eastern'],
-  mountain: ['mountain', 'pacific', 'eastern', 'central'],
-  pacific: ['pacific', 'eastern', 'central', 'mountain'],
-}
 
 const timezoneInSql = (timezones: string[]) =>
   sql<boolean>`lead.timezone in (${sql.join(timezones)})`
 
 const timezonePriorityRankSql = (priority: PowerDialerTimezonePriority) => {
-  const order = TIMEZONE_ORDER[priority]
+  const order = TIMEZONE_PRIORITY_ORDER[priority]
 
   return sql<number>`case
     when ${timezoneInSql(TIMEZONE_GROUPS[order[0]])} then 0
