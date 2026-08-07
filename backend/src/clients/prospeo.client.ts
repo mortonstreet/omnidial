@@ -71,6 +71,16 @@ const parseProspeoError = (response: Response, errorText: string): string => {
     if (errorJson.message === 'INVALID_API_KEY') {
       return 'Invalid Prospeo API key. Please check your API key in Settings > Data Vendors and ensure it is correct.'
     }
+    // Running out of plan credits is the one limit we *do* want surfaced
+    // plainly, so it is never confused with a key, quota, or network problem.
+    const creditCode = errorJson.message ?? errorJson.error_code
+    if (
+      typeof creditCode === 'string' &&
+      /CREDIT|QUOTA/i.test(creditCode) &&
+      !/INVALID/i.test(creditCode)
+    ) {
+      return 'Prospeo credits exhausted. Your plan quota is used up — top up or wait for the next renewal to continue enriching.'
+    }
     if (typeof errorJson.message === 'string') {
       return `Prospeo API error: ${errorJson.message}`
     }

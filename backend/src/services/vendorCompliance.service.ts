@@ -48,6 +48,14 @@ const VENDOR_POLICY_REGISTRY: Record<DataVendorProvider, VendorPolicy> = {
     ...DEFAULT_VENDOR_POLICY,
     rpsLimit: 3,
     burstLimit: 6,
+    // No internal credit ceiling. Prospeo's own plan quota is the real limit,
+    // and the org can set an explicit cap via data_vendor_connection.creditsLimit.
+    // The shared 2,000/day default silently capped bulk runs at 200 leads (a
+    // verified-mobile enrich costs 10 credits) and reported it as a *vendor*
+    // failure, which sent debugging at Prospeo while Prospeo was fine.
+    // Rate limiting and the circuit breaker still apply.
+    dailyOrgCreditCeiling: null,
+    dailyGlobalCreditCeiling: null,
   },
   forager: {
     ...DEFAULT_VENDOR_POLICY,
