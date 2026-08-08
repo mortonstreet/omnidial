@@ -795,6 +795,46 @@ export const dropVoicemail = async (
   return updatedCall
 }
 
+/**
+ * Send dialpad digits to the far end of a call.
+ *
+ * The browser SDK's `call.dtmf()` only injects tones into the WebRTC leg. An
+ * outbound call here is two legs — browser → TeXML application, then `<Dial>` →
+ * the callee — so digits pressed in the UI stopped at the application and never
+ * reached the callee's IVR.
+ *
+ * Emitting from `dialCallSid` (the child leg to the destination) puts the tones
+ * directly in front of the callee, rather than depending on the bridge to
+ * forward them, which is the step that was failing. `twilioCallSid` is the
+ * fallback for calls placed without a child leg — same reasoning as
+ * `dropVoicemail` above.
+ */
+export const sendDtmfDigits = async (
+  callId: string,
+  organizationId: string,
+  digits: string,
+) => {
+  const call = await callRepository.findById(callId)
+  if (!call || call.twilioConfigId === undefined) {
+    throw new Error('Call not found')
+  }
+
+  const configData = await twilioConfigRepository.findById(call.twilioConfigId)
+  if (!configData || configData.organizationId !== organizationId) {
+    throw new Error('Call not found')
+  }
+
+  const legId = call.dialCallSid || call.twilioCallSid
+  if (!legId) {
+    throw new Error(
+      'Call is not connected yet — wait until it is answered before sending digits',
+    )
+  }
+
+  const client = await telnyxClient.getClientForOrganization(organizationId)
+  await client.sendDtmfOnCall(legId, digits)
+}
+
 export const dropVoicemailForOrg = async (
   callId: string,
   voicemailDropId: string,

@@ -83,6 +83,18 @@ export const DropVoicemailRequestSchema = z.object({
 })
 export type DropVoicemailRequest = z.infer<typeof DropVoicemailRequestSchema>
 
+// Dialpad digits sent to the far end of a live call (IVR / extension entry).
+// Telnyx accepts 0-9, A-D, * and #, plus w/W as pauses.
+export const SendDtmfRequestSchema = z.object({
+  id: z.string().uuid(),
+  digits: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(/^[0-9A-Dw*#W]+$/, 'Digits may only contain 0-9, A-D, *, #, w or W'),
+})
+export type SendDtmfRequest = z.infer<typeof SendDtmfRequestSchema>
+
 // === Voicemail Drop Types ===
 export const GetVoicemailDropRequestSchema = z.object({
   id: z.string().uuid(),

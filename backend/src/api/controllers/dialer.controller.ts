@@ -13,6 +13,7 @@ import {
   ListCallsRequest,
   UpdateCallDispositionRequest,
   DropVoicemailRequest,
+  SendDtmfRequest,
   GetVoicemailDropRequest,
   ListVoicemailDropsRequest,
   CreateVoicemailDropRequest,
@@ -436,6 +437,30 @@ export const setCallDisposition: AuthRequestHandler<
     return res.status(404).json({ error: 'Call or disposition not found' })
   }
   res.json({ data: call })
+}
+
+export const sendDtmf: AuthRequestHandler<SendDtmfRequest> = async (
+  req,
+  res,
+) => {
+  const organizationId = getOrganizationId(req.session)
+  if (!organizationId) {
+    return res.status(400).json({ error: 'No active organization' })
+  }
+
+  const { id, digits } = req.validated
+  try {
+    await dialerService.sendDtmfDigits(id, organizationId, digits)
+    res.json({ success: true })
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message })
+      }
+      return res.status(400).json({ error: error.message })
+    }
+    res.status(500).json({ error: 'Failed to send digits' })
+  }
 }
 
 export const dropVoicemail: AuthRequestHandler<DropVoicemailRequest> = async (

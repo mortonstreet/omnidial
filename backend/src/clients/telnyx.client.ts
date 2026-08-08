@@ -57,6 +57,10 @@ export class OrgTelnyxClient {
     return telnyx.playRecording(this.credentials, callSid, recordingUrl)
   }
 
+  sendDtmfOnCall(callControlId: string, digits: string) {
+    return telnyx.sendDtmf(this.credentials.apiKey, callControlId, digits)
+  }
+
   // --- TeXML conferences ---
 
   listConferenceParticipants(conferenceSid: string) {

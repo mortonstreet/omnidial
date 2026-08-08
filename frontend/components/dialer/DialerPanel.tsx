@@ -18,7 +18,7 @@ import {
 import { DispositionSelector } from './DispositionSelector'
 import { VoicemailDropButton } from './VoicemailDropButton'
 import { useDialablePhoneNumbers } from '@/hooks/api/usePhoneNumberAssignments'
-import { useDispositions } from '@/hooks/api/useCalls'
+import { useDispositions, useSendDtmf } from '@/hooks/api/useCalls'
 import { useLead, useLeads, useResolveTimezone } from '@/hooks/api/useLeads'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useDialerContext } from '@/components/providers/DialerProvider'
@@ -98,7 +98,9 @@ export function DialerPanel({
 }: DialerPanelProps) {
   const [dialQuery, setDialQuery] = useState(phoneNumber || '')
   const [dialNumber, setDialNumber] = useState(phoneNumber || '')
-  const [debouncedDialQuery, setDebouncedDialQuery] = useState(phoneNumber || '')
+  const [debouncedDialQuery, setDebouncedDialQuery] = useState(
+    phoneNumber || '',
+  )
   const [selectedLeadMatch, setSelectedLeadMatch] =
     useState<DialerLeadMatch | null>(null)
   const [selectedFromNumber, setSelectedFromNumber] = useState<string>('')
@@ -128,6 +130,7 @@ export function DialerPanel({
   } = useDialerContext()
 
   const { data: dispositions } = useDispositions(!!organizationId)
+  const sendDtmfMutation = useSendDtmf()
 
   // The rep's own assigned caller IDs, regardless of which client is selected.
   // There is deliberately no "show every org number" fallback: falling back
@@ -525,7 +528,24 @@ export function DialerPanel({
 
   const handleDialpadPress = (digit: string) => {
     if (connection) {
+      // Inject locally so the caller hears the tone immediately...
       connection.dtmf(digit)
+      // ...and emit server-side, which is what actually reaches the callee.
+      // The WebRTC leg ends at our TeXML application, not at the far end, so
+      // the SDK call alone never made it to their IVR.
+      if (currentCallId) {
+        sendDtmfMutation.mutate(
+          { callId: currentCallId, digits: digit },
+          {
+            onError: (error) =>
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to send keypad digit',
+              ),
+          },
+        )
+      }
     } else {
       setDialNumber((prev) => prev + digit)
       setDialQuery((prev) => prev + digit)

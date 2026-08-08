@@ -246,6 +246,7 @@ export const ENDPOINTS = {
     END: (id: string) => `/calls/${id}/end`,
     SET_DISPOSITION: (id: string) => `/calls/${id}/disposition`,
     DROP_VOICEMAIL: (callId: string) => `/calls/${callId}/voicemail-drop`,
+    SEND_DTMF: (id: string) => `/calls/${id}/dtmf`,
     RECORDING: (id: string) => `/calls/${id}/recording`,
     SUGGEST_DISPOSITION: (id: string) => `/calls/${id}/suggest-disposition`,
   },

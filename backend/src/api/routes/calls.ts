@@ -6,6 +6,7 @@ import {
   listCalls,
   setCallDisposition,
   dropVoicemail,
+  sendDtmf,
   getCallRecording,
   suggestDisposition,
 } from '@/api/controllers/dialer.controller'
@@ -18,6 +19,7 @@ import {
   ListCallsRequestSchema,
   UpdateCallDispositionRequestSchema,
   DropVoicemailRequestSchema,
+  SendDtmfRequestSchema,
   SuggestDispositionRequestSchema,
 } from '@shared/types/src'
 
@@ -66,6 +68,13 @@ router.post(
   '/:callId/voicemail-drop',
   validateAndMerge(DropVoicemailRequestSchema),
   authenticatedRoute(dropVoicemail),
+)
+
+// Send dialpad digits to the far end of a live call (IVR navigation)
+router.post(
+  '/:id/dtmf',
+  validateAndMerge(SendDtmfRequestSchema),
+  authenticatedRoute(sendDtmf),
 )
 
 // Get call recording

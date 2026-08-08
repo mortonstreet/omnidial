@@ -245,6 +245,32 @@ export const playRecording = async (
   })
 }
 
+/**
+ * Send DTMF digits on behalf of a call leg.
+ *
+ * The browser SDK's `call.dtmf()` injects digits into the WebRTC leg only.
+ * Outbound calls here are two legs — browser → TeXML application, then
+ * `<Dial>` → the callee — so digits pressed in the UI never reached the far
+ * end's IVR. This Call Control action emits the tones from the given leg such
+ * that the *other* end of the call hears them, which is what navigating a
+ * phone tree requires.
+ *
+ * `callControlId` is the leg's control ID (stored on the call row as
+ * `twilioCallSid`, e.g. `v3:AZKn...`), not a TeXML CallSid path segment.
+ */
+export const sendDtmf = async (
+  apiKey: string,
+  callControlId: string,
+  digits: string,
+): Promise<void> => {
+  await jsonRequest(
+    apiKey,
+    'POST',
+    `/calls/${encodeURIComponent(callControlId)}/actions/send_dtmf`,
+    { digits },
+  )
+}
+
 // ============================================
 // TeXML conference participants
 // ============================================
