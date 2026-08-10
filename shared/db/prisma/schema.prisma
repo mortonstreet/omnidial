@@ -532,6 +532,7 @@ model CampaignLead {
 
   @@unique([campaignId, leadId])
   @@index([campaignId])
+  @@index([leadId])
   @@index([assignedUserId])
   @@index([campaignId, predictiveScore(sort: Desc)])
   @@index([campaignId, status, dialOrder]) // For power dialer queue ordering

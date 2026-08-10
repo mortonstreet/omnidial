@@ -1324,10 +1324,29 @@ const reassignDuplicateLeadReferences = async (
       "createdAt", "predictiveScore", "scoreDialOrder"
     )
     select
-      gen_random_uuid(), "campaignId", ${targetLeadId}, "assignedUserId",
-      status, "dialOrder", "createdAt", "predictiveScore", "scoreDialOrder"
+      gen_random_uuid(),
+      "campaignId",
+      ${targetLeadId},
+      (array_agg("assignedUserId" order by "createdAt" asc)
+        filter (where "assignedUserId" is not null))[1],
+      coalesce(
+        (array_agg(status order by
+          case status
+            when 'completed' then 1
+            when 'dialed' then 2
+            else 3
+          end,
+          "createdAt" asc
+        ) filter (where status <> 'pending'))[1],
+        'pending'
+      ),
+      min("dialOrder"),
+      min("createdAt"),
+      max("predictiveScore"),
+      min("scoreDialOrder")
     from campaign_lead
     where "leadId" in (${sourceIds})
+    group by "campaignId"
     on conflict ("campaignId", "leadId") do update set
       "assignedUserId" = coalesce(campaign_lead."assignedUserId", excluded."assignedUserId"),
       status = case
@@ -1344,9 +1363,18 @@ const reassignDuplicateLeadReferences = async (
       id, "listId", "leadId", "sortOrder", "createdAt", "removedAt"
     )
     select
-      gen_random_uuid(), "listId", ${targetLeadId}, "sortOrder", "createdAt", "removedAt"
+      gen_random_uuid(),
+      "listId",
+      ${targetLeadId},
+      min("sortOrder"),
+      min("createdAt"),
+      case
+        when bool_or("removedAt" is null) then null
+        else min("removedAt")
+      end
     from lead_list_entry
     where "leadId" in (${sourceIds})
+    group by "listId"
     on conflict ("listId", "leadId") do update set
       "removedAt" = case
         when excluded."removedAt" is null then null
@@ -1361,12 +1389,22 @@ const reassignDuplicateLeadReferences = async (
       "syncDirection", "syncStatus", "lastSyncedAt", "errorMessage",
       "createdAt", "updatedAt"
     )
-    select
+    select distinct on ("organizationId", provider)
       gen_random_uuid(), "organizationId", ${targetLeadId}, provider, "externalId",
       "externalUrl", "syncDirection", "syncStatus", "lastSyncedAt",
       "errorMessage", "createdAt", now()
     from crm_sync_record
     where "leadId" in (${sourceIds})
+    order by
+      "organizationId",
+      provider,
+      case "syncStatus"
+        when 'synced' then 1
+        when 'pending' then 2
+        else 3
+      end,
+      "lastSyncedAt" desc,
+      "createdAt" desc
     on conflict ("organizationId", "leadId", provider) do nothing
   `.execute(executor)
 
@@ -1377,11 +1415,26 @@ const reassignDuplicateLeadReferences = async (
       "lastAnswerAt", "hasPersonalVoicemail", "calculatedAt", "updatedAt"
     )
     select
-      gen_random_uuid(), "organizationId", ${targetLeadId}, score, "phoneType",
-      "bestDayOfWeek", "bestHourOfDay", "totalAttempts", "totalAnswers",
-      "lastAttemptAt", "lastAnswerAt", "hasPersonalVoicemail", "calculatedAt", now()
+      gen_random_uuid(),
+      "organizationId",
+      ${targetLeadId},
+      max(score),
+      (array_agg("phoneType" order by "updatedAt" desc)
+        filter (where "phoneType" is not null))[1],
+      (array_agg("bestDayOfWeek" order by "updatedAt" desc)
+        filter (where "bestDayOfWeek" is not null))[1],
+      (array_agg("bestHourOfDay" order by "updatedAt" desc)
+        filter (where "bestHourOfDay" is not null))[1],
+      coalesce(sum("totalAttempts"), 0)::integer,
+      coalesce(sum("totalAnswers"), 0)::integer,
+      max("lastAttemptAt"),
+      max("lastAnswerAt"),
+      bool_or("hasPersonalVoicemail") filter (where "hasPersonalVoicemail" is not null),
+      max("calculatedAt"),
+      now()
     from lead_predictive_score
     where "leadId" in (${sourceIds})
+    group by "organizationId"
     on conflict ("leadId") do update set
       "totalAttempts" = lead_predictive_score."totalAttempts" + excluded."totalAttempts",
       "totalAnswers" = lead_predictive_score."totalAnswers" + excluded."totalAnswers",
@@ -1397,12 +1450,23 @@ const reassignDuplicateLeadReferences = async (
       timezone, "researchData", "lastSentAt", "repliedAt", "unsubscribedAt",
       "enrolledAt", "completedAt", "createdAt", "updatedAt"
     )
-    select
+    select distinct on ("campaignId")
       gen_random_uuid(), "campaignId", ${targetLeadId}, status, "currentStep",
       "nextSendAt", timezone, "researchData", "lastSentAt", "repliedAt",
       "unsubscribedAt", "enrolledAt", "completedAt", "createdAt", now()
     from sms_campaign_enrollment
     where "leadId" in (${sourceIds})
+    order by
+      "campaignId",
+      case status
+        when 'active' then 1
+        when 'replied' then 2
+        when 'completed' then 3
+        when 'paused' then 4
+        else 5
+      end,
+      "currentStep" desc,
+      "updatedAt" desc
     on conflict ("campaignId", "leadId") do nothing
   `.execute(executor)
 
