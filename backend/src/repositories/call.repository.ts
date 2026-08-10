@@ -43,6 +43,18 @@ export interface CallFilters {
   endDate?: Date
 }
 
+const ACTIVE_OUTBOUND_CALL_STATUSES = ['initiated', 'ringing', 'in-progress']
+
+export interface ActiveCallCollision {
+  id: string
+  userId: string
+  userName: string | null
+  leadId: string | null
+  status: string
+  toNumber: string
+  startedAt: Date
+}
+
 export const findById = async (id: string) => {
   return db
     .selectFrom('call')
@@ -89,6 +101,67 @@ export const findByTwilioCallSidForOrg = async (
     .where('twilio_config.organizationId', '=', orgId)
     .selectAll('call')
     .executeTakeFirst()
+}
+
+export const findActiveCollisionForLeadOrNumber = async (
+  organizationId: string,
+  params: {
+    leadId?: string | null
+    toNumber?: string | null
+    excludeUserId?: string
+  },
+  executor: typeof db = db,
+): Promise<ActiveCallCollision | null> => {
+  const toDigits = params.toNumber?.replace(/\D/g, '') ?? ''
+  const toLast10 = toDigits.length >= 10 ? toDigits.slice(-10) : toDigits
+
+  if (!params.leadId && !toDigits) return null
+
+  let query = executor
+    .selectFrom('call')
+    .innerJoin('twilio_config', 'twilio_config.id', 'call.twilioConfigId')
+    .leftJoin('user', 'user.id', 'call.userId')
+    .where('twilio_config.organizationId', '=', organizationId)
+    .where('call.direction', '=', 'outbound')
+    .where('call.endedAt', 'is', null)
+    .where('call.status', 'in', ACTIVE_OUTBOUND_CALL_STATUSES)
+
+  if (params.excludeUserId) {
+    query = query.where('call.userId', '!=', params.excludeUserId)
+  }
+
+  query = query.where((eb) => {
+    const conditions = []
+    if (params.leadId) {
+      conditions.push(eb('call.leadId', '=', params.leadId))
+    }
+    if (toDigits) {
+      conditions.push(
+        sql<boolean>`regexp_replace(call."toNumber", '[^0-9]', '', 'g') = ${toDigits}`,
+      )
+      if (toLast10) {
+        conditions.push(
+          sql<boolean>`right(regexp_replace(call."toNumber", '[^0-9]', '', 'g'), 10) = ${toLast10}`,
+        )
+      }
+    }
+    return eb.or(conditions)
+  })
+
+  const collision = await query
+    .select([
+      'call.id',
+      'call.userId',
+      'user.name as userName',
+      'call.leadId',
+      'call.status',
+      'call.toNumber',
+      'call.startedAt',
+    ])
+    .orderBy('call.startedAt', 'desc')
+    .executeTakeFirst()
+
+  return collision ?? null
 }
 
 export const findByConferenceSidForOrg = async (
@@ -249,6 +322,60 @@ export const create = async (data: CreateCallInput) => {
     .values(record)
     .returningAll()
     .executeTakeFirstOrThrow()
+}
+
+export const createWithActiveCollisionGuard = async (
+  organizationId: string,
+  data: CreateCallInput,
+) => {
+  return db.transaction().execute(async (trx) => {
+    const toDigits = data.toNumber.replace(/\D/g, '')
+    const lockKey = data.leadId
+      ? `call-lead:${organizationId}:${data.leadId}`
+      : `call-phone:${organizationId}:${toDigits.slice(-10) || data.toNumber}`
+
+    await sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`.execute(trx)
+
+    const collision = await findActiveCollisionForLeadOrNumber(
+      organizationId,
+      {
+        leadId: data.leadId,
+        toNumber: data.toNumber,
+        excludeUserId: data.userId,
+      },
+      trx as typeof db,
+    )
+
+    if (collision) {
+      const owner = collision.userName || 'Another rep'
+      const error = new Error(
+        `${owner} is already calling this lead or phone number.`,
+      ) as Error & {
+        code: string
+        statusCode: number
+        activeCall: ActiveCallCollision
+      }
+      error.code = 'LEAD_ALREADY_BEING_DIALED'
+      error.statusCode = 409
+      error.activeCall = collision
+      throw error
+    }
+
+    const record = withIdAndTimestamps(
+      {
+        ...data,
+        status: data.status || 'initiated',
+        startedAt: new Date(),
+      },
+      true,
+    )
+
+    return trx
+      .insertInto('call')
+      .values(record)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+  })
 }
 
 export const update = async (id: string, data: UpdateCallInput) => {

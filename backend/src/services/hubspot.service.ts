@@ -339,6 +339,78 @@ export const getContactsSummary = async (
   }
 }
 
+export const getDealAssociatedContactIds = async (
+  organizationId: string,
+  dealId: string,
+): Promise<string[]> => {
+  const headers = await getAuthenticatedHeaders(organizationId)
+  const response = await fetch(
+    `${HUBSPOT_API_BASE}/crm/v3/objects/deals/${dealId}?associations=contacts`,
+    { headers },
+  )
+
+  if (!response.ok) {
+    const errorData = await response.text()
+    throw new Error(`Failed to read HubSpot deal contacts: ${errorData}`)
+  }
+
+  const data = await response.json()
+  return (data.associations?.contacts?.results || [])
+    .map((association: { id?: string }) => association.id)
+    .filter((id: string | undefined): id is string => !!id)
+}
+
+export const getDealStageLabel = async (
+  organizationId: string,
+  stageId: string,
+): Promise<string | null> => {
+  const headers = await getAuthenticatedHeaders(organizationId)
+  const response = await fetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
+    headers,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.text()
+    throw new Error(`Failed to read HubSpot deal stages: ${errorData}`)
+  }
+
+  const data = await response.json()
+  for (const pipeline of data.results || []) {
+    for (const stage of pipeline.stages || []) {
+      if (!stage.archived && stage.id === stageId) {
+        return stage.label
+      }
+    }
+  }
+
+  return null
+}
+
+export const getDealPropertyOptionLabel = async (
+  organizationId: string,
+  propertyName: string,
+  optionValue: string,
+): Promise<string | null> => {
+  const headers = await getAuthenticatedHeaders(organizationId)
+  const response = await fetch(
+    `${HUBSPOT_API_BASE}/crm/v3/properties/deals/${propertyName}`,
+    { headers },
+  )
+
+  if (!response.ok) {
+    const errorData = await response.text()
+    throw new Error(`Failed to read HubSpot deal property: ${errorData}`)
+  }
+
+  const data = await response.json()
+  const option = (data.options || []).find(
+    (candidate: { value?: string; hidden?: boolean }) =>
+      !candidate.hidden && candidate.value === optionValue,
+  )
+
+  return option?.label ?? null
+}
+
 export const testConnection = async (
   organizationId: string,
 ): Promise<{ success: boolean; message: string }> => {

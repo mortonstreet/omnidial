@@ -46,6 +46,17 @@ export interface CrmPushResponse {
   externalUrl?: string
 }
 
+export interface CrmBulkPushResponse {
+  success: boolean
+  total: number
+  synced: number
+  failed: number
+  errors: Array<{
+    leadId: string
+    error: string
+  }>
+}
+
 export interface CrmPresenceItem {
   provider: string
   exists: boolean

@@ -19,6 +19,7 @@ import { BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors'
 import logger from '@/lib/logger'
 import { randomUUID } from 'crypto'
 import type { CrmProvider } from '@shared/types/src/requests/crmSync'
+import type { DataVendorProvider } from '@shared/types/src/requests/enrichment'
 import type {
   CheckLeadResponse,
   CreateListFromLinkedInSelectionRequest,
@@ -30,6 +31,11 @@ import type {
   GetLeadsResponse,
   EnrichedPhoneNumber,
 } from '@shared/types/src/requests/extension'
+
+const NON_PROSPEO_LINKEDIN_PROVIDERS: DataVendorProvider[] = [
+  'forager',
+  'leadmagic',
+]
 
 const EXTENSION_FLOW_EVENT = {
   CREATE_LIST_STARTED: 'extension.selection_list.create.started',
@@ -305,6 +311,7 @@ export const enrichFromLinkedIn = async (
     headline?: string
     location?: string
   },
+  options: { allowProspeo?: boolean } = {},
 ): Promise<ExtensionEnrichResponse> => {
   console.log('[Extension] enrichFromLinkedIn called with:', {
     organizationId,
@@ -313,6 +320,9 @@ export const enrichFromLinkedIn = async (
     lastName: params.lastName,
     company: params.company,
   })
+  const linkedInProviderScope = options.allowProspeo
+    ? undefined
+    : NON_PROSPEO_LINKEDIN_PROVIDERS
 
   // Validate LinkedIn URL
   if (!params.linkedInUrl || !params.linkedInUrl.includes('linkedin.com')) {
@@ -347,6 +357,7 @@ export const enrichFromLinkedIn = async (
           organizationId,
           existing.lead.id,
           params.linkedInUrl,
+          { providers: linkedInProviderScope },
         )
 
         console.log(
@@ -434,6 +445,9 @@ export const enrichFromLinkedIn = async (
     const vendorResult = await getVendorProfileData(
       organizationId,
       params.linkedInUrl,
+      {
+        allowProspeo: options.allowProspeo,
+      },
     )
 
     if (vendorResult.success && vendorResult.data) {
@@ -541,6 +555,7 @@ export const enrichFromLinkedIn = async (
         organizationId,
         lead.id,
         params.linkedInUrl,
+        { providers: linkedInProviderScope },
       )
 
       const updatedLead = await db
@@ -648,6 +663,7 @@ interface VendorProfileResult {
 async function getVendorProfileData(
   organizationId: string,
   linkedInUrl: string,
+  options: { allowProspeo?: boolean } = {},
 ): Promise<VendorProfileResult> {
   console.log('[Extension] getVendorProfileData called:', {
     organizationId,
@@ -655,11 +671,15 @@ async function getVendorProfileData(
   })
 
   // Get all active enrichment vendor connections, ordered by priority
+  const providerScope = options.allowProspeo
+    ? ['prospeo', 'forager', 'leadmagic']
+    : NON_PROSPEO_LINKEDIN_PROVIDERS
+
   const connections = await db
     .selectFrom('data_vendor_connection')
     .where('organizationId', '=', organizationId)
     .where('isActive', '=', true)
-    .where('provider', 'in', ['prospeo', 'forager', 'leadmagic'])
+    .where('provider', 'in', providerScope)
     .selectAll()
     .orderBy('priority', 'asc')
     .execute()

@@ -244,6 +244,26 @@ export const findNextToDialFromList = async (
         .where('parallel_dial_attempt.sessionId', '=', sessionId)
         .select('parallel_dial_attempt.leadId'),
     )
+    // Exclude leads currently being attempted by another active parallel session.
+    .where(
+      'lead_list_entry.leadId',
+      'not in',
+      db
+        .selectFrom('parallel_dial_attempt')
+        .innerJoin(
+          'parallel_dial_session',
+          'parallel_dial_session.id',
+          'parallel_dial_attempt.sessionId',
+        )
+        .where('parallel_dial_attempt.sessionId', '!=', sessionId)
+        .where('parallel_dial_session.status', '=', 'active')
+        .where('parallel_dial_attempt.status', 'in', [
+          'dialing',
+          'ringing',
+          'connected',
+        ])
+        .select('parallel_dial_attempt.leadId'),
+    )
     .select(['lead_list_entry.leadId', 'lead.phone'])
     .orderBy('lead_list_entry.sortOrder', 'asc')
     .limit(limit)

@@ -165,8 +165,16 @@ export const bulkCreate = async (params: BulkCreateLeadsParams) => {
     throw new Error('Campaign not found')
   }
 
-  // Create all leads
-  const createdLeads = await leadRepo.createMany(organizationId, leads)
+  // Create or merge leads. Re-uploaded data fills only blank fields on the
+  // existing active lead instead of overwriting CRM edits.
+  const upsertResult = await leadRepo.bulkUpsertFillBlanks(
+    organizationId,
+    leads,
+  )
+  const createdLeads = await leadRepo.findByIds(
+    upsertResult.leadIds,
+    organizationId,
+  )
 
   // Get current max dial order
   const maxOrder = await campaignLeadRepo.getMaxDialOrder(campaignId)
@@ -174,6 +182,8 @@ export const bulkCreate = async (params: BulkCreateLeadsParams) => {
   // Add leads to campaign
   const leadIds = createdLeads.map((l) => l.id)
   await campaignLeadRepo.createMany(campaignId, leadIds, maxOrder + 1)
+
+  await leadRepo.consolidateActiveDuplicates(organizationId)
 
   // Update campaign counts
   await campaignRepo.updateCounts(campaignId, organizationId)

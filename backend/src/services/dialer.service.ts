@@ -530,16 +530,19 @@ export const initiateOutboundCall = async (
 
   // Create call record - the actual call is initiated via the Telnyx WebRTC SDK
   // The frontend passes the callId to device.connect(), which triggers the TeXML application
-  const callRecord = await callRepository.create({
-    twilioConfigId,
-    userId,
-    leadId,
-    campaignId,
-    fromNumber,
-    toNumber,
-    direction: 'outbound',
-    status: 'initiated',
-  })
+  const callRecord = await callRepository.createWithActiveCollisionGuard(
+    configData.organizationId,
+    {
+      twilioConfigId,
+      userId,
+      leadId,
+      campaignId,
+      fromNumber,
+      toNumber,
+      direction: 'outbound',
+      status: 'initiated',
+    },
+  )
 
   // Update campaign's lastCalledAt to reflect calling activity (used for active/inactive status)
   if (campaignId) {

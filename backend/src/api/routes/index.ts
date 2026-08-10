@@ -22,6 +22,7 @@ import telnyxWebhookRoutes from './webhooks/telnyx'
 import slackWebhookRoutes from './webhooks/slack'
 import stripeWebhookRoutes from './webhooks/stripe'
 import clerkWebhookRoutes from './webhooks/clerk'
+import hubspotWebhookRoutes from './webhooks/hubspot'
 import listsRoutes from './lists'
 import clientsRoutes from './clients'
 import activityRoutes from './activity'
@@ -94,6 +95,7 @@ router.use('/webhooks/telnyx', telnyxWebhookRoutes)
 router.use('/webhooks/slack', slackWebhookRoutes)
 router.use('/webhooks/stripe', stripeWebhookRoutes)
 router.use('/webhooks/clerk', clerkWebhookRoutes)
+router.use('/webhooks/hubspot', hubspotWebhookRoutes)
 router.use('/lists', listsRoutes)
 router.use('/clients', clientsRoutes)
 router.use('/activity', activityRoutes)

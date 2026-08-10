@@ -296,6 +296,7 @@ export const initiateCall: AuthRequestHandler<InitiateCallRequest> = async (
   } catch (error) {
     const err = error as Error & {
       code?: string
+      statusCode?: number
       guardResult?: {
         retryable?: boolean
         httpStatus?: number
@@ -311,7 +312,10 @@ export const initiateCall: AuthRequestHandler<InitiateCallRequest> = async (
       BILLING_GUARD_UNAVAILABLE: 503,
     }
     const status =
-      err.guardResult?.httpStatus || (err.code && guardCodes[err.code]) || 500
+      err.statusCode ||
+      err.guardResult?.httpStatus ||
+      (err.code && guardCodes[err.code]) ||
+      500
     if (status === 500) {
       console.error('Failed to initiate call:', error)
     }

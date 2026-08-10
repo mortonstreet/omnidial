@@ -1,6 +1,10 @@
 import { AuthRequest } from '@/types/handlers'
 import { Response } from 'express'
 import * as extensionService from '@/services/extension.service'
+import {
+  DataVendorProvider,
+  type DataVendorProvider as DataVendorProviderType,
+} from '@shared/types/src/requests/enrichment'
 import type {
   CheckLeadRequest,
   CreateListFromLinkedInSelectionRequest,
@@ -13,6 +17,31 @@ import type {
 } from '@shared/types/src/requests/extension'
 
 type OrgScoped<T> = T & { organizationId: string }
+
+const PROSPEO_ALLOWED_SYSTEM_ROLES = new Set(['dev', 'superadmin'])
+const NON_PROSPEO_PROVIDERS = DataVendorProvider.options.filter(
+  (provider) => provider !== 'prospeo',
+)
+
+const canUseProspeo = (req: AuthRequest<unknown>) =>
+  PROSPEO_ALLOWED_SYSTEM_ROLES.has(String((req.user as any)?.role ?? ''))
+
+const allowedProvidersForUser = (
+  req: AuthRequest<unknown>,
+  providers?: DataVendorProviderType[],
+) => {
+  if (canUseProspeo(req)) return providers
+
+  if (providers?.includes('prospeo')) {
+    const error = new Error(
+      'Prospeo enrichment is restricted to dev and superadmin users.',
+    ) as Error & { statusCode: number }
+    error.statusCode = 403
+    throw error
+  }
+
+  return providers ?? NON_PROSPEO_PROVIDERS
+}
 
 /**
  * GET /extension/session
@@ -83,6 +112,9 @@ export const enrichLead = async (
     organizationId,
     req.user.id,
     params,
+    {
+      allowProspeo: canUseProspeo(req),
+    },
   )
   return res.json(result)
 }
@@ -136,7 +168,7 @@ export const enqueueListBulkEnrich = async (
     req.user.id,
     {
       listId: id,
-      providers,
+      providers: allowedProvidersForUser(req, providers),
       forceRefresh,
     },
   )

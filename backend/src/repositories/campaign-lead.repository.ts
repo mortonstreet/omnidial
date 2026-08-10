@@ -116,6 +116,17 @@ export const getUnassignedLeads = async (campaignId: string) => {
   return leads
 }
 
+export const countAssignedLeads = async (campaignId: string) => {
+  const result = await db
+    .selectFrom('campaign_lead')
+    .where('campaignId', '=', campaignId)
+    .where('assignedUserId', 'is not', null)
+    .select((eb) => eb.fn.countAll().as('count'))
+    .executeTakeFirst()
+
+  return Number(result?.count ?? 0)
+}
+
 export const assignUser = async (campaignLeadId: string, userId: string) => {
   await db
     .updateTable('campaign_lead')

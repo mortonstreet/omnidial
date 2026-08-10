@@ -4,12 +4,14 @@ import { authenticatedRoute } from './utils'
 import { withBetterAuth, validateActiveOrganization } from '../middlewares/auth'
 import {
   CrmPushRequestSchema,
+  CrmBulkPushRequestSchema,
   CrmPresenceRequestSchema,
   CrmTestRequestSchema,
   CrmConnectedRequestSchema,
 } from '@shared/types/src/requests/crmSync'
 import {
   pushToCrm,
+  bulkPushToCrm,
   getCrmPresence,
   listConnectedCrms,
   testCrmConnection,
@@ -33,6 +35,15 @@ router.post(
   validateAndMerge(CrmPushRequestSchema),
   validateActiveOrganization,
   authenticatedRoute(pushToCrm),
+)
+
+// Bulk push leads to CRM
+router.post(
+  '/bulk-push',
+  withBetterAuth,
+  validateAndMerge(CrmBulkPushRequestSchema),
+  validateActiveOrganization,
+  authenticatedRoute(bulkPushToCrm),
 )
 
 // Check lead presence in CRMs

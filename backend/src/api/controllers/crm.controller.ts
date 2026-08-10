@@ -2,6 +2,7 @@ import { AuthRequest } from '@/types/handlers'
 import { Response } from 'express'
 import * as crmService from '@/services/crm.service'
 import type {
+  CrmBulkPushRequest,
   CrmPushRequest,
   CrmPresenceRequest,
   CrmTestRequest,
@@ -16,6 +17,23 @@ export const pushToCrm = async (
     const result = await crmService.pushLeadToCrm(
       organizationId,
       leadId,
+      provider,
+    )
+    return res.json({ data: result })
+  } catch (error) {
+    return res.status(400).json({ error: (error as Error).message })
+  }
+}
+
+export const bulkPushToCrm = async (
+  req: AuthRequest<CrmBulkPushRequest>,
+  res: Response,
+) => {
+  const { organizationId, leadIds, provider } = req.validated
+  try {
+    const result = await crmService.bulkPushLeadsToCrm(
+      organizationId,
+      leadIds,
       provider,
     )
     return res.json({ data: result })

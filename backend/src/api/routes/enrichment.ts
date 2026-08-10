@@ -8,6 +8,7 @@ import {
 import { AuthRequest } from '@/types/handlers'
 import * as enrichmentService from '@/services/enrichment.service'
 import {
+  DataVendorProvider,
   ConnectVendorRequestSchema,
   UpdateVendorConnectionRequestSchema,
   ListVendorConnectionsRequestSchema,
@@ -22,9 +23,42 @@ const router = Router()
 // Read endpoints use general rate limit; expensive mutations get their own below
 router.use(generalApiRateLimit)
 
+const PROSPEO_ALLOWED_SYSTEM_ROLES = new Set(['dev', 'superadmin'])
+const NON_PROSPEO_PROVIDERS = DataVendorProvider.options.filter(
+  (provider) => provider !== 'prospeo',
+)
+
 // Helper to get organizationId from session (better-auth nests session inside session)
 const getOrgId = (authReq: AuthRequest<unknown>): string | null =>
   (authReq.session as any)?.session?.activeOrganizationId ?? null
+
+const canUseProspeo = (authReq: AuthRequest<unknown>) =>
+  PROSPEO_ALLOWED_SYSTEM_ROLES.has(String((authReq.user as any)?.role ?? ''))
+
+const allowedProvidersForUser = (
+  authReq: AuthRequest<unknown>,
+  providers?: DataVendorProvider[],
+): DataVendorProvider[] | undefined => {
+  if (canUseProspeo(authReq)) return providers
+
+  if (providers?.includes('prospeo')) {
+    const error = new Error(
+      'Prospeo enrichment is restricted to dev and superadmin users.',
+    ) as Error & { statusCode: number }
+    error.statusCode = 403
+    throw error
+  }
+
+  return providers ?? NON_PROSPEO_PROVIDERS
+}
+
+const requireProspeoAccess = (authReq: AuthRequest<unknown>, res: Response) => {
+  if (canUseProspeo(authReq)) return true
+  res.status(403).json({
+    error: 'Prospeo enrichment is restricted to dev and superadmin users.',
+  })
+  return false
+}
 
 // === Vendor Connections ===
 
@@ -155,7 +189,7 @@ router.post(
         data.organizationId,
         data.leadId,
         {
-          providers: data.providers,
+          providers: allowedProvidersForUser(authReq, data.providers),
           dataTypes: data.dataTypes,
           forceRefresh: data.forceRefresh,
         },
@@ -184,7 +218,7 @@ router.post(
         data.organizationId,
         data.leadIds,
         {
-          providers: data.providers,
+          providers: allowedProvidersForUser(authReq, data.providers),
           dataTypes: data.dataTypes,
           forceRefresh: data.forceRefresh,
         },
@@ -204,6 +238,8 @@ router.post(
   async (req, res: Response, next: NextFunction) => {
     try {
       const authReq = req as AuthRequest<unknown>
+      if (!requireProspeoAccess(authReq, res)) return
+
       const data = BulkProspeoListMobileEnrichRequestSchema.parse({
         listId: req.params.listId,
         ...req.body,

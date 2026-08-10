@@ -171,6 +171,17 @@ app.use(
   }),
 )
 
+// HubSpot webhooks send JSON. Capture raw body for idempotency and future
+// signature verification without reparsing route handlers.
+app.use(
+  '/api/webhooks/hubspot',
+  express.json({
+    verify: (req, _res, buf) => {
+      ;(req as express.Request & { rawBody?: string }).rawBody = buf.toString()
+    },
+  }),
+)
+
 // Regular body parsers for all other routes
 app.use((req, res, next) => {
   // Skip if already parsed (Slack/Telnyx/Stripe routes)
@@ -178,7 +189,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/webhooks/slack') ||
     req.path.startsWith('/api/webhooks/telnyx') ||
     req.path.startsWith('/api/webhooks/stripe') ||
-    req.path.startsWith('/api/webhooks/clerk')
+    req.path.startsWith('/api/webhooks/clerk') ||
+    req.path.startsWith('/api/webhooks/hubspot')
   ) {
     return next()
   }
@@ -189,7 +201,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/webhooks/slack') ||
     req.path.startsWith('/api/webhooks/telnyx') ||
     req.path.startsWith('/api/webhooks/stripe') ||
-    req.path.startsWith('/api/webhooks/clerk')
+    req.path.startsWith('/api/webhooks/clerk') ||
+    req.path.startsWith('/api/webhooks/hubspot')
   ) {
     return next()
   }
@@ -200,7 +213,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/webhooks/slack') ||
     req.path.startsWith('/api/webhooks/telnyx') ||
     req.path.startsWith('/api/webhooks/stripe') ||
-    req.path.startsWith('/api/webhooks/clerk')
+    req.path.startsWith('/api/webhooks/clerk') ||
+    req.path.startsWith('/api/webhooks/hubspot')
   ) {
     return next()
   }

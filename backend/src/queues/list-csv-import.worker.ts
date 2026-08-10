@@ -107,9 +107,6 @@ async function processListCsvImport(job: Job<ListCsvImportEvent>) {
       )
     }
 
-    // Update list lead count
-    await leadListService.refreshLeadCount(listId)
-
     // Sync with linked campaigns
     const linkedCampaigns = await campaignListRepo.findByList(listId)
     for (const campaign of linkedCampaigns) {
@@ -122,6 +119,18 @@ async function processListCsvImport(job: Job<ListCsvImportEvent>) {
         maxOrder + 1,
       )
     }
+
+    const consolidation =
+      await leadRepo.consolidateActiveDuplicates(organizationId)
+    if (consolidation.groups > 0) {
+      logger.info(
+        { listId, ...consolidation },
+        'List CSV import consolidated active duplicate leads',
+      )
+    }
+
+    // Update list lead count after duplicate consolidation has moved entries.
+    await leadListService.refreshLeadCount(listId)
 
     // Update import status to completed
     await leadListService.updateImportStatus(listId, 'completed')

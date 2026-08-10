@@ -111,8 +111,9 @@ export const getLeadIdsForCampaign = async (
 // Get count of active leads across all lists in a campaign
 export const getActiveCampaignLeadCount = async (
   campaignId: string,
+  options: { assignedUserId?: string } = {},
 ): Promise<number> => {
-  const result = await db
+  let query = db
     .selectFrom('campaign_list')
     .innerJoin(
       'lead_list_entry',
@@ -124,7 +125,19 @@ export const getActiveCampaignLeadCount = async (
     .where('lead_list_entry.removedAt', 'is', null)
     .where('lead.deletedAt', 'is', null)
     .where(dialableLeadWhereSql)
-    .select((eb) => eb.fn.countAll().as('count'))
+
+  if (options.assignedUserId) {
+    query = query
+      .innerJoin('campaign_lead', (join) =>
+        join
+          .onRef('campaign_lead.campaignId', '=', 'campaign_list.campaignId')
+          .onRef('campaign_lead.leadId', '=', 'lead.id'),
+      )
+      .where('campaign_lead.assignedUserId', '=', options.assignedUserId)
+  }
+
+  const result = await query
+    .select(sql<number>`count(distinct lead.id)::int`.as('count'))
     .executeTakeFirst()
 
   return Number(result?.count ?? 0)
@@ -135,7 +148,10 @@ export const findCampaignLeadsWithOffset = async (
   campaignId: string,
   offset: number,
   limit: number = 1,
-  options: { timezonePriority?: PowerDialerTimezonePriority } = {},
+  options: {
+    timezonePriority?: PowerDialerTimezonePriority
+    assignedUserId?: string
+  } = {},
 ) => {
   let query = db
     .selectFrom('campaign_list')
@@ -169,6 +185,16 @@ export const findCampaignLeadsWithOffset = async (
       'lead.createdAt',
       'lead_list_entry.listId',
     ])
+
+  if (options.assignedUserId) {
+    query = query
+      .innerJoin('campaign_lead', (join) =>
+        join
+          .onRef('campaign_lead.campaignId', '=', 'campaign_list.campaignId')
+          .onRef('campaign_lead.leadId', '=', 'lead.id'),
+      )
+      .where('campaign_lead.assignedUserId', '=', options.assignedUserId)
+  }
 
   if (options.timezonePriority) {
     query = query.orderBy(

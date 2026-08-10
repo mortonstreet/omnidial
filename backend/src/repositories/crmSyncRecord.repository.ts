@@ -51,6 +51,32 @@ export const findByOrganization = async (organizationId: string) => {
     .execute()
 }
 
+export const findByProviderExternalId = async (
+  provider: string,
+  externalId: string,
+) => {
+  return db
+    .selectFrom('crm_sync_record' as any)
+    .where('provider', '=', provider)
+    .where('externalId', '=', externalId)
+    .selectAll()
+    .execute()
+}
+
+export const findByOrgProviderExternalId = async (
+  organizationId: string,
+  provider: string,
+  externalId: string,
+) => {
+  return db
+    .selectFrom('crm_sync_record' as any)
+    .where('organizationId', '=', organizationId)
+    .where('provider', '=', provider)
+    .where('externalId', '=', externalId)
+    .selectAll()
+    .execute()
+}
+
 export const create = async (data: CreateCrmSyncRecordInput) => {
   const record = withId(withTimestamps(data, true))
   return db

@@ -2,11 +2,29 @@ import * as progressRepo from '@/repositories/powerDialerProgress.repository'
 import * as leadListEntryRepo from '@/repositories/leadListEntry.repository'
 import * as leadListRepo from '@/repositories/leadList.repository'
 import * as campaignListRepo from '@/repositories/campaignList.repository'
+import * as campaignLeadRepo from '@/repositories/campaign-lead.repository'
 import * as callingNotificationService from '@/services/callingNotification.service'
 import type { PowerDialerTimezonePriority } from '@shared/types/src'
 
 // Special marker for campaign-level (all lists) mode
 const CAMPAIGN_ALL_LISTS = 'campaign-all'
+
+const getCampaignAssignmentScope = async (
+  campaignId: string,
+  userId: string,
+) => {
+  const assignedTotal = await campaignLeadRepo.countAssignedLeads(campaignId)
+  return assignedTotal > 0 ? { assignedUserId: userId } : {}
+}
+
+const getActiveCampaignLeadCountForUser = async (
+  campaignId: string,
+  userId: string,
+) =>
+  campaignListRepo.getActiveCampaignLeadCount(
+    campaignId,
+    await getCampaignAssignmentScope(campaignId, userId),
+  )
 
 export interface GetProgressParams {
   userId: string
@@ -32,7 +50,7 @@ export const getProgress = async (params: GetProgressParams) => {
     // Get total leads count - from campaign or specific list
     let totalLeads = 0
     if (effectiveListId === CAMPAIGN_ALL_LISTS) {
-      totalLeads = await campaignListRepo.getActiveCampaignLeadCount(campaignId)
+      totalLeads = await getActiveCampaignLeadCountForUser(campaignId, userId)
     } else {
       const list = await leadListRepo.findById(effectiveListId, organizationId)
       totalLeads = list
@@ -87,7 +105,7 @@ export const startSession = async (params: StartSessionParams) => {
   // Get total leads count - from campaign or specific list
   let totalLeads = 0
   if (effectiveListId === CAMPAIGN_ALL_LISTS) {
-    totalLeads = await campaignListRepo.getActiveCampaignLeadCount(campaignId)
+    totalLeads = await getActiveCampaignLeadCountForUser(campaignId, userId)
     if (totalLeads === 0) {
       throw new Error('No dialable leads found in campaign lists')
     }
@@ -176,7 +194,7 @@ export const getNextLead = async (params: GetNextLeadParams) => {
   if (!progress) {
     let totalLeads = 0
     if (isCampaignMode) {
-      totalLeads = await campaignListRepo.getActiveCampaignLeadCount(campaignId)
+      totalLeads = await getActiveCampaignLeadCountForUser(campaignId, userId)
     } else {
       const list = await leadListRepo.findById(effectiveListId, organizationId)
       if (!list) {
@@ -199,8 +217,10 @@ export const getNextLead = async (params: GetNextLeadParams) => {
   // Get dynamic active lead count (excludes soft-removed leads)
   let activeLeadCount: number
   if (isCampaignMode) {
-    activeLeadCount =
-      await campaignListRepo.getActiveCampaignLeadCount(campaignId)
+    activeLeadCount = await getActiveCampaignLeadCountForUser(
+      campaignId,
+      userId,
+    )
   } else {
     activeLeadCount =
       await leadListEntryRepo.getActiveLeadCount(effectiveListId)
@@ -227,11 +247,12 @@ export const getNextLead = async (params: GetNextLeadParams) => {
   let lead = null
   if (isCampaignMode) {
     // Fetch from all campaign lists
+    const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
     const leads = await campaignListRepo.findCampaignLeadsWithOffset(
       campaignId,
       effectiveIndex,
       1,
-      { timezonePriority },
+      { timezonePriority, ...assignmentScope },
     )
     lead = leads.length > 0 ? leads[0] : null
   } else {
@@ -293,8 +314,10 @@ export const skipLead = async (params: SkipLeadParams) => {
   // Get dynamic active lead count
   let activeLeadCount: number
   if (isCampaignMode) {
-    activeLeadCount =
-      await campaignListRepo.getActiveCampaignLeadCount(campaignId)
+    activeLeadCount = await getActiveCampaignLeadCountForUser(
+      campaignId,
+      userId,
+    )
   } else {
     activeLeadCount =
       await leadListEntryRepo.getActiveLeadCount(effectiveListId)
@@ -320,11 +343,12 @@ export const skipLead = async (params: SkipLeadParams) => {
   // Fetch the lead at the effective index
   let lead = null
   if (isCampaignMode) {
+    const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
     const leads = await campaignListRepo.findCampaignLeadsWithOffset(
       campaignId,
       effectiveIndex,
       1,
-      { timezonePriority },
+      { timezonePriority, ...assignmentScope },
     )
     lead = leads.length > 0 ? leads[0] : null
   } else {
@@ -404,8 +428,10 @@ export const goToPrevious = async (params: GoToPreviousParams) => {
   // Get dynamic active lead count
   let activeLeadCount: number
   if (isCampaignMode) {
-    activeLeadCount =
-      await campaignListRepo.getActiveCampaignLeadCount(campaignId)
+    activeLeadCount = await getActiveCampaignLeadCountForUser(
+      campaignId,
+      userId,
+    )
   } else {
     activeLeadCount =
       await leadListEntryRepo.getActiveLeadCount(effectiveListId)
@@ -460,11 +486,12 @@ export const goToPrevious = async (params: GoToPreviousParams) => {
   // Fetch the lead at the effective index
   let lead = null
   if (isCampaignMode) {
+    const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
     const leads = await campaignListRepo.findCampaignLeadsWithOffset(
       campaignId,
       effectiveIndex,
       1,
-      { timezonePriority },
+      { timezonePriority, ...assignmentScope },
     )
     lead = leads.length > 0 ? leads[0] : null
   } else {

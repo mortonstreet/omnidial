@@ -202,6 +202,7 @@ export const ENDPOINTS = {
   CRM: {
     CONNECTED: '/crm/connected',
     PUSH: '/crm/push',
+    BULK_PUSH: '/crm/bulk-push',
     PRESENCE: '/crm/presence',
     TEST: '/crm/test',
   },

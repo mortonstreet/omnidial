@@ -39,6 +39,14 @@ export const findByOrganizationAndProvider = async (
     .executeTakeFirst()
 }
 
+export const findByProvider = async (provider: string) => {
+  return db
+    .selectFrom('integration')
+    .where('provider', '=', provider)
+    .selectAll()
+    .execute()
+}
+
 export const create = async (data: CreateIntegrationInput) => {
   const record = withId(withTimestamps(data, true))
   return db

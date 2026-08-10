@@ -829,11 +829,81 @@ export interface BulkCreateLeadInput {
   customFields?: Record<string, string>
 }
 
-export const bulkCreateIgnoreConflicts = async (
+export interface BulkUpsertLeadsResult {
+  leadIds: string[]
+  inserted: number
+  upserted: number
+}
+
+const fillBlankColumnSql = (columnName: string) =>
+  sql<string | null>`case
+    when nullif(btrim(lead.${sql.ref(columnName)}), '') is null
+      then excluded.${sql.ref(columnName)}
+    else lead.${sql.ref(columnName)}
+  end`
+
+const parseCustomFields = (value: unknown): Record<string, string> => {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, string>)
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  return typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, string>)
+    : {}
+}
+
+const isBlankValue = (value: unknown) =>
+  value === null || value === undefined || String(value).trim() === ''
+
+const normalizeIdentityValue = (value: string | null | undefined) =>
+  value?.trim().replace(/\s+/g, ' ').toLowerCase() || null
+
+const normalizeLinkedInIdentity = (value: string | null | undefined) =>
+  value?.trim().replace(/\/+$/, '').toLowerCase() || null
+
+const leadCompletenessScore = (
+  lead: Pick<
+    DuplicateLeadData,
+    | 'firstName'
+    | 'lastName'
+    | 'email'
+    | 'phone'
+    | 'company'
+    | 'title'
+    | 'linkedInUrl'
+    | 'website'
+  > & { customFields?: unknown; pipelineStageId?: string | null },
+): number => {
+  let score = 0
+  if (lead.firstName) score += 2
+  if (lead.lastName) score += 2
+  if (lead.email) score += 3
+  if (lead.phone) score += 3
+  if (lead.company) score += 2
+  if (lead.title) score += 1
+  if (lead.linkedInUrl) score += 2
+  if (lead.website) score += 1
+  if (lead.pipelineStageId) score += 1
+  score += Object.values(parseCustomFields(lead.customFields)).filter(
+    (value) => !isBlankValue(value),
+  ).length
+  return score
+}
+
+export const bulkUpsertFillBlanks = async (
   organizationId: string,
   leads: BulkCreateLeadInput[],
-): Promise<string[]> => {
-  if (leads.length === 0) return []
+): Promise<BulkUpsertLeadsResult> => {
+  if (leads.length === 0) {
+    return { leadIds: [], inserted: 0, upserted: 0 }
+  }
 
   const values = leads.map((lead) => {
     const phone = lead.phone?.trim() || null
@@ -868,9 +938,10 @@ export const bulkCreateIgnoreConflicts = async (
     }
   })
 
-  // Use ON CONFLICT on the unique partial index for normalized phone
-  // This prevents duplicate leads with the same normalized phone in the same org
-  const insertedRows = await db
+  // On duplicate phone, keep the active lead and fill only blank fields from the upload.
+  // Existing non-blank CRM values win, so re-uploads enrich sparse leads without
+  // overwriting rep-entered data.
+  const rows = await db
     .insertInto('lead')
     .values(values)
     .onConflict((oc) =>
@@ -879,35 +950,151 @@ export const bulkCreateIgnoreConflicts = async (
         .column('normalizedPhone')
         .where('normalizedPhone', 'is not', null)
         .where('deletedAt', 'is', null)
-        .doNothing(),
+        .doUpdateSet({
+          firstName: fillBlankColumnSql('firstName'),
+          lastName: fillBlankColumnSql('lastName'),
+          email: fillBlankColumnSql('email'),
+          phone: fillBlankColumnSql('phone'),
+          company: fillBlankColumnSql('company'),
+          title: fillBlankColumnSql('title'),
+          linkedInUrl: fillBlankColumnSql('linkedInUrl'),
+          website: fillBlankColumnSql('website'),
+          customFields: sql`coalesce(excluded."customFields", '{}'::jsonb) || coalesce(lead."customFields", '{}'::jsonb)`,
+          updatedAt: new Date(),
+        }),
     )
     .returning(['id', 'normalizedPhone'])
     .execute()
 
-  const insertedIds = insertedRows.map((row) => row.id)
+  const leadIds = rows.map((row) => row.id)
+  const uniqueLeadIds = Array.from(new Set(leadIds))
 
-  // Look up actual lead IDs by normalized phone, since ON CONFLICT DO NOTHING
-  // means some pre-generated IDs may not have been inserted (duplicates).
-  // We need to return the real IDs (whether newly created or already existing).
-  const normalizedPhones = values
-    .map((v) => v.normalizedPhone)
-    .filter((p): p is string => p !== null)
-
-  if (normalizedPhones.length === 0) return insertedIds
-
-  const existingLeads = await db
-    .selectFrom('lead')
-    .select(['id', 'normalizedPhone'])
-    .where('organizationId', '=', organizationId)
-    .where('normalizedPhone', 'in', normalizedPhones)
-    .where('deletedAt', 'is', null)
-    .execute()
-
-  const allIds = new Set<string>(insertedIds)
-  for (const lead of existingLeads) {
-    allIds.add(lead.id)
+  return {
+    leadIds: uniqueLeadIds,
+    inserted: uniqueLeadIds.length,
+    upserted: rows.length,
   }
-  return Array.from(allIds)
+}
+
+export const bulkCreateIgnoreConflicts = async (
+  organizationId: string,
+  leads: BulkCreateLeadInput[],
+): Promise<string[]> => {
+  const result = await bulkUpsertFillBlanks(organizationId, leads)
+  return result.leadIds
+}
+
+export const createManyFillBlanks = async (
+  organizationId: string,
+  leads: BulkCreateLeadInput[],
+) => {
+  const result = await bulkUpsertFillBlanks(organizationId, leads)
+  return findByIds(result.leadIds, organizationId)
+}
+
+interface DuplicateIdentityRow {
+  identityKey: string
+  leadIds: string[]
+}
+
+const findDuplicateIdentityRows = async (
+  organizationId: string,
+): Promise<DuplicateIdentityRow[]> => {
+  const result = await sql<DuplicateIdentityRow>`
+    with lead_identities as (
+      select
+        id,
+        "createdAt",
+        unnest(array_remove(array[
+          case
+            when nullif(btrim(coalesce("normalizedPhone", '')), '') is not null
+              then 'phone:' || "normalizedPhone"
+          end,
+          case
+            when nullif(btrim(coalesce(email, '')), '') is not null
+              then 'email:' || lower(btrim(email))
+          end,
+          case
+            when nullif(btrim(coalesce("linkedInUrl", '')), '') is not null
+              then 'linkedin:' || lower(regexp_replace(btrim("linkedInUrl"), '/+$', ''))
+          end,
+          case
+            when nullif(btrim(coalesce("firstName", '')), '') is not null
+              and nullif(btrim(coalesce("lastName", '')), '') is not null
+              and nullif(btrim(coalesce(company, '')), '') is not null
+              and (
+                nullif(btrim(coalesce("normalizedPhone", '')), '') is not null
+                or nullif(btrim(coalesce(email, '')), '') is not null
+                or nullif(btrim(coalesce("linkedInUrl", '')), '') is not null
+              )
+              then 'strict:' ||
+                lower(btrim("firstName")) || '|' ||
+                lower(btrim("lastName")) || '|' ||
+                lower(btrim(company)) || '|' ||
+                coalesce(
+                  nullif(btrim("normalizedPhone"), ''),
+                  lower(nullif(btrim(email), '')),
+                  lower(regexp_replace(nullif(btrim("linkedInUrl"), ''), '/+$', ''))
+                )
+          end
+        ], null)) as "identityKey"
+      from lead
+      where "organizationId" = ${organizationId}
+        and "deletedAt" is null
+    )
+    select
+      "identityKey",
+      array_agg(id order by "createdAt" asc) as "leadIds"
+    from lead_identities
+    group by "identityKey"
+    having count(*) > 1
+  `.execute(db)
+
+  return result.rows
+}
+
+const buildDuplicateComponents = (rows: DuplicateIdentityRow[]) => {
+  const parent = new Map<string, string>()
+
+  const find = (id: string): string => {
+    const current = parent.get(id) ?? id
+    if (current === id) {
+      parent.set(id, id)
+      return id
+    }
+    const root = find(current)
+    parent.set(id, root)
+    return root
+  }
+
+  const union = (a: string, b: string) => {
+    const rootA = find(a)
+    const rootB = find(b)
+    if (rootA !== rootB) {
+      parent.set(rootB, rootA)
+    }
+  }
+
+  for (const row of rows) {
+    const [first, ...rest] = row.leadIds
+    if (!first) continue
+    find(first)
+    for (const id of rest) {
+      union(first, id)
+    }
+  }
+
+  const components = new Map<string, Set<string>>()
+  for (const id of parent.keys()) {
+    const root = find(id)
+    const component = components.get(root) ?? new Set<string>()
+    component.add(id)
+    components.set(root, component)
+  }
+
+  return Array.from(components.values())
+    .map((component) => Array.from(component))
+    .filter((component) => component.length > 1)
 }
 
 // Bulk update pipeline stage for multiple leads
@@ -1069,6 +1256,7 @@ export const mergeLeadData = async (
 
   // Determine what fields to fill from source leads
   const updates: Partial<UpdateLeadInput> = {}
+  const mergedCustomFields = parseCustomFields(targetLead.customFields)
 
   for (const source of sourceLeads) {
     // Fill in empty fields from source
@@ -1093,10 +1281,244 @@ export const mergeLeadData = async (
     if (!targetLead.website && source.website && !updates.website) {
       updates.website = source.website
     }
+    if (!targetLead.pipelineStageId && source.pipelineStageId) {
+      updates.pipelineStageId = source.pipelineStageId
+    }
+    if (!targetLead.dealValue && source.dealValue) {
+      updates.dealValue = Number(source.dealValue)
+    }
+
+    const sourceCustomFields = parseCustomFields(source.customFields)
+    for (const [key, value] of Object.entries(sourceCustomFields)) {
+      if (isBlankValue(value)) continue
+      if (isBlankValue(mergedCustomFields[key])) {
+        mergedCustomFields[key] = value
+      }
+    }
+  }
+
+  if (
+    JSON.stringify(mergedCustomFields) !==
+    JSON.stringify(parseCustomFields(targetLead.customFields))
+  ) {
+    updates.customFields = mergedCustomFields
   }
 
   // Only update if there are fields to merge
   if (Object.keys(updates).length > 0) {
     await update(targetLeadId, organizationId, updates)
   }
+}
+
+const reassignDuplicateLeadReferences = async (
+  executor: typeof db,
+  targetLeadId: string,
+  sourceLeadIds: string[],
+) => {
+  if (sourceLeadIds.length === 0) return
+  const sourceIds = sql.join(sourceLeadIds)
+
+  await sql`
+    insert into campaign_lead (
+      id, "campaignId", "leadId", "assignedUserId", status, "dialOrder",
+      "createdAt", "predictiveScore", "scoreDialOrder"
+    )
+    select
+      gen_random_uuid(), "campaignId", ${targetLeadId}, "assignedUserId",
+      status, "dialOrder", "createdAt", "predictiveScore", "scoreDialOrder"
+    from campaign_lead
+    where "leadId" in (${sourceIds})
+    on conflict ("campaignId", "leadId") do update set
+      "assignedUserId" = coalesce(campaign_lead."assignedUserId", excluded."assignedUserId"),
+      status = case
+        when campaign_lead.status = 'pending' then excluded.status
+        else campaign_lead.status
+      end,
+      "dialOrder" = least(campaign_lead."dialOrder", excluded."dialOrder"),
+      "predictiveScore" = coalesce(campaign_lead."predictiveScore", excluded."predictiveScore"),
+      "scoreDialOrder" = coalesce(campaign_lead."scoreDialOrder", excluded."scoreDialOrder")
+  `.execute(executor)
+
+  await sql`
+    insert into lead_list_entry (
+      id, "listId", "leadId", "sortOrder", "createdAt", "removedAt"
+    )
+    select
+      gen_random_uuid(), "listId", ${targetLeadId}, "sortOrder", "createdAt", "removedAt"
+    from lead_list_entry
+    where "leadId" in (${sourceIds})
+    on conflict ("listId", "leadId") do update set
+      "removedAt" = case
+        when excluded."removedAt" is null then null
+        else lead_list_entry."removedAt"
+      end,
+      "sortOrder" = least(lead_list_entry."sortOrder", excluded."sortOrder")
+  `.execute(executor)
+
+  await sql`
+    insert into crm_sync_record (
+      id, "organizationId", "leadId", provider, "externalId", "externalUrl",
+      "syncDirection", "syncStatus", "lastSyncedAt", "errorMessage",
+      "createdAt", "updatedAt"
+    )
+    select
+      gen_random_uuid(), "organizationId", ${targetLeadId}, provider, "externalId",
+      "externalUrl", "syncDirection", "syncStatus", "lastSyncedAt",
+      "errorMessage", "createdAt", now()
+    from crm_sync_record
+    where "leadId" in (${sourceIds})
+    on conflict ("organizationId", "leadId", provider) do nothing
+  `.execute(executor)
+
+  await sql`
+    insert into lead_predictive_score (
+      id, "organizationId", "leadId", score, "phoneType", "bestDayOfWeek",
+      "bestHourOfDay", "totalAttempts", "totalAnswers", "lastAttemptAt",
+      "lastAnswerAt", "hasPersonalVoicemail", "calculatedAt", "updatedAt"
+    )
+    select
+      gen_random_uuid(), "organizationId", ${targetLeadId}, score, "phoneType",
+      "bestDayOfWeek", "bestHourOfDay", "totalAttempts", "totalAnswers",
+      "lastAttemptAt", "lastAnswerAt", "hasPersonalVoicemail", "calculatedAt", now()
+    from lead_predictive_score
+    where "leadId" in (${sourceIds})
+    on conflict ("leadId") do update set
+      "totalAttempts" = lead_predictive_score."totalAttempts" + excluded."totalAttempts",
+      "totalAnswers" = lead_predictive_score."totalAnswers" + excluded."totalAnswers",
+      "lastAttemptAt" = greatest(lead_predictive_score."lastAttemptAt", excluded."lastAttemptAt"),
+      "lastAnswerAt" = greatest(lead_predictive_score."lastAnswerAt", excluded."lastAnswerAt"),
+      "hasPersonalVoicemail" = coalesce(lead_predictive_score."hasPersonalVoicemail", excluded."hasPersonalVoicemail"),
+      "updatedAt" = now()
+  `.execute(executor)
+
+  await sql`
+    insert into sms_campaign_enrollment (
+      id, "campaignId", "leadId", status, "currentStep", "nextSendAt",
+      timezone, "researchData", "lastSentAt", "repliedAt", "unsubscribedAt",
+      "enrolledAt", "completedAt", "createdAt", "updatedAt"
+    )
+    select
+      gen_random_uuid(), "campaignId", ${targetLeadId}, status, "currentStep",
+      "nextSendAt", timezone, "researchData", "lastSentAt", "repliedAt",
+      "unsubscribedAt", "enrolledAt", "completedAt", "createdAt", now()
+    from sms_campaign_enrollment
+    where "leadId" in (${sourceIds})
+    on conflict ("campaignId", "leadId") do nothing
+  `.execute(executor)
+
+  const simpleLeadReferenceTables = [
+    'note',
+    'task',
+    'call',
+    'schedule_event',
+    'call_intelligence',
+    'lead_contact_info',
+    'enrichment_history',
+    'research_task',
+    'research_approval',
+    'research_history',
+    'parallel_dial_attempt',
+    'agent_message',
+    'agent_execution',
+    'agent_approval',
+    'sms_campaign_message',
+    'lead_qualification',
+  ]
+
+  for (const tableName of simpleLeadReferenceTables) {
+    await sql`
+      update ${sql.table(tableName)}
+      set "leadId" = ${targetLeadId}
+      where "leadId" in (${sourceIds})
+    `.execute(executor)
+  }
+
+  await sql`
+    delete from campaign_lead
+    where "leadId" in (${sourceIds})
+  `.execute(executor)
+
+  await sql`
+    delete from lead_list_entry
+    where "leadId" in (${sourceIds})
+  `.execute(executor)
+
+  await sql`
+    delete from crm_sync_record
+    where "leadId" in (${sourceIds})
+  `.execute(executor)
+
+  await sql`
+    delete from lead_predictive_score
+    where "leadId" in (${sourceIds})
+  `.execute(executor)
+
+  await sql`
+    update sms_campaign_enrollment
+    set status = case when status = 'active' then 'paused' else status end,
+        "nextSendAt" = null,
+        "updatedAt" = now()
+    where "leadId" in (${sourceIds})
+  `.execute(executor)
+}
+
+export interface ConsolidateDuplicateLeadsResult {
+  groups: number
+  mergedLeads: number
+  deletedLeads: number
+}
+
+export const consolidateActiveDuplicates = async (
+  organizationId: string,
+): Promise<ConsolidateDuplicateLeadsResult> => {
+  const duplicateRows = await findDuplicateIdentityRows(organizationId)
+  const components = buildDuplicateComponents(duplicateRows)
+
+  if (components.length === 0) {
+    return { groups: 0, mergedLeads: 0, deletedLeads: 0 }
+  }
+
+  let groups = 0
+  let mergedLeads = 0
+  let deletedLeads = 0
+
+  for (const component of components) {
+    const leads = await findByIds(component, organizationId)
+    if (leads.length < 2) continue
+
+    const sorted = [...leads].sort((a, b) => {
+      const scoreDiff = leadCompletenessScore(b) - leadCompletenessScore(a)
+      if (scoreDiff !== 0) return scoreDiff
+      return a.createdAt.getTime() - b.createdAt.getTime()
+    })
+
+    const targetLead = sorted[0]
+    const sourceLeadIds = sorted.slice(1).map((lead) => lead.id)
+    if (!targetLead || sourceLeadIds.length === 0) continue
+
+    await db.transaction().execute(async (trx) => {
+      await mergeLeadData(targetLead.id, sourceLeadIds, organizationId)
+      await reassignDuplicateLeadReferences(
+        trx as typeof db,
+        targetLead.id,
+        sourceLeadIds,
+      )
+      await trx
+        .updateTable('lead')
+        .set({
+          deletedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where('id', 'in', sourceLeadIds)
+        .where('organizationId', '=', organizationId)
+        .where('deletedAt', 'is', null)
+        .execute()
+    })
+
+    groups++
+    mergedLeads += sourceLeadIds.length
+    deletedLeads += sourceLeadIds.length
+  }
+
+  return { groups, mergedLeads, deletedLeads }
 }
