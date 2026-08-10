@@ -93,6 +93,26 @@ export const TIMEZONE_PRIORITY_ORDER: Record<
   pacific: ['pacific', 'eastern', 'central', 'mountain'],
 }
 
+export const TIMEZONE_BUCKET_LABELS: Record<
+  PowerDialerTimezonePriority,
+  string
+> = {
+  eastern: 'EST',
+  central: 'CST',
+  mountain: 'MST',
+  pacific: 'PST',
+}
+
+export const CANONICAL_TIMEZONE_BY_BUCKET: Record<
+  PowerDialerTimezonePriority,
+  string
+> = {
+  eastern: 'America/New_York',
+  central: 'America/Chicago',
+  mountain: 'America/Denver',
+  pacific: 'America/Los_Angeles',
+}
+
 const BUCKET_BY_TIMEZONE = new Map<string, PowerDialerTimezonePriority>(
   (
     Object.entries(TIMEZONE_GROUPS) as Array<

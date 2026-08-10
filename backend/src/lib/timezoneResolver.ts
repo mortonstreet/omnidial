@@ -2,9 +2,8 @@
  * Offline timezone resolution.
  *
  * Every lookup in this file is a pure, in-process table lookup — no network
- * calls, no API keys, no cost, no rate limits. It is the primary resolver for
- * lead timezones; the paid enrichment paths in timezone.service.ts are only
- * consulted for leads this file cannot place.
+ * calls, no API keys, no cost, no rate limits. It is the single source of
+ * truth used when leads are created, imported, updated, or backfilled.
  *
  * Signals, in descending order of confidence:
  *   1. An explicit person-level IANA timezone on the record (some vendor

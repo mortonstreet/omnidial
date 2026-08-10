@@ -558,42 +558,6 @@ export function useGenerateCompanySummary() {
   })
 }
 
-// Timezone resolution response type
-interface ResolveTimezoneResponse {
-  timezone: string | null
-  cached: boolean
-  location?: string | null
-}
-
-// Resolve timezone from LinkedIn location
-export function useResolveTimezone() {
-  const queryClient = useQueryClient()
-  const activeOrganization = useActiveOrganization()
-  const orgId = activeOrganization?.data?.id
-
-  return useMutation({
-    mutationFn: async (leadId: string) => {
-      return post<ResolveTimezoneResponse>(
-        ENDPOINTS.LEADS.RESOLVE_TIMEZONE(leadId),
-        {
-          organizationId: orgId,
-        },
-      )
-    },
-    onSuccess: (data, leadId) => {
-      // Cache the timezone result
-      queryClient.setQueryData(QUERY_KEYS.leadTimezone(leadId), data)
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lead(leadId) })
-      // Update power dialer next-lead cache to include timezone
-      queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[0] === 'power-dialer' &&
-          query.queryKey[1] === 'next-lead',
-      })
-    },
-  })
-}
-
 // Enrich lead response type
 interface EnrichLeadResponse {
   extracted: {

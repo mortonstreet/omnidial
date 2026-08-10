@@ -197,7 +197,6 @@ export const ENDPOINTS = {
     CALLS: (id: string) => `/leads/${id}/calls`,
     COMPANY_SUMMARY: (id: string) => `/leads/${id}/company-summary`,
     ENRICH_FROM_WEBSITE: (id: string) => `/leads/${id}/enrich-from-website`,
-    RESOLVE_TIMEZONE: (id: string) => `/leads/${id}/resolve-timezone`,
   },
   CRM: {
     CONNECTED: '/crm/connected',
@@ -672,7 +671,6 @@ export const QUERY_KEYS = {
   leadActivity: (leadId: string) => ['lead', leadId, 'activity'] as const,
   leadCompanySummary: (leadId: string) =>
     ['lead', leadId, 'company-summary'] as const,
-  leadTimezone: (leadId: string) => ['lead', leadId, 'timezone'] as const,
   connectedCrms: (orgId?: string) => ['crm', 'connected', orgId] as const,
   crmPresence: (orgId?: string, leadId?: string) =>
     ['crm', 'presence', orgId, leadId] as const,

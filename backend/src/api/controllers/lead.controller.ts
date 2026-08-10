@@ -1,6 +1,5 @@
 import * as leadService from '@/services/lead.service'
 import * as companySummaryService from '@/services/companySummary.service'
-import * as timezoneService from '@/services/timezone.service'
 import { AuthRequestHandler } from '@/types/handlers'
 import {
   ListLeadsRequest,
@@ -304,32 +303,6 @@ export const enrichLeadFromWebsite: AuthRequestHandler<
     }
 
     console.error('Failed to enrich lead from website:', error)
-    res.status(500).json({ error: message })
-  }
-}
-
-// Resolve timezone for a lead from LinkedIn location
-export const resolveTimezone: AuthRequestHandler<
-  GenerateCompanySummaryRequest // Reusing same request type (id + organizationId)
-> = async (req, res) => {
-  const { id, organizationId } = req.validated
-
-  try {
-    const result = await timezoneService.resolveTimezone({
-      leadId: id,
-      organizationId,
-    })
-    res.json(result)
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to resolve timezone'
-
-    if (message === 'Lead not found') {
-      res.status(404).json({ error: message })
-      return
-    }
-
-    console.error('Failed to resolve timezone:', error)
     res.status(500).json({ error: message })
   }
 }

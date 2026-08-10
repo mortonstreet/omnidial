@@ -37,7 +37,6 @@ import {
   getLeadCalls,
   generateCompanySummary,
   enrichLeadFromWebsite,
-  resolveTimezone,
 } from '@/api/controllers/lead.controller'
 
 const router = Router()
@@ -103,15 +102,6 @@ router.post(
   validateAndMerge(GenerateCompanySummaryRequestSchema), // Reusing same schema
   validateMemberOfOrganization,
   authenticatedRoute(enrichLeadFromWebsite),
-)
-
-// Resolve timezone from LinkedIn location
-router.post(
-  '/:id/resolve-timezone',
-  withBetterAuth,
-  validateAndMerge(GenerateCompanySummaryRequestSchema), // Reusing same schema
-  validateMemberOfOrganization,
-  authenticatedRoute(resolveTimezone),
 )
 
 // Create lead

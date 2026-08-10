@@ -28,7 +28,10 @@ import {
 } from '@/hooks/api/usePowerDialer'
 import { useSoftRemoveLeadFromList } from '@/hooks/api/useLists'
 import { useGenerateCompanySummary } from '@/hooks/api/useLeads'
-import { getTimezoneBucket } from '@shared/types/src/constants/timezones'
+import {
+  getTimezoneBucket,
+  TIMEZONE_BUCKET_LABELS,
+} from '@shared/types/src/constants/timezones'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,13 +57,6 @@ const TIMEZONE_PRIORITY_OPTIONS: Array<{
   { value: 'mountain', label: 'MST', order: 'MST -> PST -> EST -> CST' },
   { value: 'pacific', label: 'PST', order: 'PST -> EST -> CST -> MST' },
 ]
-
-const TIMEZONE_SHORT_LABELS: Record<TimezonePriority, string> = {
-  eastern: 'EST',
-  central: 'CST',
-  mountain: 'MST',
-  pacific: 'PST',
-}
 
 const getLeadDisplayName = (lead: Lead) =>
   [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() ||
@@ -759,7 +755,7 @@ export function PowerDialerControls({
                   className="inline-flex items-center rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
                   title="Lead timezone bucket"
                 >
-                  {TIMEZONE_SHORT_LABELS[currentLeadTimezoneBucket]}
+                  {TIMEZONE_BUCKET_LABELS[currentLeadTimezoneBucket]}
                 </span>
               )}
               {currentLeadTimezone && (

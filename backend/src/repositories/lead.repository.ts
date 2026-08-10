@@ -8,6 +8,7 @@ import {
   getLastNDigits,
   validateAndNormalizePhone,
 } from '@/lib/phone'
+import { resolveTimezoneOffline } from '@/lib/timezoneResolver'
 
 export interface CreateLeadInput {
   organizationId: string
@@ -36,6 +37,7 @@ export interface UpdateLeadInput {
   linkedInUrl?: string | null
   website?: string | null
   customFields?: Record<string, string>
+  normalizedPhone?: string | null
   pipelineStageId?: string | null
   dealValue?: number | null
   clientId?: string | null
@@ -114,6 +116,11 @@ export const create = async (data: CreateLeadInput) => {
       : phone
         ? validateAndNormalizePhone(phone)
         : null
+  const resolvedTimezone = resolveTimezoneOffline({
+    customFields: data.customFields,
+    phone,
+    normalizedPhone,
+  })
 
   const lead = await db
     .insertInto('lead')
@@ -132,6 +139,8 @@ export const create = async (data: CreateLeadInput) => {
             linkedInUrl: data.linkedInUrl ?? null,
             website: data.website ?? null,
             customFields: JSON.stringify(data.customFields ?? {}),
+            timezone: resolvedTimezone.timezone,
+            timezoneResolvedAt: new Date(),
             pipelineStageId: data.pipelineStageId ?? null,
             dealValue: data.dealValue
               ? new Decimal(data.dealValue).toString()
@@ -164,6 +173,11 @@ export const createMany = async (
         : phone
           ? validateAndNormalizePhone(phone)
           : null
+    const resolvedTimezone = resolveTimezoneOffline({
+      customFields: lead.customFields,
+      phone,
+      normalizedPhone,
+    })
 
     return {
       ...withId(
@@ -180,6 +194,8 @@ export const createMany = async (
             linkedInUrl: lead.linkedInUrl ?? null,
             website: (lead as CreateLeadInput).website ?? null,
             customFields: JSON.stringify(lead.customFields ?? {}),
+            timezone: resolvedTimezone.timezone,
+            timezoneResolvedAt: new Date(),
             pipelineStageId: lead.pipelineStageId ?? null,
             dealValue: lead.dealValue
               ? new Decimal(lead.dealValue).toString()
@@ -600,7 +616,23 @@ export const update = async (
   if (data.firstName !== undefined) updateData.firstName = data.firstName
   if (data.lastName !== undefined) updateData.lastName = data.lastName
   if (data.email !== undefined) updateData.email = data.email
-  if (data.phone !== undefined) updateData.phone = data.phone
+  const shouldResolveTimezone =
+    data.phone !== undefined ||
+    data.normalizedPhone !== undefined ||
+    data.customFields !== undefined
+
+  if (data.phone !== undefined) {
+    const phone = data.phone?.trim() || null
+    updateData.phone = phone
+    updateData.normalizedPhone =
+      data.normalizedPhone !== undefined
+        ? data.normalizedPhone
+        : phone
+          ? validateAndNormalizePhone(phone)
+          : null
+  } else if (data.normalizedPhone !== undefined) {
+    updateData.normalizedPhone = data.normalizedPhone
+  }
   if (data.company !== undefined) updateData.company = data.company
   if (data.title !== undefined) updateData.title = data.title
   if (data.linkedInUrl !== undefined) updateData.linkedInUrl = data.linkedInUrl
@@ -617,6 +649,28 @@ export const update = async (
   if (data.clientId !== undefined) updateData.clientId = data.clientId
   if (data.lastModifiedById !== undefined)
     updateData.lastModifiedById = data.lastModifiedById
+
+  if (shouldResolveTimezone) {
+    const currentLead = await findById(id, organizationId)
+    if (!currentLead) return null
+
+    const resolvedTimezone = resolveTimezoneOffline({
+      customFields:
+        data.customFields !== undefined
+          ? data.customFields
+          : currentLead.customFields,
+      phone:
+        data.phone !== undefined
+          ? (updateData.phone as string | null)
+          : currentLead.phone,
+      normalizedPhone:
+        updateData.normalizedPhone !== undefined
+          ? (updateData.normalizedPhone as string | null)
+          : currentLead.normalizedPhone,
+    })
+    updateData.timezone = resolvedTimezone.timezone
+    updateData.timezoneResolvedAt = new Date()
+  }
 
   const lead = await db
     .updateTable('lead')
@@ -915,6 +969,11 @@ export const bulkUpsertFillBlanks = async (
         : phone
           ? validateAndNormalizePhone(phone)
           : null
+    const resolvedTimezone = resolveTimezoneOffline({
+      customFields: lead.customFields,
+      phone,
+      normalizedPhone,
+    })
 
     return {
       ...withId(
@@ -931,6 +990,8 @@ export const bulkUpsertFillBlanks = async (
             linkedInUrl: lead.linkedInUrl ?? null,
             website: lead.website ?? null,
             customFields: JSON.stringify(lead.customFields || {}),
+            timezone: resolvedTimezone.timezone,
+            timezoneResolvedAt: new Date(),
           },
           true,
         ),
@@ -960,6 +1021,12 @@ export const bulkUpsertFillBlanks = async (
           linkedInUrl: fillBlankColumnSql('linkedInUrl'),
           website: fillBlankColumnSql('website'),
           customFields: sql`coalesce(excluded."customFields", '{}'::jsonb) || coalesce(lead."customFields", '{}'::jsonb)`,
+          timezone: fillBlankColumnSql('timezone'),
+          timezoneResolvedAt: sql`case
+            when nullif(btrim(coalesce(lead.timezone, '')), '') is null
+              then excluded."timezoneResolvedAt"
+            else lead."timezoneResolvedAt"
+          end`,
           updatedAt: new Date(),
         }),
     )
