@@ -242,8 +242,8 @@ model ClientPhoneNumber {
 /// Assigning numbers per client meant every rep working that client shared the
 /// same pool, so two reps could dial out from one number at the same time. The
 /// unique constraint below is what makes single ownership structural rather
-/// than a UI convention — see also the server-side check in
-/// `initiateOutboundCall`, since `fromNumber` arrives from the client.
+/// than a UI convention. Outbound call creation also allocates caller IDs on
+/// the server, so the browser never chooses a colleague's number.
 model UserPhoneNumber {
   id             String   @id @default(uuid())
   organizationId String
@@ -1236,6 +1236,7 @@ model ParallelDialAttempt {
   sessionId        String
   leadId           String
   callSid          String?   @unique // Twilio call SID
+  fromNumber       String? // Caller ID used for this attempt
   status           String    @default("dialing") // "dialing" | "ringing" | "connected" | "abandoned" | "failed" | "no_answer"
   wasConnected     Boolean   @default(false) // True if this lead answered first
   wasAbandoned     Boolean   @default(false) // True if answered but dropped due to another connect
@@ -1248,6 +1249,7 @@ model ParallelDialAttempt {
 
   @@index([sessionId])
   @@index([leadId])
+  @@index([fromNumber])
   @@map("parallel_dial_attempt")
 }
 

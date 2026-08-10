@@ -164,10 +164,6 @@ router.post(
   async (req, res: Response, next: NextFunction) => {
     try {
       const authReq = req as AuthRequest<unknown>
-      const { fromNumber } = req.body
-      if (!fromNumber) {
-        return res.status(400).json({ error: 'fromNumber is required' })
-      }
       const orgId = getOrgId(authReq)
       if (!orgId) {
         return res.status(400).json({ error: 'No active organization' })
@@ -176,7 +172,7 @@ router.post(
       const attempts = await parallelDialerService.dialNextBatch(
         req.params.id,
         orgId,
-        fromNumber,
+        authReq.user.id,
       )
 
       res.json({ attempts })

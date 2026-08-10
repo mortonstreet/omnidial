@@ -58,7 +58,6 @@ interface UseDialerReturn {
     toNumber: string,
     leadId?: string,
     campaignId?: string,
-    fromNumber?: string,
   ) => Promise<void>
   endCall: () => Promise<void>
   answerIncomingCall: () => void
@@ -86,7 +85,6 @@ export function useDialer(): UseDialerReturn {
   const terminatedCallIdsRef = useRef<Set<string>>(new Set())
 
   // Fetch capability token
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: _tokenData, refetch: refetchToken } = useQuery({
     queryKey: QUERY_KEYS.dialerToken(),
     queryFn: async () => {
@@ -266,12 +264,11 @@ export function useDialer(): UseDialerReturn {
   const initiateCallMutation = useMutation({
     mutationFn: async (params: {
       toNumber: string
-      fromNumber: string
       leadId?: string
       campaignId?: string
     }) => {
       const response = await post<{
-        data: { id: string; twilioCallSid: string }
+        data: { id: string; twilioCallSid: string | null; fromNumber: string }
       }>(ENDPOINTS.CALLS.CREATE, params)
       return response.data
     },
@@ -282,12 +279,7 @@ export function useDialer(): UseDialerReturn {
 
   // Make outbound call - uses deviceRef to avoid stale closure issues
   const makeCall = useCallback(
-    async (
-      toNumber: string,
-      leadId?: string,
-      campaignId?: string,
-      fromNumber?: string,
-    ) => {
+    async (toNumber: string, leadId?: string, campaignId?: string) => {
       const currentDevice = deviceRef.current
       if (!currentDevice) {
         throw new Error('Device not ready')
@@ -300,7 +292,6 @@ export function useDialer(): UseDialerReturn {
         // First, create call record in backend
         const callData = await initiateCallMutation.mutateAsync({
           toNumber,
-          fromNumber: fromNumber || '',
           leadId,
           campaignId,
         })
@@ -311,7 +302,7 @@ export function useDialer(): UseDialerReturn {
         // `callid-` prefix and routes the call to the created call record
         const conn = currentDevice.newCall({
           destinationNumber: buildSipDestination(`callid-${callData.id}`),
-          callerNumber: fromNumber || '',
+          callerNumber: callData.fromNumber,
         })
 
         // Track the call — state transitions arrive via telnyx.notification

@@ -84,7 +84,6 @@ interface DialerContextValue {
     toNumber: string,
     leadId?: string,
     campaignId?: string,
-    fromNumber?: string,
   ) => Promise<void>
   answerIncomingCall: () => void
   rejectIncomingCall: () => void
@@ -733,12 +732,11 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const initiateCallMutation = useMutation({
     mutationFn: async (params: {
       toNumber: string
-      fromNumber: string
       leadId?: string
       campaignId?: string
     }) => {
       const response = await post<{
-        data: { id: string; twilioCallSid: string }
+        data: { id: string; twilioCallSid: string | null; fromNumber: string }
       }>(ENDPOINTS.CALLS.CREATE, params)
       return response.data
     },
@@ -759,26 +757,16 @@ export function DialerProvider({ children }: { children: ReactNode }) {
 
   // Make outbound call
   const makeCall = useCallback(
-    async (
-      toNumber: string,
-      leadId?: string,
-      campaignId?: string,
-      fromNumber?: string,
-    ) => {
+    async (toNumber: string, leadId?: string, campaignId?: string) => {
       const currentDevice = deviceRef.current
       if (!currentDevice) {
         throw new Error('Device not ready')
       }
 
       const sanitizedToNumber = toNumber.trim()
-      const sanitizedFromNumber = fromNumber?.trim() ?? ''
 
       if (!sanitizedToNumber) {
         throw new Error('Phone number is required')
-      }
-
-      if (!sanitizedFromNumber) {
-        throw new Error('Select a caller ID before placing a call')
       }
 
       try {
@@ -789,7 +777,6 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         // Create call record in backend
         const callData = await initiateCallMutation.mutateAsync({
           toNumber: sanitizedToNumber,
-          fromNumber: sanitizedFromNumber,
           leadId,
           campaignId,
         })
@@ -800,7 +787,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         // `callid-` prefix and routes the call to the created call record
         const conn = currentDevice.newCall({
           destinationNumber: buildSipDestination(`callid-${callData.id}`),
-          callerNumber: sanitizedFromNumber,
+          callerNumber: callData.fromNumber,
         })
 
         // Track the call — state transitions arrive via telnyx.notification

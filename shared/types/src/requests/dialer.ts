@@ -44,7 +44,6 @@ export type CallStatus = z.infer<typeof CallStatus>
 
 export const InitiateCallRequestSchema = z.object({
   toNumber: z.string().min(1),
-  fromNumber: z.string().min(1),
   leadId: z.string().uuid().optional(),
   campaignId: z.string().uuid().optional(),
 })

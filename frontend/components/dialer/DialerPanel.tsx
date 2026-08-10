@@ -8,8 +8,6 @@ import {
   Mic,
   ChevronDown,
   Loader2,
-  ShieldCheck,
-  ShieldAlert,
   Building2,
   Search,
   UserRound,
@@ -19,7 +17,7 @@ import { DispositionSelector } from './DispositionSelector'
 import { VoicemailDropButton } from './VoicemailDropButton'
 import { useDialablePhoneNumbers } from '@/hooks/api/usePhoneNumberAssignments'
 import { useDispositions, useSendDtmf } from '@/hooks/api/useCalls'
-import { useLead, useLeads, useResolveTimezone } from '@/hooks/api/useLeads'
+import { useLead, useLeads } from '@/hooks/api/useLeads'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useDialerContext } from '@/components/providers/DialerProvider'
 import { ProspectLocalTime } from './ProspectLocalTime'
@@ -103,11 +101,9 @@ export function DialerPanel({
   )
   const [selectedLeadMatch, setSelectedLeadMatch] =
     useState<DialerLeadMatch | null>(null)
-  const [selectedFromNumber, setSelectedFromNumber] = useState<string>('')
   const [isMuted, setIsMuted] = useState(false)
   const [callDuration, setCallDuration] = useState(0)
   const [showDisposition, setShowDisposition] = useState(false)
-  const [showNumberSelector, setShowNumberSelector] = useState(false)
   const [showClientSelector, setShowClientSelector] = useState(false)
   const [showLeadSuggestions, setShowLeadSuggestions] = useState(false)
   const [showDtmfKeypad, setShowDtmfKeypad] = useState(false)
@@ -139,6 +135,8 @@ export function DialerPanel({
   // dial. An empty list means "ask an admin for a number", not "use any".
   const { data: phoneNumbers, isLoading: phoneNumbersLoading } =
     useDialablePhoneNumbers(organizationId)
+  const assignedCallerIdCount = phoneNumbers?.length ?? 0
+  const hasAssignedCallerIds = assignedCallerIdCount > 0
   const isCallActive = callState === 'ringing' || callState === 'in-progress'
   const trimmedDialQuery = dialQuery.trim()
   const dialQueryLooksLikePhone = looksLikePhoneInput(trimmedDialQuery)
@@ -160,15 +158,11 @@ export function DialerPanel({
     enabled: shouldSearchLeads,
   })
   const { data: loadedLead } = useLead(leadId)
-  const resolveTimezoneMutation = useResolveTimezone()
   const leadSuggestions = useMemo(
     () => (leadSearchData?.data || []) as DialerLeadMatch[],
     [leadSearchData?.data],
   )
-  const selectedLeadTimezone =
-    selectedLeadMatch?.timezone ||
-    resolveTimezoneMutation.data?.timezone ||
-    null
+  const selectedLeadTimezone = selectedLeadMatch?.timezone || null
 
   useEffect(() => {
     if (!loadedLead || loadedLead.id !== leadId) return
@@ -194,24 +188,6 @@ export function DialerPanel({
       }
     })
   }, [loadedLead, leadId, isCallActive])
-
-  useEffect(() => {
-    resolveTimezoneMutation.reset()
-
-    if (
-      selectedLeadMatch?.linkedInUrl &&
-      !selectedLeadMatch.timezone &&
-      !selectedLeadMatch.timezoneResolvedAt
-    ) {
-      resolveTimezoneMutation.mutate(selectedLeadMatch.id)
-    }
-  }, [
-    selectedLeadMatch?.id,
-    selectedLeadMatch?.linkedInUrl,
-    selectedLeadMatch?.timezone,
-    selectedLeadMatch?.timezoneResolvedAt,
-    resolveTimezoneMutation,
-  ])
 
   useEffect(() => {
     if (!shouldSearchLeads || selectedLeadMatch || !trimmedDialQuery) {
@@ -258,13 +234,6 @@ export function DialerPanel({
     trimmedDialQuery,
   ])
 
-  // Set default from number when phone numbers are loaded (defer to avoid sync setState in effect)
-  useEffect(() => {
-    if (phoneNumbers && phoneNumbers.length > 0 && !selectedFromNumber) {
-      queueMicrotask(() => setSelectedFromNumber(phoneNumbers[0].phoneNumber))
-    }
-  }, [phoneNumbers, selectedFromNumber])
-
   // Update dial number when phoneNumber prop changes (for display only, doesn't trigger dial)
   useEffect(() => {
     if (phoneNumber !== undefined && phoneNumber !== dialNumber) {
@@ -304,9 +273,9 @@ export function DialerPanel({
       setIsDialing(true)
 
       try {
-        if (!selectedFromNumber) {
-          toast.error('Caller ID required', {
-            description: 'Select a caller ID before starting auto-dial',
+        if (phoneNumbersLoading || !hasAssignedCallerIds) {
+          toast.error('No caller ID assigned to you', {
+            description: 'Ask an admin to assign you a phone number',
           })
           setIsDialing(false)
           return
@@ -331,12 +300,7 @@ export function DialerPanel({
         await new Promise((resolve) => setTimeout(resolve, 100))
 
         console.log('Auto-dial: Making call to', dialNumber)
-        await makeCall(
-          dialNumber,
-          leadId || selectedLeadMatch?.id,
-          campaignId,
-          selectedFromNumber,
-        )
+        await makeCall(dialNumber, leadId || selectedLeadMatch?.id, campaignId)
       } catch (err) {
         console.error('Auto-dial failed:', err)
         const message = err instanceof Error ? err.message : 'Unknown error'
@@ -357,7 +321,8 @@ export function DialerPanel({
     leadId,
     selectedLeadMatch?.id,
     campaignId,
-    selectedFromNumber,
+    phoneNumbersLoading,
+    hasAssignedCallerIds,
     makeCall,
     initializeDevice,
     isDialing,
@@ -433,9 +398,9 @@ export function DialerPanel({
       setShowDisposition(false)
       setIsDialing(true)
 
-      if (!selectedFromNumber) {
-        toast.error('Caller ID required', {
-          description: 'Select a caller ID before placing a call',
+      if (phoneNumbersLoading || !hasAssignedCallerIds) {
+        toast.error('No caller ID assigned to you', {
+          description: 'Ask an admin to assign you a phone number',
         })
         setIsDialing(false)
         return
@@ -471,12 +436,7 @@ export function DialerPanel({
       }
 
       try {
-        await makeCall(
-          callTarget,
-          leadId || selectedLeadMatch?.id,
-          campaignId,
-          selectedFromNumber,
-        )
+        await makeCall(callTarget, leadId || selectedLeadMatch?.id, campaignId)
       } catch (err) {
         console.error('Failed to make call:', err)
         const message = err instanceof Error ? err.message : 'Unknown error'
@@ -495,7 +455,8 @@ export function DialerPanel({
     selectedLeadMatch?.id,
     campaignId,
     makeCall,
-    selectedFromNumber,
+    phoneNumbersLoading,
+    hasAssignedCallerIds,
     device,
     isReady,
     initializeDevice,
@@ -695,7 +656,7 @@ export function DialerPanel({
           </div>
         </div>
 
-        {/* Caller ID selector - only when not in call */}
+        {/* Caller ID status - selected by the backend per call */}
         {!isCallActive && (
           <div className="mb-4">
             <label className="block text-xs font-medium text-muted-foreground mb-2">
@@ -709,79 +670,23 @@ export function DialerPanel({
                 </span>
               </div>
             ) : phoneNumbers && phoneNumbers.length > 0 ? (
-              <div className="relative">
-                <button
-                  onClick={() => setShowNumberSelector(!showNumberSelector)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 bg-muted border border-border rounded-lg hover:border-foreground/20 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono text-sm truncate">
-                      {selectedFromNumber || 'Select number'}
-                    </span>
-                    {(() => {
-                      const selectedPhone = phoneNumbers.find(
-                        (p: { phoneNumber: string }) =>
-                          p.phoneNumber === selectedFromNumber,
-                      )
-                      if (!selectedPhone || !selectedFromNumber) return null
-                      return selectedPhone.callerIdVerified ? (
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      ) : (
-                        <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      )
-                    })()}
-                  </div>
-                  <ChevronDown
-                    className={`w-4 h-4 shrink-0 transition-transform ${showNumberSelector ? 'rotate-180' : ''}`}
-                  />
-                </button>
-                {showNumberSelector && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-xl z-10 max-h-48 overflow-y-auto">
-                    {phoneNumbers.map(
-                      (phone: {
-                        phoneNumber: string
-                        friendlyName: string
-                        locality: string | null
-                        region: string | null
-                        callerIdVerified?: boolean
-                      }) => (
-                        <button
-                          key={phone.phoneNumber}
-                          onClick={() => {
-                            setSelectedFromNumber(phone.phoneNumber)
-                            setShowNumberSelector(false)
-                          }}
-                          className={`w-full px-3 py-2 text-left hover:bg-muted transition-colors ${
-                            selectedFromNumber === phone.phoneNumber
-                              ? 'bg-muted'
-                              : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm">
-                              {phone.phoneNumber}
-                            </span>
-                            {phone.callerIdVerified ? (
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                            )}
-                          </div>
-                          {phone.friendlyName && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              {phone.friendlyName}
-                            </div>
-                          )}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                )}
+              <div className="px-3 py-2.5 bg-muted border border-border rounded-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-foreground">
+                    Auto-rotating assigned numbers
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {assignedCallerIdCount} available
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground font-mono truncate">
+                  {phoneNumbers.map((phone) => phone.phoneNumber).join(', ')}
+                </div>
               </div>
             ) : (
               <div className="px-3 py-2.5 bg-muted border border-border rounded-lg">
                 <span className="text-sm text-amber-500">
-                  {clientId ? 'No numbers assigned' : 'No numbers available'}
+                  No caller ID assigned to you
                 </span>
               </div>
             )}
@@ -872,8 +777,6 @@ export function DialerPanel({
                 </span>
                 {selectedLeadTimezone ? (
                   <ProspectLocalTime timezone={selectedLeadTimezone} />
-                ) : resolveTimezoneMutation.isPending ? (
-                  <ProspectLocalTime timezone="America/New_York" isResolving />
                 ) : null}
               </div>
             )}
@@ -957,7 +860,12 @@ export function DialerPanel({
           ) : (
             <button
               onClick={handleCall}
-              disabled={!trimmedDialQuery || !selectedFromNumber || isDialing}
+              disabled={
+                !trimmedDialQuery ||
+                phoneNumbersLoading ||
+                !hasAssignedCallerIds ||
+                isDialing
+              }
               aria-label={isDialing ? 'Dialing...' : 'Start call'}
               className="w-full flex items-center justify-center gap-2 px-4 py-4 sm:py-3 min-h-[56px] sm:min-h-0 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >

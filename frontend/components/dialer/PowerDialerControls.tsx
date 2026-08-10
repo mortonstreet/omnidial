@@ -1,10 +1,19 @@
-"use client";
+'use client'
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
-import { Play, Pause, ChevronRight, Loader2, Phone, ChevronLeft, UserMinus, Globe } from "lucide-react";
-import { CompanySummaryCard } from "@/components/leads/CompanySummaryCard";
-import { ProspectLocalTime } from "@/components/dialer/ProspectLocalTime";
+import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
+import {
+  Play,
+  Pause,
+  ChevronRight,
+  Loader2,
+  Phone,
+  ChevronLeft,
+  UserMinus,
+  Globe,
+} from 'lucide-react'
+import { CompanySummaryCard } from '@/components/leads/CompanySummaryCard'
+import { ProspectLocalTime } from '@/components/dialer/ProspectLocalTime'
 import {
   usePowerDialerProgress,
   useNextLead,
@@ -16,10 +25,10 @@ import {
   useUpdatePowerDialerProgress,
   type Lead,
   type TimezonePriority,
-} from "@/hooks/api/usePowerDialer";
-import { useSoftRemoveLeadFromList } from "@/hooks/api/useLists";
-import { useGenerateCompanySummary, useResolveTimezone } from "@/hooks/api/useLeads";
-import { getTimezoneBucket } from "@shared/types/src/constants/timezones";
+} from '@/hooks/api/usePowerDialer'
+import { useSoftRemoveLeadFromList } from '@/hooks/api/useLists'
+import { useGenerateCompanySummary } from '@/hooks/api/useLeads'
+import { getTimezoneBucket } from '@shared/types/src/constants/timezones'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,43 +39,43 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { AlertCircle } from "lucide-react";
+} from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
+import { AlertCircle } from 'lucide-react'
 
 const TIMEZONE_PRIORITY_OPTIONS: Array<{
-  value: TimezonePriority | undefined;
-  label: string;
-  order: string;
+  value: TimezonePriority | undefined
+  label: string
+  order: string
 }> = [
-  { value: undefined, label: "List", order: "List order" },
-  { value: "eastern", label: "EST", order: "EST -> CST -> MST -> PST" },
-  { value: "central", label: "CST", order: "CST -> MST -> PST -> EST" },
-  { value: "mountain", label: "MST", order: "MST -> PST -> EST -> CST" },
-  { value: "pacific", label: "PST", order: "PST -> EST -> CST -> MST" },
-];
+  { value: undefined, label: 'List', order: 'List order' },
+  { value: 'eastern', label: 'EST', order: 'EST -> CST -> MST -> PST' },
+  { value: 'central', label: 'CST', order: 'CST -> MST -> PST -> EST' },
+  { value: 'mountain', label: 'MST', order: 'MST -> PST -> EST -> CST' },
+  { value: 'pacific', label: 'PST', order: 'PST -> EST -> CST -> MST' },
+]
 
 const TIMEZONE_SHORT_LABELS: Record<TimezonePriority, string> = {
-  eastern: "EST",
-  central: "CST",
-  mountain: "MST",
-  pacific: "PST",
-};
+  eastern: 'EST',
+  central: 'CST',
+  mountain: 'MST',
+  pacific: 'PST',
+}
 
 const getLeadDisplayName = (lead: Lead) =>
-  [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
+  [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() ||
   lead.company ||
-  "Unnamed lead";
+  'Unnamed lead'
 
 interface PowerDialerControlsProps {
-  campaignId?: string;
-  listId?: string; // Optional - if not provided, uses all campaign lists
-  onLeadSelect?: (lead: Lead) => void;
-  onCallInitiated?: (lead: Lead) => void;
-  onEndCall?: () => Promise<void>; // Callback to end current call (for skipping during active call)
-  callEndedCount?: number; // Counter that increments when call ends - triggers advance
-  callState?: string; // Current call state from dialer context - wait for idle before next call
-  delaySeconds?: number;
+  campaignId?: string
+  listId?: string // Optional - if not provided, uses all campaign lists
+  onLeadSelect?: (lead: Lead) => void
+  onCallInitiated?: (lead: Lead) => void
+  onEndCall?: () => Promise<void> // Callback to end current call (for skipping during active call)
+  callEndedCount?: number // Counter that increments when call ends - triggers advance
+  callState?: string // Current call state from dialer context - wait for idle before next call
+  delaySeconds?: number
 }
 
 export function PowerDialerControls({
@@ -76,109 +85,106 @@ export function PowerDialerControls({
   onCallInitiated,
   onEndCall,
   callEndedCount = 0,
-  callState = "idle",
+  callState = 'idle',
   delaySeconds = 5,
 }: PowerDialerControlsProps) {
-  const [isRunning, setIsRunning] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [selectedDelay, setSelectedDelay] = useState(delaySeconds);
-  const [timezonePriority, setTimezonePriority] = useState<TimezonePriority | undefined>();
+  const [isRunning, setIsRunning] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [selectedDelay, setSelectedDelay] = useState(delaySeconds)
+  const [timezonePriority, setTimezonePriority] = useState<
+    TimezonePriority | undefined
+  >()
 
   // Track the last processed call end count to detect new call ends
-  const lastProcessedCallEndRef = useRef(callEndedCount);
+  const lastProcessedCallEndRef = useRef(callEndedCount)
   // Track pending countdown (waiting for call to end before starting countdown)
-  const pendingCountdownRef = useRef(false);
+  const pendingCountdownRef = useRef(false)
 
   const { data: progress } = usePowerDialerProgress(
     campaignId,
     listId,
-    timezonePriority
-  );
+    timezonePriority,
+  )
   const { data: nextLeadData } = useNextLead(
     campaignId,
     listId,
-    timezonePriority
-  );
-  const startMutation = useStartPowerDialer();
-  const stopMutation = useStopPowerDialer();
-  const skipMutation = useSkipLead();
-  const advanceMutation = useAdvanceToNext();
-  const previousMutation = useGoToPrevious();
-  const updateProgressMutation = useUpdatePowerDialerProgress();
-  const softRemoveMutation = useSoftRemoveLeadFromList();
-  const generateSummaryMutation = useGenerateCompanySummary();
-  const resolveTimezoneMutation = useResolveTimezone();
+    timezonePriority,
+  )
+  const startMutation = useStartPowerDialer()
+  const stopMutation = useStopPowerDialer()
+  const skipMutation = useSkipLead()
+  const advanceMutation = useAdvanceToNext()
+  const previousMutation = useGoToPrevious()
+  const updateProgressMutation = useUpdatePowerDialerProgress()
+  const softRemoveMutation = useSoftRemoveLeadFromList()
+  const generateSummaryMutation = useGenerateCompanySummary()
 
   // Enable power dialer when campaign is selected (listId is now optional)
-  const isEnabled = !!campaignId;
-  const currentLead = nextLeadData?.lead;
-  const progressData = nextLeadData?.progress || progress;
-  const currentLeadTimezone = currentLead?.timezone || resolveTimezoneMutation.data?.timezone || null;
-  const currentLeadTimezoneBucket = getTimezoneBucket(currentLeadTimezone);
+  const isEnabled = !!campaignId
+  const currentLead = nextLeadData?.lead
+  const progressData = nextLeadData?.progress || progress
+  const currentLeadTimezone = currentLead?.timezone || null
+  const currentLeadTimezoneBucket = getTimezoneBucket(currentLeadTimezone)
   const selectedTimezoneOrder = TIMEZONE_PRIORITY_OPTIONS.find(
-    (option) => option.value === timezonePriority
-  )?.order;
+    (option) => option.value === timezonePriority,
+  )?.order
 
   // Track the previous lead ID to detect lead changes
-  const previousLeadIdRef = useRef<string | undefined>(undefined);
+  const previousLeadIdRef = useRef<string | undefined>(undefined)
 
   // Reset mutation state when lead changes to prevent showing stale summary data
   useEffect(() => {
     if (currentLead?.id !== previousLeadIdRef.current) {
-      previousLeadIdRef.current = currentLead?.id;
-      // Reset mutations to clear stale data from previous lead
-      generateSummaryMutation.reset();
-      resolveTimezoneMutation.reset();
-
-      // Auto-trigger timezone resolution if lead has LinkedIn URL and no cached timezone
-      if (currentLead?.linkedInUrl && !currentLead?.timezone && !currentLead?.timezoneResolvedAt) {
-        resolveTimezoneMutation.mutate(currentLead.id);
-      }
+      previousLeadIdRef.current = currentLead?.id
+      generateSummaryMutation.reset()
     }
-  }, [currentLead?.id, currentLead?.linkedInUrl, currentLead?.timezone, currentLead?.timezoneResolvedAt, generateSummaryMutation, resolveTimezoneMutation]);
+  }, [currentLead?.id, generateSummaryMutation])
 
   // Notify parent of current lead
   useEffect(() => {
     if (currentLead && onLeadSelect) {
-      onLeadSelect(currentLead);
+      onLeadSelect(currentLead)
     }
-  }, [currentLead, onLeadSelect]);
+  }, [currentLead, onLeadSelect])
 
   // Countdown timer for auto-dial
   useEffect(() => {
-    if (!isRunning || countdown === null) return;
+    if (!isRunning || countdown === null) return
 
     if (countdown > 0) {
       const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
+        setCountdown(countdown - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
     }
 
     // Countdown finished, initiate call
     if (countdown === 0 && currentLead) {
-      onCallInitiated?.(currentLead);
-      queueMicrotask(() => setCountdown(null));
+      onCallInitiated?.(currentLead)
+      queueMicrotask(() => setCountdown(null))
     }
-  }, [countdown, isRunning, currentLead, onCallInitiated]);
+  }, [countdown, isRunning, currentLead, onCallInitiated])
 
-  const handleTimezonePriorityChange = useCallback((nextPriority?: TimezonePriority) => {
-    if (isRunning) return;
+  const handleTimezonePriorityChange = useCallback(
+    (nextPriority?: TimezonePriority) => {
+      if (isRunning) return
 
-    setTimezonePriority(nextPriority);
-    setCountdown(null);
+      setTimezonePriority(nextPriority)
+      setCountdown(null)
 
-    if (campaignId) {
-      updateProgressMutation.mutate({
-        campaignId,
-        listId,
-        currentIndex: 0,
-      });
-    }
-  }, [campaignId, listId, isRunning, updateProgressMutation]);
+      if (campaignId) {
+        updateProgressMutation.mutate({
+          campaignId,
+          listId,
+          currentIndex: 0,
+        })
+      }
+    },
+    [campaignId, listId, isRunning, updateProgressMutation],
+  )
 
   const handleStart = useCallback(async () => {
-    if (!campaignId) return;
+    if (!campaignId) return
 
     try {
       await startMutation.mutateAsync({
@@ -186,261 +192,349 @@ export function PowerDialerControls({
         listId,
         delaySeconds: selectedDelay,
         timezonePriority,
-      });
-      setIsRunning(true);
+      })
+      setIsRunning(true)
       // Start countdown for first call
-      setCountdown(selectedDelay);
+      setCountdown(selectedDelay)
     } catch (error) {
-      console.error("Failed to start power dialer:", error);
-      const rawMessage = error instanceof Error ? error.message : "";
-      let userMessage = "Failed to start power dialer. Please try again.";
+      console.error('Failed to start power dialer:', error)
+      const rawMessage = error instanceof Error ? error.message : ''
+      let userMessage = 'Failed to start power dialer. Please try again.'
 
-      if (rawMessage.includes("session")) {
-        userMessage = "Could not create dialer session. Please refresh and try again.";
-      } else if (rawMessage.includes("network") || rawMessage.includes("fetch")) {
-        userMessage = "Network error. Please check your connection.";
-      } else if (rawMessage.includes("No dialable leads found") || rawMessage.includes("No leads found")) {
-        userMessage = "No dialable leads found. Add named leads with phone numbers first.";
+      if (rawMessage.includes('session')) {
+        userMessage =
+          'Could not create dialer session. Please refresh and try again.'
+      } else if (
+        rawMessage.includes('network') ||
+        rawMessage.includes('fetch')
+      ) {
+        userMessage = 'Network error. Please check your connection.'
+      } else if (
+        rawMessage.includes('No dialable leads found') ||
+        rawMessage.includes('No leads found')
+      ) {
+        userMessage =
+          'No dialable leads found. Add named leads with phone numbers first.'
       }
 
-      toast.error(userMessage);
+      toast.error(userMessage)
     }
-  }, [campaignId, listId, startMutation, selectedDelay, timezonePriority]);
+  }, [campaignId, listId, startMutation, selectedDelay, timezonePriority])
 
   const handleStop = useCallback(async () => {
-    if (!campaignId) return;
+    if (!campaignId) return
 
     try {
-      await stopMutation.mutateAsync({ campaignId, listId, timezonePriority });
-      setIsRunning(false);
-      setCountdown(null);
+      await stopMutation.mutateAsync({ campaignId, listId, timezonePriority })
+      setIsRunning(false)
+      setCountdown(null)
     } catch (error) {
-      console.error("Failed to stop power dialer:", error);
-      toast.error("Failed to stop power dialer. You can refresh the page to reset.");
+      console.error('Failed to stop power dialer:', error)
+      toast.error(
+        'Failed to stop power dialer. You can refresh the page to reset.',
+      )
     }
-  }, [campaignId, listId, stopMutation, timezonePriority]);
+  }, [campaignId, listId, stopMutation, timezonePriority])
 
   const handleSkip = useCallback(() => {
-    if (!campaignId) return;
+    if (!campaignId) return
 
     // If a call is active, end it first
-    const isCallActive = callState === "ringing" || callState === "in-progress";
+    const isCallActive = callState === 'ringing' || callState === 'in-progress'
     if (isCallActive && onEndCall) {
-      onEndCall();
+      onEndCall()
     }
 
-    skipMutation.mutate({ campaignId, listId, timezonePriority }, {
-      onSuccess: () => {
-        // Reset countdown for next lead
-        if (isRunning) {
-          setCountdown(selectedDelay);
-        }
+    skipMutation.mutate(
+      { campaignId, listId, timezonePriority },
+      {
+        onSuccess: () => {
+          // Reset countdown for next lead
+          if (isRunning) {
+            setCountdown(selectedDelay)
+          }
+        },
+        onError: (error) => {
+          console.error('Failed to skip lead:', error)
+          toast.error('Failed to skip to next lead. Please try again.')
+        },
       },
-      onError: (error) => {
-        console.error("Failed to skip lead:", error);
-        toast.error("Failed to skip to next lead. Please try again.");
-      },
-    });
-  }, [campaignId, listId, skipMutation, isRunning, selectedDelay, callState, onEndCall, timezonePriority]);
+    )
+  }, [
+    campaignId,
+    listId,
+    skipMutation,
+    isRunning,
+    selectedDelay,
+    callState,
+    onEndCall,
+    timezonePriority,
+  ])
 
   // Handle "Call Now" - immediately initiate call, canceling countdown
   const handleCallNow = useCallback(() => {
-    if (!currentLead) return;
-    setCountdown(null);
-    onCallInitiated?.(currentLead);
-  }, [currentLead, onCallInitiated]);
+    if (!currentLead) return
+    setCountdown(null)
+    onCallInitiated?.(currentLead)
+  }, [currentLead, onCallInitiated])
 
   // Handle "Previous" - go back to previous lead
   const handlePrevious = useCallback(() => {
-    if (!campaignId) return;
+    if (!campaignId) return
 
-    previousMutation.mutate({ campaignId, listId, timezonePriority }, {
-      onSuccess: () => {
-        // If running, don't auto-start countdown for previous lead
-        // Let user decide when to call
-        setCountdown(null);
+    previousMutation.mutate(
+      { campaignId, listId, timezonePriority },
+      {
+        onSuccess: () => {
+          // If running, don't auto-start countdown for previous lead
+          // Let user decide when to call
+          setCountdown(null)
+        },
+        onError: (error) => {
+          console.error('Failed to go to previous lead:', error)
+          toast.error('Failed to go to previous lead. Please try again.')
+        },
       },
-      onError: (error) => {
-        console.error("Failed to go to previous lead:", error);
-        toast.error("Failed to go to previous lead. Please try again.");
-      },
-    });
-  }, [campaignId, listId, previousMutation, timezonePriority]);
+    )
+  }, [campaignId, listId, previousMutation, timezonePriority])
 
   // Called when a call ends to advance to next lead
   const handleCallComplete = useCallback(async () => {
-    if (!campaignId) return;
+    if (!campaignId) return
 
     try {
-      await advanceMutation.mutateAsync({ campaignId, listId, timezonePriority });
+      await advanceMutation.mutateAsync({
+        campaignId,
+        listId,
+        timezonePriority,
+      })
       // Mark that we're waiting for call state to be idle before starting countdown
-      pendingCountdownRef.current = true;
+      pendingCountdownRef.current = true
     } catch (error) {
-      console.error("Failed to advance to next:", error);
-      toast.error("Failed to advance to next lead. Use the Next button to continue.");
+      console.error('Failed to advance to next:', error)
+      toast.error(
+        'Failed to advance to next lead. Use the Next button to continue.',
+      )
     }
-  }, [campaignId, listId, advanceMutation, timezonePriority]);
+  }, [campaignId, listId, advanceMutation, timezonePriority])
 
   // When call ends and power dialer is running, advance to next lead
   useEffect(() => {
     // Check if this is a new call end (counter increased)
     if (callEndedCount > lastProcessedCallEndRef.current && isRunning) {
       // Mark this call end as processed
-      lastProcessedCallEndRef.current = callEndedCount;
+      lastProcessedCallEndRef.current = callEndedCount
       // Use queueMicrotask to avoid synchronous setState within effect
-      queueMicrotask(() => handleCallComplete());
+      queueMicrotask(() => handleCallComplete())
     }
-  }, [callEndedCount, isRunning, handleCallComplete]);
+  }, [callEndedCount, isRunning, handleCallComplete])
 
   // Wait for call state to be idle before starting countdown (prevents overlapping calls)
   useEffect(() => {
-    if (pendingCountdownRef.current && callState === "idle" && isRunning) {
-      pendingCountdownRef.current = false;
+    if (pendingCountdownRef.current && callState === 'idle' && isRunning) {
+      pendingCountdownRef.current = false
       // Use queueMicrotask to avoid synchronous setState within effect
-      queueMicrotask(() => setCountdown(selectedDelay));
+      queueMicrotask(() => setCountdown(selectedDelay))
     }
-  }, [callState, isRunning, selectedDelay]);
+  }, [callState, isRunning, selectedDelay])
 
   // Handle removing lead from list
   const handleRemoveFromList = useCallback(async () => {
     // Use the lead's listId if prop listId is not provided (campaign mode)
-    const effectiveListId = listId || currentLead?.listId;
-    if (!effectiveListId || !currentLead || !campaignId) return;
+    const effectiveListId = listId || currentLead?.listId
+    if (!effectiveListId || !currentLead || !campaignId) return
 
     try {
-      await softRemoveMutation.mutateAsync({ listId: effectiveListId, leadId: currentLead.id });
-      toast.success("Lead removed from list");
+      await softRemoveMutation.mutateAsync({
+        listId: effectiveListId,
+        leadId: currentLead.id,
+      })
+      toast.success('Lead removed from list')
       // Always skip to next lead after removing for better UX
-      await skipMutation.mutateAsync({ campaignId, listId, timezonePriority });
+      await skipMutation.mutateAsync({ campaignId, listId, timezonePriority })
       // Only start countdown if power dialer is running
       if (isRunning) {
-        setCountdown(selectedDelay);
+        setCountdown(selectedDelay)
       }
     } catch (error) {
-      console.error("Failed to remove lead from list:", error);
-      const rawMessage = error instanceof Error ? error.message : "";
-      let userMessage = "Failed to remove lead from list. Please try again.";
+      console.error('Failed to remove lead from list:', error)
+      const rawMessage = error instanceof Error ? error.message : ''
+      let userMessage = 'Failed to remove lead from list. Please try again.'
 
-      if (rawMessage.includes("not found") || rawMessage.includes("404")) {
-        userMessage = "Lead or list not found. Please refresh the page.";
-      } else if (rawMessage.includes("permission") || rawMessage.includes("403")) {
-        userMessage = "You don't have permission to remove leads from this list.";
+      if (rawMessage.includes('not found') || rawMessage.includes('404')) {
+        userMessage = 'Lead or list not found. Please refresh the page.'
+      } else if (
+        rawMessage.includes('permission') ||
+        rawMessage.includes('403')
+      ) {
+        userMessage =
+          "You don't have permission to remove leads from this list."
       }
 
-      toast.error(userMessage);
+      toast.error(userMessage)
     }
-  }, [listId, currentLead, campaignId, softRemoveMutation, isRunning, skipMutation, selectedDelay, timezonePriority]);
+  }, [
+    listId,
+    currentLead,
+    campaignId,
+    softRemoveMutation,
+    isRunning,
+    skipMutation,
+    selectedDelay,
+    timezonePriority,
+  ])
 
   // Handle generating AI company summary
-  const handleGenerateSummary = useCallback(async (forceRegenerate = false) => {
-    if (!currentLead) return;
+  const handleGenerateSummary = useCallback(
+    async (forceRegenerate = false) => {
+      if (!currentLead) return
 
-    try {
-      await generateSummaryMutation.mutateAsync({
-        leadId: currentLead.id,
-        forceRegenerate,
-      });
-      toast.success(forceRegenerate ? "Summary regenerated" : "Company summary generated");
-    } catch (error) {
-      console.error("Failed to generate summary:", error);
-      const rawMessage = error instanceof Error ? error.message : "";
+      try {
+        await generateSummaryMutation.mutateAsync({
+          leadId: currentLead.id,
+          forceRegenerate,
+        })
+        toast.success(
+          forceRegenerate ? 'Summary regenerated' : 'Company summary generated',
+        )
+      } catch (error) {
+        console.error('Failed to generate summary:', error)
+        const rawMessage = error instanceof Error ? error.message : ''
 
-      // Convert technical errors to user-friendly messages
-      let userMessage = "Failed to generate summary. Please try again.";
+        // Convert technical errors to user-friendly messages
+        let userMessage = 'Failed to generate summary. Please try again.'
 
-      if (rawMessage.includes("API key not configured") || rawMessage.includes("503")) {
-        userMessage = "AI service is not configured. Please contact your administrator.";
-      } else if (rawMessage.includes("no company name") || rawMessage.includes("400")) {
-        userMessage = "Unable to research: no company name or website available for this lead.";
-      } else if (rawMessage.includes("not found") || rawMessage.includes("404")) {
-        userMessage = "Lead not found. Please refresh and try again.";
-      } else if (rawMessage.includes("rate limit") || rawMessage.includes("429")) {
-        userMessage = "Too many requests. Please wait a moment and try again.";
-      } else if (rawMessage.includes("timeout") || rawMessage.includes("ETIMEDOUT")) {
-        userMessage = "Request timed out. The AI service may be busy - please try again.";
-      } else if (rawMessage.includes("network") || rawMessage.includes("fetch")) {
-        userMessage = "Network error. Please check your connection and try again.";
+        if (
+          rawMessage.includes('API key not configured') ||
+          rawMessage.includes('503')
+        ) {
+          userMessage =
+            'AI service is not configured. Please contact your administrator.'
+        } else if (
+          rawMessage.includes('no company name') ||
+          rawMessage.includes('400')
+        ) {
+          userMessage =
+            'Unable to research: no company name or website available for this lead.'
+        } else if (
+          rawMessage.includes('not found') ||
+          rawMessage.includes('404')
+        ) {
+          userMessage = 'Lead not found. Please refresh and try again.'
+        } else if (
+          rawMessage.includes('rate limit') ||
+          rawMessage.includes('429')
+        ) {
+          userMessage = 'Too many requests. Please wait a moment and try again.'
+        } else if (
+          rawMessage.includes('timeout') ||
+          rawMessage.includes('ETIMEDOUT')
+        ) {
+          userMessage =
+            'Request timed out. The AI service may be busy - please try again.'
+        } else if (
+          rawMessage.includes('network') ||
+          rawMessage.includes('fetch')
+        ) {
+          userMessage =
+            'Network error. Please check your connection and try again.'
+        }
+
+        toast.error(userMessage)
       }
-
-      toast.error(userMessage);
-    }
-  }, [currentLead, generateSummaryMutation]);
+    },
+    [currentLead, generateSummaryMutation],
+  )
 
   // Keyboard navigation: Arrow keys, Cmd+L (LinkedIn), Cmd+J (website), Enter (call/end)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input field
-      const target = e.target as HTMLElement;
+      const target = e.target as HTMLElement
       if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
         target.isContentEditable
       ) {
-        return;
+        return
       }
 
       // Only handle if we have a campaign selected
-      if (!campaignId) return;
+      if (!campaignId) return
 
-      const metaKey = e.metaKey || e.ctrlKey;
+      const metaKey = e.metaKey || e.ctrlKey
 
       // Cmd/Ctrl+L = Open LinkedIn profile in new tab
-      if (metaKey && e.key === "l") {
+      if (metaKey && e.key === 'l') {
         if (currentLead?.linkedInUrl) {
-          e.preventDefault();
-          window.open(currentLead.linkedInUrl, "_blank", "noopener,noreferrer");
+          e.preventDefault()
+          window.open(currentLead.linkedInUrl, '_blank', 'noopener,noreferrer')
         }
-        return;
+        return
       }
 
       // Cmd/Ctrl+J = Open website in new tab
-      if (metaKey && e.key === "j") {
+      if (metaKey && e.key === 'j') {
         if (currentLead?.website) {
-          e.preventDefault();
-          const url = currentLead.website.startsWith("http")
+          e.preventDefault()
+          const url = currentLead.website.startsWith('http')
             ? currentLead.website
-            : `https://${currentLead.website}`;
-          window.open(url, "_blank", "noopener,noreferrer");
+            : `https://${currentLead.website}`
+          window.open(url, '_blank', 'noopener,noreferrer')
         }
-        return;
+        return
       }
 
       // Enter = Start call (if idle) or End call (if active)
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const isCallActive = callState === "ringing" || callState === "in-progress";
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const isCallActive =
+          callState === 'ringing' || callState === 'in-progress'
         if (isCallActive && onEndCall) {
-          onEndCall();
-        } else if (callState === "idle" && currentLead) {
-          handleCallNow();
+          onEndCall()
+        } else if (callState === 'idle' && currentLead) {
+          handleCallNow()
         }
-        return;
+        return
       }
 
       // Up/Right arrow or + or = = Next lead (fire-and-forget for instant response)
-      if (e.key === "ArrowUp" || e.key === "ArrowRight" || e.key === "+" || e.key === "=") {
-        e.preventDefault();
-        handleSkip();
+      if (
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowRight' ||
+        e.key === '+' ||
+        e.key === '='
+      ) {
+        e.preventDefault()
+        handleSkip()
       }
 
       // Down/Left arrow or - = Previous lead (wraps to end if at beginning)
-      if (e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "-") {
-        e.preventDefault();
-        handlePrevious();
+      if (e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === '-') {
+        e.preventDefault()
+        handlePrevious()
       }
-    };
+    }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [campaignId, handleSkip, handlePrevious, currentLead, callState, onEndCall, handleCallNow]);
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    campaignId,
+    handleSkip,
+    handlePrevious,
+    currentLead,
+    callState,
+    onEndCall,
+    handleCallNow,
+  ])
 
   if (!isEnabled) {
     return (
       <div className="p-5 bg-muted/50 border border-border/50 rounded-xl text-center text-muted-foreground text-sm">
         Select a client and campaign to start power dialing
       </div>
-    );
+    )
   }
 
   return (
@@ -511,23 +605,27 @@ export function PowerDialerControls({
         </div>
         <div className="grid grid-cols-5 gap-1">
           {TIMEZONE_PRIORITY_OPTIONS.map((option) => {
-            const isSelected = option.value === timezonePriority;
+            const isSelected = option.value === timezonePriority
             return (
               <button
                 key={option.label}
                 type="button"
                 onClick={() => handleTimezonePriorityChange(option.value)}
                 disabled={isRunning || updateProgressMutation.isPending}
-                title={isRunning ? "Stop the dialer to change timezone priority" : option.order}
+                title={
+                  isRunning
+                    ? 'Stop the dialer to change timezone priority'
+                    : option.order
+                }
                 className={`h-8 rounded-md border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   isSelected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border/60 bg-muted/40 text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/60 bg-muted/40 text-muted-foreground hover:border-foreground/30 hover:text-foreground'
                 }`}
               >
                 {option.label}
               </button>
-            );
+            )
           })}
         </div>
       </div>
@@ -551,7 +649,9 @@ export function PowerDialerControls({
       {currentLead && !progressData?.isEmpty && (
         <div className="p-4 bg-card border border-border/50 rounded-xl space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next up</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Next up
+            </span>
             <div className="flex items-center gap-2">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -572,8 +672,9 @@ export function PowerDialerControls({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Remove from list?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will remove {getLeadDisplayName(currentLead)} from the current list.
-                      The lead data will be preserved and can still be found in the global leads view.
+                      This will remove {getLeadDisplayName(currentLead)} from
+                      the current list. The lead data will be preserved and can
+                      still be found in the global leads view.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -628,14 +729,22 @@ export function PowerDialerControls({
                   className="text-[#0A66C2] hover:text-[#004182] transition-colors"
                   title="View LinkedIn profile (⌘L)"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
                     <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
                   </svg>
                 </a>
               )}
               {currentLead.website && (
                 <a
-                  href={currentLead.website.startsWith('http') ? currentLead.website : `https://${currentLead.website}`}
+                  href={
+                    currentLead.website.startsWith('http')
+                      ? currentLead.website
+                      : `https://${currentLead.website}`
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-foreground transition-colors"
@@ -654,39 +763,53 @@ export function PowerDialerControls({
                 </span>
               )}
               {currentLeadTimezone && (
-                <ProspectLocalTime
-                  timezone={currentLeadTimezone}
-                />
-              )}
-              {resolveTimezoneMutation.isPending && (
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                </span>
+                <ProspectLocalTime timezone={currentLeadTimezone} />
               )}
             </div>
             <div className="text-sm text-muted-foreground mt-0.5">
-              {currentLead.company} {currentLead.title && `• ${currentLead.title}`}
+              {currentLead.company}{' '}
+              {currentLead.title && `• ${currentLead.title}`}
             </div>
             <div className="text-base font-mono mt-2">{currentLead.phone}</div>
 
             {/* AI Company Summary - always show, use contact name as fallback */}
             <div className="mt-2 pt-2 border-t border-border">
               <CompanySummaryCard
-                summary={currentLead.aiCompanySummary || generateSummaryMutation.data?.summary || null}
-                companyName={currentLead.company || `${currentLead.firstName || ''} ${currentLead.lastName || ''}`.trim() || 'this contact'}
+                summary={
+                  currentLead.aiCompanySummary ||
+                  generateSummaryMutation.data?.summary ||
+                  null
+                }
+                companyName={
+                  currentLead.company ||
+                  `${currentLead.firstName || ''} ${currentLead.lastName || ''}`.trim() ||
+                  'this contact'
+                }
                 isGenerating={generateSummaryMutation.isPending}
                 onGenerate={() => handleGenerateSummary(false)}
                 onRegenerate={() => handleGenerateSummary(true)}
                 compact
-                structuredData={currentLead.aiCompanyOverview ? {
-                  overview: currentLead.aiCompanyOverview,
-                  talkingPoints: currentLead.aiSalesTalkingPoints,
-                  businessContext: currentLead.aiBusinessContext,
-                } : generateSummaryMutation.data?.structured ? {
-                  overview: generateSummaryMutation.data.structured.companyOverview,
-                  talkingPoints: generateSummaryMutation.data.structured.salesTalkingPoints,
-                  businessContext: generateSummaryMutation.data.structured.businessContext,
-                } : undefined}
+                structuredData={
+                  currentLead.aiCompanyOverview
+                    ? {
+                        overview: currentLead.aiCompanyOverview,
+                        talkingPoints: currentLead.aiSalesTalkingPoints,
+                        businessContext: currentLead.aiBusinessContext,
+                      }
+                    : generateSummaryMutation.data?.structured
+                      ? {
+                          overview:
+                            generateSummaryMutation.data.structured
+                              .companyOverview,
+                          talkingPoints:
+                            generateSummaryMutation.data.structured
+                              .salesTalkingPoints,
+                          businessContext:
+                            generateSummaryMutation.data.structured
+                              .businessContext,
+                        }
+                      : undefined
+                }
               />
             </div>
           </div>
@@ -698,7 +821,10 @@ export function PowerDialerControls({
         <div className="flex flex-col items-center py-6 space-y-4">
           <div className="relative w-32 h-32 flex items-center justify-center">
             {/* Background ring */}
-            <svg className="absolute inset-0 w-full h-full countdown-ring" viewBox="0 0 100 100">
+            <svg
+              className="absolute inset-0 w-full h-full countdown-ring"
+              viewBox="0 0 100 100"
+            >
               <circle
                 cx="50"
                 cy="50"
@@ -722,7 +848,10 @@ export function PowerDialerControls({
               />
             </svg>
             {/* Countdown number */}
-            <span className="text-6xl font-mono tabular-nums text-foreground animate-number-tick" key={countdown}>
+            <span
+              className="text-6xl font-mono tabular-nums text-foreground animate-number-tick"
+              key={countdown}
+            >
               {countdown}
             </span>
           </div>
@@ -738,7 +867,6 @@ export function PowerDialerControls({
           </button>
         </div>
       )}
-
     </div>
-  );
+  )
 }

@@ -1,9 +1,12 @@
 import { db } from '@/lib/db'
 import { withId } from './utils'
 
+type DbExecutor = typeof db
+
 export interface CreateParallelDialAttemptInput {
   sessionId: string
   leadId: string
+  fromNumber: string
   callSid?: string
 }
 
@@ -17,13 +20,17 @@ export interface UpdateParallelDialAttemptInput {
   endedAt?: Date
 }
 
-export const create = async (data: CreateParallelDialAttemptInput) => {
-  const attempt = await db
+export const create = async (
+  data: CreateParallelDialAttemptInput,
+  executor: DbExecutor = db,
+) => {
+  const attempt = await executor
     .insertInto('parallel_dial_attempt')
     .values({
       ...withId({
         sessionId: data.sessionId,
         leadId: data.leadId,
+        fromNumber: data.fromNumber,
         callSid: data.callSid ?? null,
         status: 'dialing',
         wasConnected: false,
@@ -38,6 +45,7 @@ export const create = async (data: CreateParallelDialAttemptInput) => {
 
 export const createMany = async (
   attempts: CreateParallelDialAttemptInput[],
+  executor: DbExecutor = db,
 ) => {
   if (attempts.length === 0) return []
 
@@ -45,6 +53,7 @@ export const createMany = async (
     ...withId({
       sessionId: data.sessionId,
       leadId: data.leadId,
+      fromNumber: data.fromNumber,
       callSid: data.callSid ?? null,
       status: 'dialing',
       wasConnected: false,
@@ -53,7 +62,7 @@ export const createMany = async (
     }),
   }))
 
-  return db
+  return executor
     .insertInto('parallel_dial_attempt')
     .values(values)
     .returningAll()
@@ -78,6 +87,7 @@ export const findByIdWithOrganization = async (id: string) => {
       'pda.sessionId',
       'pda.leadId',
       'pda.callSid',
+      'pda.fromNumber',
       'pda.status',
       'pda.wasConnected',
       'pda.wasAbandoned',
@@ -117,6 +127,7 @@ export const findBySessionIdWithLeads = async (sessionId: string) => {
       'pda.sessionId',
       'pda.leadId',
       'pda.callSid',
+      'pda.fromNumber',
       'pda.status',
       'pda.wasConnected',
       'pda.wasAbandoned',

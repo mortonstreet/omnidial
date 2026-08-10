@@ -1025,6 +1025,7 @@ export type ParallelDialAttempt = {
   sessionId: string
   leadId: string
   callSid: string | null
+  fromNumber: string | null
   status: Generated<string>
   wasConnected: Generated<boolean>
   wasAbandoned: Generated<boolean>

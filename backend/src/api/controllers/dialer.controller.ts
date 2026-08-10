@@ -260,7 +260,7 @@ export const initiateCall: AuthRequestHandler<InitiateCallRequest> = async (
       .json({ error: 'Telnyx not configured for this organization' })
   }
 
-  const { toNumber, fromNumber, leadId, campaignId } = req.validated
+  const { toNumber, leadId, campaignId } = req.validated
 
   // Validate required fields
   if (!toNumber) {
@@ -275,20 +275,11 @@ export const initiateCall: AuthRequestHandler<InitiateCallRequest> = async (
     })
   }
 
-  const normalizedFromNumber = validateAndNormalizePhone(fromNumber)
-  if (!normalizedFromNumber) {
-    return res.status(400).json({
-      error:
-        'Invalid caller ID. Select a valid caller ID before placing a call.',
-    })
-  }
-
   try {
     const call = await dialerService.initiateOutboundCall(
       twilioConfig.id,
       req.user.id,
       normalizedToNumber,
-      normalizedFromNumber,
       leadId,
       campaignId,
     )

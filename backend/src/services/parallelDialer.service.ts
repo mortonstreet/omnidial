@@ -2,10 +2,13 @@ import * as parallelDialSessionRepository from '@/repositories/parallelDialSessi
 import * as parallelDialAttemptRepository from '@/repositories/parallelDialAttempt.repository'
 import * as leadListEntryRepository from '@/repositories/leadListEntry.repository'
 import * as leadRepository from '@/repositories/lead.repository'
+import * as userPhoneNumberRepository from '@/repositories/userPhoneNumber.repository'
 import * as telnyxClient from '@/clients/telnyx.client'
 import * as callingNotificationService from '@/services/callingNotification.service'
 import { trigger as pusherTrigger } from '@/lib/pusher'
 import { config } from '@/config'
+import { db } from '@/lib/db'
+import { sql } from 'kysely'
 import { PUSHER_EVENTS, channels } from '@shared/types/src/pusher'
 import { NotFoundError, BadRequestError } from '@/lib/errors'
 import type {
@@ -105,12 +108,12 @@ export const startSession = async (
 export const dialNextBatch = async (
   sessionId: string,
   organizationId: string,
-  fromNumber: string,
+  userId: string,
 ): Promise<ParallelDialAttemptResponse[]> => {
   console.log('[ParallelDialer] dialNextBatch called:', {
     sessionId,
     organizationId,
-    fromNumber,
+    userId,
   })
 
   const session = await parallelDialSessionRepository.findById(sessionId)
@@ -127,6 +130,9 @@ export const dialNextBatch = async (
     listId: session.listId,
     lineCount: session.lineCount,
   })
+  if (session.organizationId !== organizationId || session.userId !== userId) {
+    throw new NotFoundError('Session not found or not active')
+  }
 
   // Get leads to dial
   let leadsToCall: Array<{ id: string; phone: string }> = []
@@ -158,12 +164,50 @@ export const dialNextBatch = async (
     leadsToCall.map((l) => ({ id: l.id, phone: l.phone.slice(0, 6) + '...' })),
   )
 
-  // Create attempt records
-  const attemptInputs = leadsToCall.map((lead) => ({
-    sessionId,
-    leadId: lead.id,
-  }))
-  const attempts = await parallelDialAttemptRepository.createMany(attemptInputs)
+  const attempts = await db.transaction().execute(async (trx) => {
+    await sql`select pg_advisory_xact_lock(hashtext(${`caller-id-user:${organizationId}:${userId}`}))`.execute(
+      trx,
+    )
+
+    const assignments =
+      await userPhoneNumberRepository.findAvailableByUserForDialing(
+        organizationId,
+        userId,
+        {
+          executor: trx as typeof db,
+          limit: leadsToCall.length,
+        },
+      )
+
+    if (assignments.length < leadsToCall.length) {
+      const assignedNumbers = await userPhoneNumberRepository.findByUser(
+        organizationId,
+        userId,
+        trx as typeof db,
+      )
+      const error = new BadRequestError(
+        assignedNumbers.length === 0
+          ? 'No caller ID is assigned to you. Ask an admin to assign you a phone number.'
+          : `Parallel dialing needs ${leadsToCall.length} free assigned caller IDs, but only ${assignments.length} are available.`,
+      ) as BadRequestError & { code?: string }
+      error.code =
+        assignedNumbers.length === 0
+          ? 'NO_CALLER_ID_ASSIGNED'
+          : 'CALLER_IDS_BUSY'
+      throw error
+    }
+
+    const attemptInputs = leadsToCall.map((lead, index) => ({
+      sessionId,
+      leadId: lead.id,
+      fromNumber: assignments[index].phoneNumber,
+    }))
+
+    return parallelDialAttemptRepository.createMany(
+      attemptInputs,
+      trx as typeof db,
+    )
+  })
 
   // Fetch full lead data for response
   const leadIds = leadsToCall.map((l) => l.id)
@@ -178,6 +222,10 @@ export const dialNextBatch = async (
   const dialPromises = attempts.map(async (attempt, index) => {
     try {
       const lead = leadsToCall[index]
+      const fromNumber = attempt.fromNumber
+      if (!fromNumber) {
+        throw new Error('No caller ID assigned to this attempt')
+      }
       console.log(
         `[ParallelDialer] Dialing attempt ${attempt.id} to ${lead.phone.slice(0, 6)}... from ${fromNumber}`,
       )
@@ -713,6 +761,7 @@ function transformAttempt(
     leadCompany: company || null,
     leadPhone: phone || '',
     callSid: attempt.callSid,
+    fromNumber: attempt.fromNumber ?? null,
     status: attempt.status as any,
     wasConnected: attempt.wasConnected,
     wasAbandoned: attempt.wasAbandoned,

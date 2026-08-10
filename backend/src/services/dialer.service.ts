@@ -1,5 +1,7 @@
 import { config } from '@/config'
 import logger from '@/lib/logger'
+import { db } from '@/lib/db'
+import { sql } from 'kysely'
 import {
   isCallTerminalStatus,
   resolveCallStatusTransition,
@@ -470,7 +472,6 @@ export const initiateOutboundCall = async (
   twilioConfigId: string,
   userId: string,
   toNumber: string,
-  fromNumber: string,
   leadId?: string,
   campaignId?: string,
 ) => {
@@ -478,24 +479,6 @@ export const initiateOutboundCall = async (
   const configData = await twilioConfigRepository.findById(twilioConfigId)
   if (!configData) {
     throw new Error('Telnyx configuration not found')
-  }
-
-  // `fromNumber` comes from the browser, so ownership has to be enforced here.
-  // Hiding a number in the dropdown is not a control — without this check any
-  // rep can dial from a colleague's caller ID, which is exactly the collision
-  // this model exists to prevent.
-  const ownsNumber = await userPhoneNumberRepository.isOwnedByUser(
-    configData.organizationId,
-    userId,
-    fromNumber,
-  )
-  if (!ownsNumber) {
-    const error = new Error(
-      `Caller ID ${fromNumber} is not assigned to you. Ask an admin to assign it in Settings > Phone Numbers.`,
-    ) as Error & { code: string; statusCode: number }
-    error.code = 'CALLER_ID_NOT_ASSIGNED'
-    error.statusCode = 403
-    throw error
   }
 
   // Check billing guard before allowing the call
@@ -528,21 +511,70 @@ export const initiateOutboundCall = async (
     )
   }
 
-  // Create call record - the actual call is initiated via the Telnyx WebRTC SDK
-  // The frontend passes the callId to device.connect(), which triggers the TeXML application
-  const callRecord = await callRepository.createWithActiveCollisionGuard(
-    configData.organizationId,
-    {
-      twilioConfigId,
+  // Allocate the caller ID on the server. The browser no longer chooses a
+  // number; it receives the chosen number after the call row exists and passes
+  // that value to Telnyx WebRTC. The per-user lock prevents two rapid dials
+  // from selecting the same assigned number before either insert is visible.
+  const callRecord = await db.transaction().execute(async (trx) => {
+    await sql`select pg_advisory_xact_lock(hashtext(${`caller-id-user:${configData.organizationId}:${userId}`}))`.execute(
+      trx,
+    )
+
+    const activeUserCall = await callRepository.findActiveOutboundByUser(
+      configData.organizationId,
       userId,
-      leadId,
-      campaignId,
-      fromNumber,
-      toNumber,
-      direction: 'outbound',
-      status: 'initiated',
-    },
-  )
+      trx as typeof db,
+    )
+    if (activeUserCall) {
+      const error = new Error(
+        'You already have an active outbound call. End it before starting another.',
+      ) as Error & { code: string; statusCode: number }
+      error.code = 'USER_ALREADY_IN_CALL'
+      error.statusCode = 409
+      throw error
+    }
+
+    const [assignment] =
+      await userPhoneNumberRepository.findAvailableByUserForDialing(
+        configData.organizationId,
+        userId,
+        { executor: trx as typeof db },
+      )
+
+    if (!assignment) {
+      const assignedNumbers = await userPhoneNumberRepository.findByUser(
+        configData.organizationId,
+        userId,
+        trx as typeof db,
+      )
+      const error = new Error(
+        assignedNumbers.length === 0
+          ? 'No caller ID is assigned to you. Ask an admin to assign you a phone number in Settings > Phone Numbers.'
+          : 'All of your assigned caller IDs are already in use. Wait for the active call to finish before starting another.',
+      ) as Error & { code: string; statusCode: number }
+      error.code =
+        assignedNumbers.length === 0
+          ? 'NO_CALLER_ID_ASSIGNED'
+          : 'CALLER_IDS_BUSY'
+      error.statusCode = assignedNumbers.length === 0 ? 403 : 409
+      throw error
+    }
+
+    return callRepository.createWithActiveCollisionGuardUsingExecutor(
+      configData.organizationId,
+      {
+        twilioConfigId,
+        userId,
+        leadId,
+        campaignId,
+        fromNumber: assignment.phoneNumber,
+        toNumber,
+        direction: 'outbound',
+        status: 'initiated',
+      },
+      trx as typeof db,
+    )
+  })
 
   // Update campaign's lastCalledAt to reflect calling activity (used for active/inactive status)
   if (campaignId) {

@@ -45,6 +45,8 @@ export interface CallFilters {
 
 const ACTIVE_OUTBOUND_CALL_STATUSES = ['initiated', 'ringing', 'in-progress']
 
+type DbExecutor = typeof db
+
 export interface ActiveCallCollision {
   id: string
   userId: string
@@ -162,6 +164,35 @@ export const findActiveCollisionForLeadOrNumber = async (
     .executeTakeFirst()
 
   return collision ?? null
+}
+
+export const findActiveOutboundByUser = async (
+  organizationId: string,
+  userId: string,
+  executor: DbExecutor = db,
+): Promise<ActiveCallCollision | null> => {
+  const activeCall = await executor
+    .selectFrom('call')
+    .innerJoin('twilio_config', 'twilio_config.id', 'call.twilioConfigId')
+    .leftJoin('user', 'user.id', 'call.userId')
+    .where('twilio_config.organizationId', '=', organizationId)
+    .where('call.userId', '=', userId)
+    .where('call.direction', '=', 'outbound')
+    .where('call.endedAt', 'is', null)
+    .where('call.status', 'in', ACTIVE_OUTBOUND_CALL_STATUSES)
+    .select([
+      'call.id',
+      'call.userId',
+      'user.name as userName',
+      'call.leadId',
+      'call.status',
+      'call.toNumber',
+      'call.startedAt',
+    ])
+    .orderBy('call.startedAt', 'desc')
+    .executeTakeFirst()
+
+  return activeCall ?? null
 }
 
 export const findByConferenceSidForOrg = async (
@@ -324,58 +355,73 @@ export const create = async (data: CreateCallInput) => {
     .executeTakeFirstOrThrow()
 }
 
+export const createWithActiveCollisionGuardUsingExecutor = async (
+  organizationId: string,
+  data: CreateCallInput,
+  executor: DbExecutor,
+) => {
+  const toDigits = data.toNumber.replace(/\D/g, '')
+  const lockKey = data.leadId
+    ? `call-lead:${organizationId}:${data.leadId}`
+    : `call-phone:${organizationId}:${toDigits.slice(-10) || data.toNumber}`
+
+  await sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`.execute(
+    executor,
+  )
+
+  const collision = await findActiveCollisionForLeadOrNumber(
+    organizationId,
+    {
+      leadId: data.leadId,
+      toNumber: data.toNumber,
+    },
+    executor,
+  )
+
+  if (collision) {
+    const owner = collision.userName || 'Another rep'
+    const error = new Error(
+      `${owner} is already calling this lead or phone number.`,
+    ) as Error & {
+      code: string
+      statusCode: number
+      activeCall: ActiveCallCollision
+    }
+    error.code = 'LEAD_ALREADY_BEING_DIALED'
+    error.statusCode = 409
+    error.activeCall = collision
+    throw error
+  }
+
+  const record = withIdAndTimestamps(
+    {
+      ...data,
+      status: data.status || 'initiated',
+      startedAt: new Date(),
+    },
+    true,
+  )
+
+  return executor
+    .insertInto('call')
+    .values(record)
+    .returningAll()
+    .executeTakeFirstOrThrow()
+}
+
 export const createWithActiveCollisionGuard = async (
   organizationId: string,
   data: CreateCallInput,
 ) => {
-  return db.transaction().execute(async (trx) => {
-    const toDigits = data.toNumber.replace(/\D/g, '')
-    const lockKey = data.leadId
-      ? `call-lead:${organizationId}:${data.leadId}`
-      : `call-phone:${organizationId}:${toDigits.slice(-10) || data.toNumber}`
-
-    await sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`.execute(trx)
-
-    const collision = await findActiveCollisionForLeadOrNumber(
-      organizationId,
-      {
-        leadId: data.leadId,
-        toNumber: data.toNumber,
-        excludeUserId: data.userId,
-      },
-      trx as typeof db,
+  return db
+    .transaction()
+    .execute(async (trx) =>
+      createWithActiveCollisionGuardUsingExecutor(
+        organizationId,
+        data,
+        trx as typeof db,
+      ),
     )
-
-    if (collision) {
-      const owner = collision.userName || 'Another rep'
-      const error = new Error(
-        `${owner} is already calling this lead or phone number.`,
-      ) as Error & {
-        code: string
-        statusCode: number
-        activeCall: ActiveCallCollision
-      }
-      error.code = 'LEAD_ALREADY_BEING_DIALED'
-      error.statusCode = 409
-      error.activeCall = collision
-      throw error
-    }
-
-    const record = withIdAndTimestamps(
-      {
-        ...data,
-        status: data.status || 'initiated',
-        startedAt: new Date(),
-      },
-      true,
-    )
-
-    return trx
-      .insertInto('call')
-      .values(record)
-      .returningAll()
-      .executeTakeFirstOrThrow()
-  })
 }
 
 export const update = async (id: string, data: UpdateCallInput) => {

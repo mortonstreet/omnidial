@@ -2,11 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useDialerContext } from '@/components/providers/DialerProvider'
-import { useActiveOrganization } from '@/lib/auth-client'
-import { get } from '@/lib/api'
-import { ENDPOINTS } from '@/lib/config'
 import { toast } from 'sonner'
-import type { DialablePhoneNumber } from '@shared/types/src'
 
 interface QuickCallParams {
   leadId: string
@@ -18,9 +14,6 @@ interface QuickCallParams {
 export function useQuickCall() {
   const [isDialing, setIsDialing] = useState(false)
 
-  const activeOrganization = useActiveOrganization()
-  const organizationId = activeOrganization?.data?.id
-
   const {
     callState,
     device,
@@ -30,10 +23,8 @@ export function useQuickCall() {
     setCurrentLeadInfo,
   } = useDialerContext()
 
-  // Pre-fetch org phone numbers as fallback
-
   const quickCall = useCallback(
-    async ({ leadId, leadName, phone, clientId }: QuickCallParams) => {
+    async ({ leadId, leadName, phone }: QuickCallParams) => {
       if (callState !== 'idle' || isDialing) {
         toast.error('Already in a call', {
           description: 'Please end the current call before starting a new one',
@@ -67,31 +58,6 @@ export function useQuickCall() {
       }
 
       try {
-        // Resolve caller ID
-        let fromNumber: string | undefined
-
-        if (organizationId) {
-          try {
-            const response = await get<{ data: DialablePhoneNumber[] }>(
-              ENDPOINTS.DIALER.DIALABLE_PHONE_NUMBERS(organizationId),
-            )
-            fromNumber = response?.data?.[0]?.phoneNumber
-          } catch {
-            // Leave unset — handled below.
-          }
-        }
-
-        // No org-number fallback: the server only accepts a caller ID assigned
-        // to this rep, so falling back would just produce a rejected call.
-        if (!fromNumber) {
-          toast.error('No caller ID assigned to you', {
-            description:
-              'Ask an admin to assign you a phone number in dialer settings',
-          })
-          setIsDialing(false)
-          return
-        }
-
         // Set lead info for the floating widget
         setCurrentLeadInfo({
           id: leadId,
@@ -99,7 +65,7 @@ export function useQuickCall() {
           phone,
         })
 
-        await makeCall(phone, leadId, undefined, fromNumber)
+        await makeCall(phone, leadId)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error'
         toast.error('Failed to place call', { description: message })
@@ -115,7 +81,6 @@ export function useQuickCall() {
       initializeDevice,
       makeCall,
       setCurrentLeadInfo,
-      organizationId,
     ],
   )
 
