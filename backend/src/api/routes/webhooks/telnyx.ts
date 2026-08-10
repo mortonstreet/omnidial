@@ -11,6 +11,7 @@ import * as webhookEventReceiptRepository from '@/repositories/webhookEventRecei
 import * as telnyxConfigRepository from '@/repositories/twilioConfig.repository'
 import * as organizationRepository from '@/repositories/organization.repository'
 import * as leadRepository from '@/repositories/lead.repository'
+import * as userPhoneNumberRepository from '@/repositories/userPhoneNumber.repository'
 import * as agentSmsConfigRepository from '@/repositories/agentSmsConfig.repository'
 import * as agentMessageRepository from '@/repositories/agentMessage.repository'
 import * as voicemailGreetingRepository from '@/repositories/voicemailGreeting.repository'
@@ -70,6 +71,20 @@ const sendInboundSlackNotification = (
         'Failed to send inbound Slack notification',
       )
     })
+}
+
+const resolveInboundCallUserId = async (
+  organizationId: string,
+  toNumber: string,
+  fallbackUserId: string,
+) => {
+  const assignedNumber =
+    await userPhoneNumberRepository.findByPhoneNumberForRouting(
+      organizationId,
+      toNumber,
+    )
+
+  return assignedNumber?.userId ?? fallbackUserId
 }
 
 // Every TeXML <Say> in this file speaks to a prospect, so default them all to
@@ -630,12 +645,19 @@ router.post('/voice', async (req: Request, res: Response) => {
       const existingCall = CallSid
         ? await callRepository.findByTwilioCallSid(CallSid)
         : null
+      const routedUserId =
+        existingCall?.userId ??
+        (await resolveInboundCallUserId(
+          telnyxConfig.organizationId,
+          To,
+          members[0].userId,
+        ))
 
       const callRecord =
         existingCall ??
         (await callRepository.create({
           twilioConfigId: telnyxConfig.id,
-          userId: members[0].userId,
+          userId: routedUserId,
           leadId: matchedLead?.id,
           twilioCallSid: CallSid,
           fromNumber: From,
@@ -740,12 +762,19 @@ router.post('/voice/inbound', async (req: Request, res: Response) => {
     const existingCall = CallSid
       ? await callRepository.findByTwilioCallSid(CallSid)
       : null
+    const routedUserId =
+      existingCall?.userId ??
+      (await resolveInboundCallUserId(
+        telnyxConfig.organizationId,
+        To,
+        members[0].userId,
+      ))
 
     const callRecord =
       existingCall ??
       (await callRepository.create({
         twilioConfigId: telnyxConfig.id,
-        userId: members[0].userId,
+        userId: routedUserId,
         leadId: matchedLead?.id,
         twilioCallSid: CallSid,
         fromNumber: From,

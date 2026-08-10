@@ -25,7 +25,6 @@ import {
   DeleteDispositionRequest,
   GetCapabilityTokenRequest,
   ListPhoneNumberAssignmentsRequest,
-  GetClientPhoneNumbersRequest,
   AssignPhoneNumberRequest,
   UnassignPhoneNumberRequest,
   GetDialablePhoneNumbersRequest,
@@ -106,7 +105,7 @@ export const listPhoneNumbers: AuthRequestHandler<
   }
 }
 
-// === Client Phone Number Assignment Controllers ===
+// === User Phone Number Assignment Controllers ===
 
 export const listPhoneNumbersWithAssignments: AuthRequestHandler<
   ListPhoneNumberAssignmentsRequest

@@ -291,7 +291,7 @@ export const listPhoneNumbers = async (organizationId: string) => {
   return phoneNumberList
 }
 
-// === Client Phone Number Assignments ===
+// === User Phone Number Assignments ===
 
 export const listPhoneNumbersWithAssignments = async (
   organizationId: string,

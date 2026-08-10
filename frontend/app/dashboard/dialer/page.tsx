@@ -917,7 +917,7 @@ function DialerSettings({
           {config && (
             <SettingsCard
               title="Phone Numbers"
-              description="Manage phone numbers from your Telnyx account and assign them to clients."
+              description="Manage phone numbers from your Telnyx account and assign each caller ID directly to one rep."
             >
               <PhoneNumberAssignmentManager organizationId={organizationId!} />
             </SettingsCard>
@@ -926,7 +926,7 @@ function DialerSettings({
           {/* User-Client Assignments - Admin/Owner Only */}
           <SettingsCard
             title="User-Client Access"
-            description="Control which team members can access specific clients. Members can only see and dial for clients assigned to them."
+            description="Control which team members can access specific clients. Caller IDs are assigned separately by rep."
           >
             <ClientUserAssignmentManager organizationId={organizationId!} />
           </SettingsCard>

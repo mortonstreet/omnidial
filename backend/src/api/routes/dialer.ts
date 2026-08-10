@@ -72,9 +72,9 @@ router.get(
   authenticatedRoute(listPhoneNumbers),
 )
 
-// === Client Phone Number Assignment Routes ===
+// === User Phone Number Assignment Routes ===
 
-// List all phone numbers with their client assignments (owner only)
+// List all phone numbers with their assigned rep (owner only)
 router.get(
   '/phone-numbers/:organizationId/assignments',
   validateAndMerge(ListPhoneNumberAssignmentsRequestSchema),
@@ -82,7 +82,7 @@ router.get(
   authenticatedRoute(listPhoneNumbersWithAssignments),
 )
 
-// Assign phone number to client (owner only)
+// Assign phone number to rep (owner only)
 router.post(
   '/phone-numbers/assign',
   validateAndMerge(AssignPhoneNumberRequestSchema),

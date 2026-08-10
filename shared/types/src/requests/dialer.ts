@@ -183,20 +183,12 @@ export type GetCapabilityTokenRequest = z.infer<
   typeof GetCapabilityTokenRequestSchema
 >
 
-// === Client Phone Number Assignment Types ===
+// === User Phone Number Assignment Types ===
 export const ListPhoneNumberAssignmentsRequestSchema = z.object({
   organizationId: z.string().min(1),
 })
 export type ListPhoneNumberAssignmentsRequest = z.infer<
   typeof ListPhoneNumberAssignmentsRequestSchema
->
-
-export const GetClientPhoneNumbersRequestSchema = z.object({
-  organizationId: z.string().min(1),
-  clientId: z.string().uuid(),
-})
-export type GetClientPhoneNumbersRequest = z.infer<
-  typeof GetClientPhoneNumbersRequestSchema
 >
 
 // Caller IDs belong to a rep, not a client — see UserPhoneNumber in the schema.
@@ -318,7 +310,7 @@ export interface CapabilityTokenResponse {
   sipDomain?: string | null
 }
 
-// Client Phone Number Response Types
+// User Phone Number Response Types
 export interface UserPhoneNumberResponse {
   id: string
   organizationId: string

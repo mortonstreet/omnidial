@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { validateAndNormalizePhone } from '@/lib/phone'
 import { sql } from 'kysely'
 import { withId, withTimestamps } from './utils'
 
@@ -147,6 +148,35 @@ export const findByPhoneNumber = async (
     .where('phoneNumber', '=', phoneNumber)
     .selectAll()
     .executeTakeFirst()
+}
+
+export const findByPhoneNumberForRouting = async (
+  organizationId: string,
+  phoneNumber: string,
+  executor: DbExecutor = db,
+) => {
+  const normalizedPhoneNumber = validateAndNormalizePhone(phoneNumber)
+  const candidateNumbers = Array.from(
+    new Set(
+      [phoneNumber.trim(), normalizedPhoneNumber].filter(
+        (value): value is string => typeof value === 'string' && value !== '',
+      ),
+    ),
+  )
+
+  if (candidateNumbers.length === 0) return null
+
+  let query = executor
+    .selectFrom('user_phone_number')
+    .where('organizationId', '=', organizationId)
+    .selectAll()
+
+  query =
+    candidateNumbers.length === 1
+      ? query.where('phoneNumber', '=', candidateNumbers[0])
+      : query.where('phoneNumber', 'in', candidateNumbers)
+
+  return query.executeTakeFirst()
 }
 
 /** Assignments with the owning rep's name, for the assignment UI. */

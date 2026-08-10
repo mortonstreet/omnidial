@@ -44,7 +44,7 @@ interface DialerPanelProps {
   phoneNumber?: string
   leadId?: string
   campaignId?: string
-  clientId?: string // Optional: filter phone numbers by assigned client
+  clientId?: string // Optional: selected client context for lead/campaign filtering
   clients?: DialerClient[] // Available clients for selection (manual dialer mode)
   onClientChange?: (clientId: string | undefined) => void // Callback when client changes
   onCallEnd?: () => void

@@ -263,11 +263,18 @@ export const getQuickContext = async (
     .orderBy('campaign.name', 'asc')
     .execute()
 
-  // Get assigned phone numbers
+  // Get user-owned caller IDs. Caller IDs must not be scoped to clients:
+  // client-scoped ownership lets multiple reps share one outbound number.
   const phoneNumbers = await db
-    .selectFrom('client_phone_number')
-    .where('organizationId', '=', organizationId)
-    .select(['id', 'phoneNumber as number', 'clientId'])
+    .selectFrom('user_phone_number')
+    .leftJoin('user', 'user.id', 'user_phone_number.userId')
+    .where('user_phone_number.organizationId', '=', organizationId)
+    .select([
+      'user_phone_number.id',
+      'user_phone_number.phoneNumber as number',
+      'user_phone_number.userId',
+      'user.name as userName',
+    ])
     .execute()
 
   return {
@@ -287,7 +294,8 @@ export const getQuickContext = async (
     phoneNumbers: phoneNumbers.map((p) => ({
       id: p.id,
       number: p.number,
-      clientId: p.clientId,
+      userId: p.userId,
+      userName: p.userName,
     })),
   }
 }
