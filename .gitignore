@@ -22,3 +22,5 @@ service-account*.json
 .nx/workspace-data
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
+# macOS
+.DS_Store

@@ -2,8 +2,11 @@ import type { NextConfig } from 'next'
 import { withSentryConfig } from '@sentry/nextjs'
 
 const isDev = process.env.NODE_ENV !== 'production'
+// Soketi (the local Pusher stand-in) runs on 6001, and pusher-js may reach for
+// wss:// even with forceTLS off, so both schemes have to be allowed or realtime
+// silently dies behind a CSP violation.
 const devConnectSources = isDev
-  ? ' http://localhost:3000 http://localhost:3001 http://localhost:8000 http://localhost:8010 ws://localhost:3000 ws://localhost:3001'
+  ? ' http://localhost:3000 http://localhost:3001 http://localhost:8000 http://localhost:8010 ws://localhost:3000 ws://localhost:3001 ws://localhost:6001 wss://localhost:6001'
   : ''
 
 const nextConfig: NextConfig = {
