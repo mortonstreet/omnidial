@@ -1,4 +1,5 @@
 import { CrmAdapter, CrmContact, CrmPushResult, CrmSearchResult } from './types'
+import { hubspotFetch } from './hubspotFetch'
 import { decrypt, encrypt } from '@/lib/encryption'
 import { config } from '@/config'
 import * as integrationRepository from '@/repositories/integration.repository'
@@ -97,7 +98,7 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   refreshToken: string
   expiresAt: Date
 }> {
-  const response = await fetch(HUBSPOT_TOKEN_URL, {
+  const response = await hubspotFetch(HUBSPOT_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -199,7 +200,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
         const headers = await getHubSpotHeaders(this.organizationId, {
           forceRefresh,
         })
-        return fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts?limit=1`, {
+        return hubspotFetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts?limit=1`, {
           headers,
         })
       }
@@ -270,7 +271,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
       }
     }
 
-    const createResponse = await fetch(
+    const createResponse = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/objects/contacts`,
       {
         method: 'POST',
@@ -389,7 +390,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     contactId: string,
     properties: Record<string, string>,
   ): Promise<void> {
-    const updateResponse = await fetch(
+    const updateResponse = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${contactId}`,
       {
         method: 'PATCH',
@@ -409,7 +410,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     propertyName: HubSpotContactSearchProperty,
     value: string,
   ): Promise<CrmSearchResult[]> {
-    const response = await fetch(
+    const response = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/objects/contacts/search`,
       {
         method: 'POST',
@@ -452,7 +453,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
   ): Promise<CrmSearchResult[]> {
     if (!query) return []
 
-    const response = await fetch(
+    const response = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/objects/contacts/search`,
       {
         method: 'POST',
@@ -512,7 +513,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
 
     const existingDealId = await this.findAssociatedDealId(headers, contactId)
     if (existingDealId) {
-      const updateResponse = await fetch(
+      const updateResponse = await hubspotFetch(
         `${HUBSPOT_API_BASE}/crm/v3/objects/deals/${existingDealId}`,
         {
           method: 'PATCH',
@@ -529,7 +530,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
       return
     }
 
-    const createResponse = await fetch(
+    const createResponse = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/objects/deals`,
       {
         method: 'POST',
@@ -566,7 +567,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     headers: Record<string, string>,
     stageLabel: string,
   ): Promise<{ propertyName: string; optionValue: string } | undefined> {
-    const response = await fetch(
+    const response = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/properties/deals/${CUSTOM_DEAL_STAGE_PROPERTY_NAME}`,
       { headers },
     )
@@ -604,7 +605,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
   private async getDefaultPipelineStageProperties(
     headers: Record<string, string>,
   ): Promise<{ pipeline: string; dealstage: string }> {
-    const response = await fetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
+    const response = await hubspotFetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
       headers,
     })
 
@@ -639,7 +640,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     headers: Record<string, string>,
     stageLabel: string,
   ): Promise<{ pipelineId: string; stageId: string }> {
-    const response = await fetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
+    const response = await hubspotFetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
       headers,
     })
 
@@ -712,7 +713,7 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     headers: Record<string, string>,
     contactId: string,
   ): Promise<string | undefined> {
-    const response = await fetch(
+    const response = await hubspotFetch(
       `${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${contactId}?associations=deals`,
       { headers },
     )

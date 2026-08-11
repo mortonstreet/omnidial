@@ -4,6 +4,7 @@ import * as integrationRepository from '@/repositories/integration.repository'
 import * as leadRepository from '@/repositories/lead.repository'
 import * as pipelineRepository from '@/repositories/pipeline.repository'
 import * as hubspotService from '@/services/hubspot.service'
+import { mapWithConcurrency } from '@/utils/concurrency'
 
 const HUBSPOT_CUSTOM_DEAL_STAGE_PROPERTY = 'deal_stage_2'
 
@@ -159,7 +160,9 @@ export const testCrmConnection = async (
 
 // Each pushLeadToCrm is several provider round trips, so a sync-all of a big
 // pipeline has to run in parallel and stay bounded or it outlives the request.
-const SYNC_ALL_CONCURRENCY = 5
+// Kept low because a first-time push spends most of its calls on HubSpot's
+// search endpoints, which are throttled far harder than the rest of the API.
+const SYNC_ALL_CONCURRENCY = 3
 const SYNC_ALL_MAX_LEADS = 250
 
 const pushLeadsToCrm = async (
@@ -171,28 +174,18 @@ const pushLeadsToCrm = async (
   const uniqueLeadIds = Array.from(new Set(leadIds))
   const errors: { leadId: string; error: string }[] = []
   let synced = 0
-  let cursor = 0
 
-  const runWorker = async () => {
-    while (cursor < uniqueLeadIds.length) {
-      const leadId = uniqueLeadIds[cursor++]
-      try {
-        await pushLeadToCrm(organizationId, leadId, provider)
-        synced++
-      } catch (error) {
-        errors.push({
-          leadId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
-      }
+  await mapWithConcurrency(uniqueLeadIds, concurrency, async (leadId) => {
+    try {
+      await pushLeadToCrm(organizationId, leadId, provider)
+      synced++
+    } catch (error) {
+      errors.push({
+        leadId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, uniqueLeadIds.length) }, () =>
-      runWorker(),
-    ),
-  )
+  })
 
   return {
     success: errors.length === 0,
