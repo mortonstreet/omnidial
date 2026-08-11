@@ -200,9 +200,12 @@ export class HubSpotCrmAdapter implements CrmAdapter {
         const headers = await getHubSpotHeaders(this.organizationId, {
           forceRefresh,
         })
-        return hubspotFetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts?limit=1`, {
-          headers,
-        })
+        return hubspotFetch(
+          `${HUBSPOT_API_BASE}/crm/v3/objects/contacts?limit=1`,
+          {
+            headers,
+          },
+        )
       }
       let response = await checkConnection()
 
@@ -605,9 +608,12 @@ export class HubSpotCrmAdapter implements CrmAdapter {
   private async getDefaultPipelineStageProperties(
     headers: Record<string, string>,
   ): Promise<{ pipeline: string; dealstage: string }> {
-    const response = await hubspotFetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
-      headers,
-    })
+    const response = await hubspotFetch(
+      `${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`,
+      {
+        headers,
+      },
+    )
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -640,9 +646,12 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     headers: Record<string, string>,
     stageLabel: string,
   ): Promise<{ pipelineId: string; stageId: string }> {
-    const response = await hubspotFetch(`${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`, {
-      headers,
-    })
+    const response = await hubspotFetch(
+      `${HUBSPOT_API_BASE}/crm/v3/pipelines/deals`,
+      {
+        headers,
+      },
+    )
 
     if (!response.ok) {
       const errorText = await response.text()

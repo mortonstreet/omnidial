@@ -12,6 +12,7 @@ import { PipelineColumn } from "./PipelineColumn";
 import { useMoveLead } from "@/hooks/api/useLeads";
 import { useConnectedCrms, useCrmPushLead } from "@/hooks/api/useCrmSync";
 import { Button } from "@/components/ui/button";
+import { moveStage, sortByOrder, toSortOrderPayload } from "@/lib/pipelineOrder";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,7 +52,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
 
   // Local state for optimistic reordering - initialize from props
   const [localStages, setLocalStages] = useState<PipelineStageWithStats[]>(() =>
-    [...stages].sort((a, b) => a.sortOrder - b.sortOrder)
+    sortByOrder(stages)
   );
   const [draggedStageId, setDraggedStageId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
   const [prevStages, setPrevStages] = useState(stages);
   if (stages !== prevStages) {
     setPrevStages(stages);
-    setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
+    setLocalStages(sortByOrder(stages));
   }
 
   const isHubSpotConnected =
@@ -160,7 +161,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
         toast.success("Stage updated");
       } catch {
         // Revert on error
-        setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
+        setLocalStages(sortByOrder(stages));
         toast.error("Failed to update stage");
       }
     },
@@ -177,7 +178,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
         toast.success("Stage deleted");
       } catch {
         // Revert on error
-        setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
+        setLocalStages(sortByOrder(stages));
         toast.error("Failed to delete stage");
       }
     },
@@ -202,7 +203,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
       didPersistStageOrder.current = false;
       return;
     }
-    setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
+    setLocalStages(sortByOrder(stages));
   }, [stages]);
 
   const handleStageDragOver = useCallback((e: React.DragEvent, stageId: string) => {
@@ -214,19 +215,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
       setDropTargetId(stageId);
 
       // Optimistic reorder for visual feedback
-      setLocalStages((prev) => {
-        const draggedIndex = prev.findIndex((s) => s.id === draggedStageId);
-        const targetIndex = prev.findIndex((s) => s.id === stageId);
-
-        if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) {
-          return prev;
-        }
-
-        const newOrder = [...prev];
-        const [removed] = newOrder.splice(draggedIndex, 1);
-        newOrder.splice(targetIndex, 0, removed);
-        return newOrder;
-      });
+      setLocalStages((prev) => moveStage(prev, draggedStageId, stageId));
     }
   }, [draggedStageId]);
 
@@ -245,10 +234,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
       // The column under the cursor is usually the dragged one, because dragover
       // already moved it there optimistically. So persist whatever order local
       // state now holds rather than comparing dragged against drop target.
-      const stagesPayload = localStages.map((stage, index) => ({
-        id: stage.id,
-        sortOrder: index,
-      }));
+      const stagesPayload = toSortOrderPayload(localStages);
 
       didPersistStageOrder.current = true;
 
@@ -256,7 +242,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
         await reorderStages.mutateAsync({ stages: stagesPayload });
       } catch {
         // Revert on error
-        setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
+        setLocalStages(sortByOrder(stages));
         toast.error("Failed to reorder stages");
       }
     },
