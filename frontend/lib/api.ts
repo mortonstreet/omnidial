@@ -19,7 +19,25 @@ async function getErrorMessage(response: Response): Promise<string> {
       ) {
         return data.message
       }
-      if (typeof data?.error === 'string') return data.error
+      if (typeof data?.error === 'string') {
+        // Zod failures carry the offending fields in `details`. Without them
+        // every rejected request reads as a bare "Validation failed", which
+        // says nothing about which field the server actually objected to.
+        const issues = Array.isArray(data?.details)
+          ? data.details
+              .map((issue: any) => {
+                const path = Array.isArray(issue?.path)
+                  ? issue.path.join('.')
+                  : ''
+                const message = issue?.message ?? 'invalid'
+                return path ? `${path}: ${message}` : message
+              })
+              .filter(Boolean)
+              .join('; ')
+          : ''
+
+        return issues ? `${data.error} (${issues})` : data.error
+      }
       if (typeof data?.message === 'string') return data.message
       return text
     } catch {

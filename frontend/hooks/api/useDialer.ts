@@ -474,30 +474,6 @@ export function useUpdateDialerConfig() {
   })
 }
 
-// Hook for fetching phone numbers from the provider account
-export function useTwilioPhoneNumbers(organizationId?: string, enabled = true) {
-  return useQuery({
-    queryKey: QUERY_KEYS.dialerPhoneNumbers(organizationId),
-    queryFn: async () => {
-      if (!organizationId) return []
-      const response = await get<{ data: TwilioPhoneNumber[] }>(
-        ENDPOINTS.DIALER.PHONE_NUMBERS(organizationId),
-      )
-      return response?.data ?? []
-    },
-    enabled: !!organizationId && enabled,
-  })
-}
-
-interface TwilioPhoneNumber {
-  phoneNumber: string
-  friendlyName: string
-  locality: string | null // City (e.g., "Payson")
-  region: string | null // State/Province (e.g., "AZ")
-  callerIdVerified?: boolean
-  capabilities: {
-    voice: boolean
-    sms: boolean
-    mms: boolean
-  }
-}
+// Caller IDs are now fetched per-rep via useDialablePhoneNumbers; the raw
+// provider-account listing is only used by admin settings, which calls the
+// assignment endpoint directly.

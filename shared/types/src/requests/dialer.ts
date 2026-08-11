@@ -196,7 +196,12 @@ export const AssignPhoneNumberRequestSchema = z.object({
   organizationId: z.string().min(1),
   userId: z.string().min(1),
   phoneNumber: z.string().min(1),
-  friendlyName: z.string().optional(),
+  // Providers hand back a null reference for unnamed numbers, and JSON keeps
+  // that null rather than dropping the key - so accept it and normalise.
+  friendlyName: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined),
 })
 export type AssignPhoneNumberRequest = z.infer<
   typeof AssignPhoneNumberRequestSchema
