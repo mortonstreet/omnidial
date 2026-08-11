@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback, useState } from "react";
+import { useMemo, useCallback, useRef, useState } from "react";
 import {
   PipelineStageWithStats,
   useUpdatePipelineStage,
@@ -57,6 +57,9 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [leadDropTargetStageId, setLeadDropTargetStageId] = useState<string | null>(null);
+  // Whether the in-flight stage drag already saved its order, so dragend knows
+  // not to revert on top of a successful drop.
+  const didPersistStageOrder = useRef(false);
 
   // Track previous stages to detect prop changes (React-recommended pattern for derived state)
   const [prevStages, setPrevStages] = useState(stages);
@@ -184,13 +187,23 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
   const handleStageDragStart = useCallback((e: React.DragEvent, stageId: string) => {
     e.dataTransfer.setData("stageId", stageId);
     e.dataTransfer.effectAllowed = "move";
+    didPersistStageOrder.current = false;
     setDraggedStageId(stageId);
   }, []);
 
   const handleStageDragEnd = useCallback(() => {
     setDraggedStageId(null);
     setDropTargetId(null);
-  }, []);
+
+    // The drag ended without a drop landing on a column (cancelled, or released
+    // over a gap), so drop the optimistic order rather than showing an order
+    // the server never stored.
+    if (didPersistStageOrder.current) {
+      didPersistStageOrder.current = false;
+      return;
+    }
+    setLocalStages([...stages].sort((a, b) => a.sortOrder - b.sortOrder));
+  }, [stages]);
 
   const handleStageDragOver = useCallback((e: React.DragEvent, stageId: string) => {
     e.preventDefault();
@@ -218,7 +231,7 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
   }, [draggedStageId]);
 
   const handleStageDrop = useCallback(
-    async (e: React.DragEvent, targetStageId: string) => {
+    async (e: React.DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
 
@@ -227,13 +240,17 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
       setDraggedStageId(null);
       setDropTargetId(null);
 
-      if (!draggedId || draggedId === targetStageId) return;
+      if (!draggedId) return;
 
-      // Create reorder payload from current local state (already optimistically updated)
+      // The column under the cursor is usually the dragged one, because dragover
+      // already moved it there optimistically. So persist whatever order local
+      // state now holds rather than comparing dragged against drop target.
       const stagesPayload = localStages.map((stage, index) => ({
         id: stage.id,
         sortOrder: index,
       }));
+
+      didPersistStageOrder.current = true;
 
       try {
         await reorderStages.mutateAsync({ stages: stagesPayload });

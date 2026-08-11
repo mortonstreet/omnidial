@@ -8,6 +8,7 @@ import type {
   CrmPresenceItem,
   CrmProvider,
   CrmPushResponse,
+  CrmSyncAllResponse,
 } from '@shared/types/src/requests/crmSync'
 
 export function useConnectedCrms() {
@@ -72,6 +73,33 @@ export function useCrmPushLead() {
         queryKey: QUERY_KEYS.lead(variables.leadId),
       })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.leads(orgId) })
+    },
+  })
+}
+
+export function useCrmSyncAllLeads() {
+  const queryClient = useQueryClient()
+  const activeOrganization = useActiveOrganization()
+  const orgId = activeOrganization?.data?.id
+
+  return useMutation({
+    mutationFn: async (params: {
+      provider: CrmProvider
+      clientId?: string
+    }) => {
+      if (!orgId) {
+        throw new Error('No active organization')
+      }
+
+      return post<{ data: CrmSyncAllResponse }>(ENDPOINTS.CRM.SYNC_ALL, {
+        organizationId: orgId,
+        provider: params.provider,
+        ...(params.clientId ? { clientId: params.clientId } : {}),
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.leads(orgId) })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pipelineStages() })
     },
   })
 }

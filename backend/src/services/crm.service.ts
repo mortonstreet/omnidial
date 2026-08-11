@@ -157,33 +157,91 @@ export const testCrmConnection = async (
   return adapter.testConnection()
 }
 
-export const bulkPushLeadsToCrm = async (
+// Each pushLeadToCrm is several provider round trips, so a sync-all of a big
+// pipeline has to run in parallel and stay bounded or it outlives the request.
+const SYNC_ALL_CONCURRENCY = 5
+const SYNC_ALL_MAX_LEADS = 250
+
+const pushLeadsToCrm = async (
   organizationId: string,
   leadIds: string[],
   provider: string,
+  concurrency: number,
 ) => {
-  let synced = 0
+  const uniqueLeadIds = Array.from(new Set(leadIds))
   const errors: { leadId: string; error: string }[] = []
+  let synced = 0
+  let cursor = 0
 
-  for (const leadId of Array.from(new Set(leadIds))) {
-    try {
-      await pushLeadToCrm(organizationId, leadId, provider)
-      synced++
-    } catch (error) {
-      errors.push({
-        leadId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      })
+  const runWorker = async () => {
+    while (cursor < uniqueLeadIds.length) {
+      const leadId = uniqueLeadIds[cursor++]
+      try {
+        await pushLeadToCrm(organizationId, leadId, provider)
+        synced++
+      } catch (error) {
+        errors.push({
+          leadId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
     }
   }
 
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, uniqueLeadIds.length) }, () =>
+      runWorker(),
+    ),
+  )
+
   return {
     success: errors.length === 0,
-    total: new Set(leadIds).size,
+    total: uniqueLeadIds.length,
     synced,
     failed: errors.length,
     errors,
   }
+}
+
+export const bulkPushLeadsToCrm = async (
+  organizationId: string,
+  leadIds: string[],
+  provider: string,
+) => pushLeadsToCrm(organizationId, leadIds, provider, 1)
+
+/**
+ * Push every lead currently on the pipeline board to a CRM in one run.
+ * Optionally narrowed to a single client, matching the board's own filter.
+ */
+export const syncAllPipelineLeadsToCrm = async (
+  organizationId: string,
+  provider: string,
+  clientId?: string,
+) => {
+  // Fail fast rather than reporting a failure per lead.
+  const integration = await integrationRepository.findByOrganizationAndProvider(
+    organizationId,
+    provider,
+  )
+  if (!integration) {
+    throw new Error(`${provider} is not connected`)
+  }
+
+  const leadIds = await leadRepository.findIdsByFilters({
+    organizationId,
+    inPipeline: true,
+    clientId,
+  })
+
+  const syncable = leadIds.slice(0, SYNC_ALL_MAX_LEADS)
+  const result = await pushLeadsToCrm(
+    organizationId,
+    syncable,
+    provider,
+    SYNC_ALL_CONCURRENCY,
+  )
+
+  return { ...result, skipped: leadIds.length - syncable.length }
 }
 
 export interface HubSpotWebhookEvent {

@@ -5,6 +5,7 @@ import type {
   CrmBulkPushRequest,
   CrmPushRequest,
   CrmPresenceRequest,
+  CrmSyncAllRequest,
   CrmTestRequest,
 } from '@shared/types/src/requests/crmSync'
 
@@ -35,6 +36,23 @@ export const bulkPushToCrm = async (
       organizationId,
       leadIds,
       provider,
+    )
+    return res.json({ data: result })
+  } catch (error) {
+    return res.status(400).json({ error: (error as Error).message })
+  }
+}
+
+export const syncAllToCrm = async (
+  req: AuthRequest<CrmSyncAllRequest>,
+  res: Response,
+) => {
+  const { organizationId, provider, clientId } = req.validated
+  try {
+    const result = await crmService.syncAllPipelineLeadsToCrm(
+      organizationId,
+      provider,
+      clientId,
     )
     return res.json({ data: result })
   } catch (error) {

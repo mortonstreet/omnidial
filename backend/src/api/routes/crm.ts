@@ -6,12 +6,14 @@ import {
   CrmPushRequestSchema,
   CrmBulkPushRequestSchema,
   CrmPresenceRequestSchema,
+  CrmSyncAllRequestSchema,
   CrmTestRequestSchema,
   CrmConnectedRequestSchema,
 } from '@shared/types/src/requests/crmSync'
 import {
   pushToCrm,
   bulkPushToCrm,
+  syncAllToCrm,
   getCrmPresence,
   listConnectedCrms,
   testCrmConnection,
@@ -44,6 +46,15 @@ router.post(
   validateAndMerge(CrmBulkPushRequestSchema),
   validateActiveOrganization,
   authenticatedRoute(bulkPushToCrm),
+)
+
+// Sync every pipeline lead to a CRM
+router.post(
+  '/sync-all',
+  withBetterAuth,
+  validateAndMerge(CrmSyncAllRequestSchema),
+  validateActiveOrganization,
+  authenticatedRoute(syncAllToCrm),
 )
 
 // Check lead presence in CRMs

@@ -39,6 +39,15 @@ export const CrmBulkPushRequestSchema = z.object({
 })
 export type CrmBulkPushRequest = z.infer<typeof CrmBulkPushRequestSchema>
 
+// Org-wide sync of every pipeline lead. Unlike bulk-push the caller sends no
+// lead ids - the server resolves them - so the 100-id cap does not apply.
+export const CrmSyncAllRequestSchema = z.object({
+  organizationId: z.string().min(1),
+  provider: CrmProviderSchema,
+  clientId: z.string().min(1).optional(),
+})
+export type CrmSyncAllRequest = z.infer<typeof CrmSyncAllRequestSchema>
+
 // Response types
 export interface CrmPushResponse {
   success: boolean
@@ -55,6 +64,11 @@ export interface CrmBulkPushResponse {
     leadId: string
     error: string
   }>
+}
+
+export interface CrmSyncAllResponse extends CrmBulkPushResponse {
+  // Leads found beyond the per-run ceiling and left unsynced.
+  skipped: number
 }
 
 export interface CrmPresenceItem {

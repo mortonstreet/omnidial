@@ -8,7 +8,7 @@ import { CreateLeadModal } from '@/components/crm/CreateLeadModal'
 import { usePipelineStages } from '@/hooks/api/usePipeline'
 import { useLeads } from '@/hooks/api/useLeads'
 import { useClients } from '@/hooks/api/useClients'
-import { useConnectedCrms, useCrmBulkPushLeads } from '@/hooks/api/useCrmSync'
+import { useConnectedCrms, useCrmSyncAllLeads } from '@/hooks/api/useCrmSync'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import {
@@ -18,6 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { Plus, RefreshCw, Users } from 'lucide-react'
 import { Logo3DSpinner } from '@/components/ui/Logo3DSpinner'
 import { toast } from 'sonner'
@@ -31,7 +37,7 @@ export default function CRMPage() {
   const { data: stagesData, isLoading: stagesLoading } = usePipelineStages()
   const { data: clients = [] } = useClients()
   const { data: connectedCrmsData } = useConnectedCrms()
-  const bulkPushLeads = useCrmBulkPushLeads()
+  const syncAllLeads = useCrmSyncAllLeads()
   const { data: leadsData, isLoading: leadsLoading } = useLeads({
     inPipeline: true,
     limit: 100,
@@ -55,22 +61,31 @@ export default function CRMPage() {
     router.push(`/dashboard/crm/leads/${lead.id}`)
   }
 
-  const handleBulkHubSpotSync = async () => {
-    const leadIds = leads.map((lead) => lead.id)
-    if (leadIds.length === 0) return
-
+  // Syncs every pipeline lead server-side, not just the page of leads the
+  // board has loaded. Narrowed to the selected client when one is filtered.
+  const handleSyncAllToHubSpot = async () => {
     try {
-      const result = await bulkPushLeads.mutateAsync({
-        leadIds,
-        provider: 'hubspot',
-      })
-      if (result.data.failed > 0) {
+      const { synced, failed, skipped } = (
+        await syncAllLeads.mutateAsync({
+          provider: 'hubspot',
+          clientId: selectedClientId,
+        })
+      ).data
+
+      const skippedNote =
+        skipped > 0 ? ` ${skipped} left for the next run.` : ''
+
+      if (failed > 0) {
         toast.warning('HubSpot sync completed with failures', {
-          description: `${result.data.synced} synced, ${result.data.failed} failed`,
+          description: `${synced} synced, ${failed} failed.${skippedNote}`,
+        })
+      } else if (synced === 0) {
+        toast.info('Nothing to sync', {
+          description: 'No leads in the pipeline for this filter.',
         })
       } else {
         toast.success('Pipeline synced to HubSpot', {
-          description: `${result.data.synced} leads synced`,
+          description: `${synced} lead${synced !== 1 ? 's' : ''} synced.${skippedNote}`,
         })
       }
     } catch (error) {
@@ -126,21 +141,33 @@ export default function CRMPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {isHubSpotConnected && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleBulkHubSpotSync}
-              disabled={bulkPushLeads.isPending || leads.length === 0}
-            >
-              {bulkPushLeads.isPending ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <BrandLogo provider="hubspot" size={16} />
-              )}
-              Sync HubSpot
-            </Button>
-          )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* Wrapper keeps the tooltip reachable while the button is disabled */}
+                <span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSyncAllToHubSpot}
+                    disabled={!isHubSpotConnected || syncAllLeads.isPending}
+                  >
+                    {syncAllLeads.isPending ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <BrandLogo provider="hubspot" size={16} />
+                    )}
+                    {syncAllLeads.isPending ? 'Syncing…' : 'Sync All to HubSpot'}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isHubSpotConnected
+                  ? `Push every pipeline lead${selectedClientId ? ' for this client' : ''} to HubSpot`
+                  : 'Connect HubSpot in Settings → Integrations first'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             size="sm"
             onClick={() => {

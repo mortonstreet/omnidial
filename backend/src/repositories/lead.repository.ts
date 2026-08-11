@@ -604,6 +604,19 @@ export const findMany = async (
   }
 }
 
+// Ids only, unpaginated - for bulk work that spans every matching lead.
+// Client filtering inner-joins campaigns, so rows can repeat: distinct them.
+export const findIdsByFilters = async (
+  filters: LeadFilters,
+): Promise<string[]> => {
+  const rows = await buildBaseQuery(filters)
+    .select('lead.id')
+    .distinct()
+    .execute()
+
+  return rows.map((row) => row.id)
+}
+
 export const update = async (
   id: string,
   organizationId: string,
