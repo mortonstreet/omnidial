@@ -331,7 +331,28 @@ export const findByPhone = async (organizationId: string, phone: string) => {
     .selectAll()
     .executeTakeFirst()
 
-  return lead
+  if (lead) return lead
+
+  // Fall back to secondary contact methods, so a call from someone's office
+  // line still resolves to them rather than looking like an unknown caller.
+  const viaContactMethod = await db
+    .selectFrom('lead')
+    .innerJoin('lead_contact_method as lcm', 'lcm.leadId', 'lead.id')
+    .where('lead.organizationId', '=', organizationId)
+    .where('lead.deletedAt', 'is', null)
+    .where('lcm.kind', '=', 'phone')
+    .where((eb) =>
+      eb.or([
+        eb('lcm.normalizedValue', '=', phone),
+        sql<boolean>`regexp_replace(lcm."normalizedValue", '[^0-9]', '', 'g') = ${normalizedPhone}`,
+        sql<boolean>`RIGHT(regexp_replace(lcm."normalizedValue", '[^0-9]', '', 'g'), 10) = ${last10Digits}`,
+      ]),
+    )
+    .selectAll('lead')
+    .orderBy('lcm.isPrimary', 'desc')
+    .executeTakeFirst()
+
+  return viaContactMethod ?? null
 }
 
 // Helper to apply smart filter operators
@@ -406,6 +427,22 @@ const buildBaseQuery = (filters: LeadFilters) => {
               sql<boolean>`RIGHT(regexp_replace(lead.phone, '[^0-9]', '', 'g'), 10) = ${last10Digits}`,
             ]
           : []),
+        // Secondary contact methods - office line, mobile, alternate email.
+        // EXISTS rather than a join so a lead matching several of them is
+        // still returned once.
+        sql<boolean>`exists (
+          select 1 from "lead_contact_method" lcm
+          where lcm."leadId" = lead."id"
+            and lcm."organizationId" = lead."organizationId"
+            and (
+              lcm."value" ilike ${searchPattern}
+              ${
+                normalizedSearchPhone
+                  ? sql`or RIGHT(regexp_replace(lcm."normalizedValue", '[^0-9]', '', 'g'), 10) = ${last10Digits}`
+                  : sql``
+              }
+            )
+        )`,
       ]),
     )
   }
@@ -1239,55 +1276,72 @@ export interface DuplicateLeadData {
 export const findDuplicates = async (
   organizationId: string,
 ): Promise<Map<string, DuplicateLeadData[]>> => {
-  // First, find all normalized phones that have duplicates
-  const duplicatePhones = await db
-    .selectFrom('lead')
-    .where('organizationId', '=', organizationId)
-    .where('deletedAt', 'is', null)
-    .where('normalizedPhone', 'is not', null)
-    .groupBy('normalizedPhone')
-    .having((eb) => eb(eb.fn.count('id'), '>', 1))
-    .select(['normalizedPhone'])
+  // Grouped over lead_contact_method rather than lead.normalizedPhone, so two
+  // leads that share an office line count as duplicates even when their primary
+  // numbers differ. Primaries are mirrored into that table, so this still
+  // covers everything the old phone-only grouping did.
+  const duplicateValues = await db
+    .selectFrom('lead_contact_method as lcm')
+    .innerJoin('lead', 'lead.id', 'lcm.leadId')
+    .where('lcm.organizationId', '=', organizationId)
+    .where('lcm.kind', '=', 'phone')
+    .where('lcm.normalizedValue', 'is not', null)
+    .where('lead.deletedAt', 'is', null)
+    .groupBy('lcm.normalizedValue')
+    .having((eb) => eb(eb.fn.count('lead.id').distinct(), '>', 1))
+    .select(['lcm.normalizedValue'])
     .execute()
 
-  if (duplicatePhones.length === 0) {
+  if (duplicateValues.length === 0) {
     return new Map()
   }
 
-  const normalizedPhonesList = duplicatePhones
-    .map((r) => r.normalizedPhone)
-    .filter((p): p is string => p !== null)
+  const values = duplicateValues
+    .map((row) => row.normalizedValue)
+    .filter((value): value is string => value !== null)
 
-  // Get all leads that have these duplicate phones
-  const duplicateLeads = await db
-    .selectFrom('lead')
-    .where('organizationId', '=', organizationId)
-    .where('deletedAt', 'is', null)
-    .where('normalizedPhone', 'in', normalizedPhonesList)
+  const rows = await db
+    .selectFrom('lead_contact_method as lcm')
+    .innerJoin('lead', 'lead.id', 'lcm.leadId')
+    .where('lcm.organizationId', '=', organizationId)
+    .where('lcm.kind', '=', 'phone')
+    .where('lcm.normalizedValue', 'in', values)
+    .where('lead.deletedAt', 'is', null)
     .select([
-      'id',
-      'firstName',
-      'lastName',
-      'email',
-      'phone',
-      'normalizedPhone',
-      'company',
-      'title',
-      'linkedInUrl',
-      'website',
-      'createdAt',
+      'lcm.normalizedValue as groupValue',
+      'lead.id',
+      'lead.firstName',
+      'lead.lastName',
+      'lead.email',
+      'lead.phone',
+      'lead.normalizedPhone',
+      'lead.company',
+      'lead.title',
+      'lead.linkedInUrl',
+      'lead.website',
+      'lead.createdAt',
     ])
-    .orderBy('normalizedPhone')
-    .orderBy('createdAt', 'asc')
+    .orderBy('lcm.normalizedValue')
+    .orderBy('lead.createdAt', 'asc')
     .execute()
 
-  // Group by normalized phone
   const groupedDuplicates = new Map<string, DuplicateLeadData[]>()
-  for (const lead of duplicateLeads) {
-    if (!lead.normalizedPhone) continue
-    const existing = groupedDuplicates.get(lead.normalizedPhone) || []
+  for (const row of rows) {
+    if (!row.groupValue) continue
+
+    const { groupValue, ...lead } = row
+    const existing = groupedDuplicates.get(groupValue) || []
+    // A lead can hold the same number twice (primary plus a labelled copy);
+    // only list it once per group.
+    if (existing.some((entry) => entry.id === lead.id)) continue
+
     existing.push(lead)
-    groupedDuplicates.set(lead.normalizedPhone, existing)
+    groupedDuplicates.set(groupValue, existing)
+  }
+
+  // A group can collapse to one lead once its own repeats are removed.
+  for (const [value, leads] of groupedDuplicates) {
+    if (leads.length < 2) groupedDuplicates.delete(value)
   }
 
   return groupedDuplicates
@@ -1576,6 +1630,41 @@ const reassignDuplicateLeadReferences = async (
       where "leadId" in (${sourceIds})
     `.execute(executor)
   }
+
+  // Contact methods cannot be blind-reassigned: (leadId, kind, normalizedValue)
+  // is unique, so a number both leads hold - or that two source leads share -
+  // would collide. Move only the first of each value the survivor lacks, and
+  // let the delete below drop the rest as redundant.
+  await sql`
+    with movable as (
+      select
+        lcm."id",
+        row_number() over (
+          partition by lcm."kind", coalesce(lcm."normalizedValue", lcm."value")
+          order by lcm."createdAt" asc
+        ) as rn
+      from lead_contact_method lcm
+      where lcm."leadId" in (${sourceIds})
+        and not exists (
+          select 1
+          from lead_contact_method survivor
+          where survivor."leadId" = ${targetLeadId}
+            and survivor."kind" = lcm."kind"
+            and coalesce(survivor."normalizedValue", survivor."value")
+              = coalesce(lcm."normalizedValue", lcm."value")
+        )
+    )
+    update lead_contact_method
+    set "leadId" = ${targetLeadId},
+        "isPrimary" = false,
+        "updatedAt" = now()
+    where "id" in (select "id" from movable where rn = 1)
+  `.execute(executor)
+
+  await sql`
+    delete from lead_contact_method
+    where "leadId" in (${sourceIds})
+  `.execute(executor)
 
   await sql`
     delete from campaign_lead

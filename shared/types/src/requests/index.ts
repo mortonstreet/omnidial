@@ -37,4 +37,5 @@ export * from './leadAgent';
 export * from './smsCampaign';
 export * from './phoneProvisioning';
 export * from './crmSync';
+export * from './leadContactMethod';
 export * from './billing';

@@ -1,4 +1,10 @@
 import { Router } from 'express'
+import {
+  listContactMethods,
+  createContactMethod,
+  updateContactMethod,
+  deleteContactMethod,
+} from '@/api/controllers/leadContactMethod.controller'
 import { validateAndMerge } from '../middlewares/validationMiddleware'
 import { authenticatedRoute } from './utils'
 import {
@@ -20,6 +26,10 @@ import {
   GetLeadActivityRequestSchema,
   GetLeadCallsRequestSchema,
   GenerateCompanySummaryRequestSchema,
+  ListContactMethodsRequestSchema,
+  CreateContactMethodRequestSchema,
+  UpdateContactMethodRequestSchema,
+  DeleteContactMethodRequestSchema,
 } from '@shared/types/src'
 import {
   listLeads,
@@ -174,6 +184,40 @@ router.delete(
   validateAndMerge(DeleteLeadRequestSchema),
   validateMemberOfOrganization,
   authenticatedRoute(deleteLead),
+)
+
+// === Additional contact methods (office line, mobile, secondary email) ===
+
+router.get(
+  '/:leadId/contact-methods',
+  withBetterAuth,
+  validateAndMerge(ListContactMethodsRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(listContactMethods),
+)
+
+router.post(
+  '/:leadId/contact-methods',
+  withBetterAuth,
+  validateAndMerge(CreateContactMethodRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(createContactMethod),
+)
+
+router.patch(
+  '/contact-methods/:id',
+  withBetterAuth,
+  validateAndMerge(UpdateContactMethodRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(updateContactMethod),
+)
+
+router.delete(
+  '/contact-methods/:id',
+  withBetterAuth,
+  validateAndMerge(DeleteContactMethodRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(deleteContactMethod),
 )
 
 export default router

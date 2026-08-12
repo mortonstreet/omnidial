@@ -151,6 +151,7 @@ model Organization {
   creditTransactions     CreditTransaction[]
   campaigns              Campaign[]
   leads                  Lead[]
+  leadContactMethods     LeadContactMethod[]
   leadListFolders        LeadListFolder[]
   leadLists              LeadList[]
   clients                Client[]
@@ -448,6 +449,7 @@ model Lead {
   qualifications   LeadQualification[]
   intelligenceData CallIntelligence[]
   crmSyncRecords   CrmSyncRecord[]
+  contactMethods   LeadContactMethod[]
 
   // Agent orchestration v2
   agentExecutions AgentExecution[]
@@ -464,6 +466,40 @@ model Lead {
   @@index([lastModifiedById])
   @@index([clientId])
   @@map("lead")
+}
+
+/// Additional ways to reach a lead - office line, mobile, secondary email.
+///
+/// Lead.email / Lead.phone remain the primary values every existing caller
+/// depends on; the primary is mirrored here (isPrimary = true) so dedupe and
+/// search can match against one place instead of unioning two shapes.
+model LeadContactMethod {
+  id             String @id @default(uuid())
+  organizationId String
+  leadId         String
+
+  kind  String // "email" | "phone"
+  label String? // "office" | "mobile" | "personal" | free text
+  value String // exactly as entered, for display
+
+  /// E.164 for phones, lowercased+trimmed for emails. Indexed, and what
+  /// dedupe and search actually compare against.
+  normalizedValue String?
+
+  /// Mirrors Lead.email / Lead.phone. At most one per (lead, kind).
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, kind, normalizedValue])
+  @@index([organizationId])
+  @@index([leadId])
+  @@index([organizationId, kind, normalizedValue])
+  @@map("lead_contact_method")
 }
 
 model PipelineStage {

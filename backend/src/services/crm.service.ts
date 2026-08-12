@@ -4,6 +4,7 @@ import * as integrationRepository from '@/repositories/integration.repository'
 import * as leadRepository from '@/repositories/lead.repository'
 import * as pipelineRepository from '@/repositories/pipeline.repository'
 import * as hubspotService from '@/services/hubspot.service'
+import * as contactMethodRepository from '@/repositories/leadContactMethod.repository'
 import { mapWithConcurrency } from '@/utils/concurrency'
 
 const HUBSPOT_CUSTOM_DEAL_STAGE_PROPERTY = 'deal_stage_2'
@@ -50,10 +51,23 @@ export const pushLeadToCrm = async (
       ? existingSyncRecord.externalId
       : undefined
 
+  // Secondary contact methods ride along with the push. The primaries already
+  // live on the lead, so only the non-primary rows are extra.
+  const contactMethods = await contactMethodRepository.findByLead(
+    organizationId,
+    leadId,
+  )
+  const secondaryOfKind = (kind: 'email' | 'phone') =>
+    contactMethods
+      .filter((method) => method.kind === kind && !method.isPrimary)
+      .map((method) => method.value)
+
   try {
     const result = await adapter.pushContact({
       internalLeadId: lead.id,
       externalId: existingExternalId,
+      secondaryEmails: secondaryOfKind('email'),
+      secondaryPhones: secondaryOfKind('phone'),
       firstName: lead.firstName ?? undefined,
       lastName: lead.lastName ?? undefined,
       email: lead.email ?? undefined,

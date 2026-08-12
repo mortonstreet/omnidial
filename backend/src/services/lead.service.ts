@@ -5,7 +5,12 @@ import * as noteRepo from '@/repositories/note.repository'
 import * as taskRepo from '@/repositories/task.repository'
 import * as callRepo from '@/repositories/call.repository'
 import * as twilioConfigRepo from '@/repositories/twilioConfig.repository'
+import * as contactMethodRepo from '@/repositories/leadContactMethod.repository'
 import * as activityService from '@/services/activity.service'
+import {
+  syncPrimariesFromLead,
+  toContactMethodItem,
+} from '@/services/leadContactMethod.service'
 import { DBPagination } from '@shared/db/src/types'
 import { parseSmartQuery } from './smartQuery.service'
 import type {
@@ -34,6 +39,12 @@ export interface CreateLeadParams {
 export const create = async (params: CreateLeadParams) => {
   const lead = await leadRepo.create(params)
 
+  // Mirror the primaries into lead_contact_method so dedupe and search see
+  // them. Non-blocking: a lead that saved should not fail on bookkeeping.
+  await syncPrimariesFromLead(params.organizationId, lead).catch((error) =>
+    console.error('Failed to sync lead contact methods:', error),
+  )
+
   // Log lead creation activity if userId is available
   if (params.userId) {
     try {
@@ -61,7 +72,15 @@ export const getById = async (id: string, organizationId: string) => {
   if (!lead) {
     throw new Error('Lead not found')
   }
-  return lead
+
+  // Returned with the lead so the detail view and dialer can offer every way
+  // to reach them without a second round trip.
+  const contactMethods = await contactMethodRepo.findByLead(organizationId, id)
+
+  return {
+    ...lead,
+    contactMethods: contactMethods.map(toContactMethodItem),
+  }
 }
 
 export interface ListLeadsParams {
@@ -110,6 +129,14 @@ export const update = async (params: UpdateLeadParams) => {
   if (!lead) {
     throw new Error('Lead not found')
   }
+
+  // Only touch the mirror when the primary values actually changed.
+  if (data.email !== undefined || data.phone !== undefined) {
+    await syncPrimariesFromLead(organizationId, lead).catch((error) =>
+      console.error('Failed to sync lead contact methods:', error),
+    )
+  }
+
   return lead
 }
 

@@ -197,6 +197,8 @@ export const ENDPOINTS = {
     CALLS: (id: string) => `/leads/${id}/calls`,
     COMPANY_SUMMARY: (id: string) => `/leads/${id}/company-summary`,
     ENRICH_FROM_WEBSITE: (id: string) => `/leads/${id}/enrich-from-website`,
+    CONTACT_METHODS: (leadId: string) => `/leads/${leadId}/contact-methods`,
+    CONTACT_METHOD: (id: string) => `/leads/contact-methods/${id}`,
   },
   CRM: {
     CONNECTED: '/crm/connected',
@@ -668,6 +670,8 @@ export const QUERY_KEYS = {
   // Leads (shared)
   leads: (orgId?: string) => ['leads', orgId] as const,
   lead: (id?: string) => ['lead', id] as const,
+  leadContactMethods: (leadId?: string) =>
+    ['lead-contact-methods', leadId] as const,
   leadByPhone: (phone?: string) => ['lead', 'by-phone', phone] as const,
   leadActivity: (leadId: string) => ['lead', leadId, 'activity'] as const,
   leadCompanySummary: (leadId: string) =>

@@ -823,6 +823,25 @@ export type LeadContactInfo = {
   createdAt: Generated<Timestamp>
   updatedAt: Generated<Timestamp>
 }
+export type LeadContactMethod = {
+  id: string
+  organizationId: string
+  leadId: string
+  kind: string
+  label: string | null
+  value: string
+  /**
+   * E.164 for phones, lowercased+trimmed for emails. Indexed, and what
+   * dedupe and search actually compare against.
+   */
+  normalizedValue: string | null
+  /**
+   * Mirrors Lead.email / Lead.phone. At most one per (lead, kind).
+   */
+  isPrimary: Generated<boolean>
+  createdAt: Generated<Timestamp>
+  updatedAt: Timestamp
+}
 export type LeadList = {
   id: string
   organizationId: string
@@ -1559,6 +1578,7 @@ export type DB = {
   invitation: Invitation
   lead: Lead
   lead_contact_info: LeadContactInfo
+  lead_contact_method: LeadContactMethod
   lead_list: LeadList
   lead_list_entry: LeadListEntry
   lead_list_folder: LeadListFolder

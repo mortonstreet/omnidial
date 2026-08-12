@@ -10,6 +10,9 @@ export interface CrmContact {
   linkedInUrl?: string
   dealValue?: number | string | null
   pipelineStageLabel?: string
+  /** Extra ways to reach the contact, beyond the primary email/phone. */
+  secondaryEmails?: string[]
+  secondaryPhones?: string[]
 }
 
 export interface CrmPushResult {

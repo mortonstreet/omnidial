@@ -11,6 +11,7 @@ import {
   Task,
   Note,
   PhoneProvisioning,
+  LeadContactMethod,
 } from "./generated/types";
 
 
@@ -65,3 +66,7 @@ export type InsertDBNote = Insertable<Note>;
 export type DBPhoneProvisioning = Selectable<PhoneProvisioning>;
 export type UpdateDBPhoneProvisioning = Updateable<PhoneProvisioning>;
 export type InsertDBPhoneProvisioning = Insertable<PhoneProvisioning>;
+
+export type DBLeadContactMethod = Selectable<LeadContactMethod>;
+export type UpdateDBLeadContactMethod = Updateable<LeadContactMethod>;
+export type InsertDBLeadContactMethod = Insertable<LeadContactMethod>;

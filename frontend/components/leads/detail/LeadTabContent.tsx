@@ -9,6 +9,7 @@ import { NotesList } from '@/components/crm/NotesList'
 import { TaskList } from '@/components/crm/TaskList'
 import { ActivityTimeline } from '@/components/crm/ActivityTimeline'
 import { ContactCard } from './ContactCard'
+import { ContactMethodsCard } from './ContactMethodsCard'
 import { LeadEnrichmentPanel } from '@/components/enrichment/LeadEnrichmentPanel'
 import { LeadContactInfoList } from '@/components/enrichment/LeadContactInfoList'
 import type { TabType } from './LeadTabSidebar'
@@ -117,6 +118,8 @@ export function LeadTabContent({
             onFormChange={onFormChange}
             onCall={onCall}
           />
+
+          <ContactMethodsCard leadId={leadId} />
 
           <LeadEnrichmentPanel
             leadId={leadId}
