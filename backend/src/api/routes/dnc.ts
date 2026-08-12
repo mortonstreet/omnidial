@@ -9,12 +9,14 @@ import {
   ListDncRequestSchema,
   MarkLeadsDncRequestSchema,
   RemoveCampaignLeadsRequestSchema,
+  RemoveListLeadsRequestSchema,
   UnmarkDncRequestSchema,
 } from '@shared/types/src/requests/dnc'
 import {
   listDnc,
   markLeadsDnc,
   removeCampaignLeads,
+  removeListLeads,
   unmarkDnc,
 } from '@/api/controllers/dnc.controller'
 
@@ -52,6 +54,15 @@ router.post(
   validateAndMerge(RemoveCampaignLeadsRequestSchema),
   validateMemberOfOrganization,
   authenticatedRoute(removeCampaignLeads),
+)
+
+// Same for lists - soft removal, so the entry can be restored
+router.post(
+  '/remove-list-leads',
+  withBetterAuth,
+  validateAndMerge(RemoveListLeadsRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(removeListLeads),
 )
 
 export default router

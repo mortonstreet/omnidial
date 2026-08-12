@@ -8,6 +8,7 @@ import type {
   DncEntryItem,
   MarkLeadsDncResponse,
   RemoveCampaignLeadsResponse,
+  RemoveListLeadsResponse,
 } from '@shared/types/src/requests/dnc'
 
 export function useDncEntries() {
@@ -82,6 +83,30 @@ export function useRemoveCampaignLeads() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaign'] })
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.leads(orgId) })
+    },
+  })
+}
+
+/** Soft-remove leads from a list; the entry can be restored later. */
+export function useRemoveListLeads() {
+  const queryClient = useQueryClient()
+  const activeOrganization = useActiveOrganization()
+  const orgId = activeOrganization?.data?.id
+
+  return useMutation({
+    mutationFn: async (params: { listId: string; leadIds: string[] }) => {
+      if (!orgId) throw new Error('No active organization')
+
+      const response = await post<{ data: RemoveListLeadsResponse }>(
+        ENDPOINTS.DNC.REMOVE_LIST_LEADS,
+        { organizationId: orgId, ...params },
+      )
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['list-leads'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.leads(orgId) })
     },
   })

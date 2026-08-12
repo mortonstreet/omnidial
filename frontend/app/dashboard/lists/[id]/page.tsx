@@ -26,6 +26,7 @@ import { Logo3DSpinner } from "@/components/ui/Logo3DSpinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useMarkLeadsDnc, useRemoveListLeads } from "@/hooks/api/useDnc";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -125,6 +126,50 @@ export default function ListDetailPage() {
     .filter((lead) => !!lead.linkedInUrl?.trim())
     .map((lead) => lead.id);
   const selectedLeadCount = selectedLeadIds.size;
+  const markDnc = useMarkLeadsDnc();
+  const removeFromList = useRemoveListLeads();
+
+  // DNC suppresses every number org-wide; removal only drops the list entry,
+  // which stays restorable.
+  const handleMarkDnc = async () => {
+    const leadIds = Array.from(selectedLeadIds);
+    if (leadIds.length === 0) return;
+    if (
+      !confirm(
+        `Move ${leadIds.length} lead(s) to DNC? Every phone number they have will be suppressed across the organisation and they will be pulled from all campaigns and lists.`,
+      )
+    )
+      return;
+
+    try {
+      const result = await markDnc.mutateAsync({ leadIds });
+      toast.success(`${result.leadsMarked} lead(s) moved to DNC`, {
+        description: `${result.numbersSuppressed} number(s) suppressed.`,
+      });
+      setSelectedLeadIds(new Set());
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to move to DNC",
+      );
+    }
+  };
+
+  const handleRemoveFromList = async () => {
+    const leadIds = Array.from(selectedLeadIds);
+    if (leadIds.length === 0) return;
+
+    try {
+      const result = await removeFromList.mutateAsync({ listId, leadIds });
+      toast.success(`${result.removed} lead(s) removed from this list`, {
+        description: "The lead records are unchanged and stay dialable.",
+      });
+      setSelectedLeadIds(new Set());
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to remove leads",
+      );
+    }
+  };
   const selectedEligibleOnPageCount = eligibleLeadIdsOnPage.filter((leadId) =>
     selectedLeadIds.has(leadId)
   ).length;
@@ -559,13 +604,31 @@ export default function ListDetailPage() {
               </Button>
             )}
             {selectedLeadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedLeadIds(new Set())}
-              >
-                Clear
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRemoveFromList}
+                  disabled={removeFromList.isPending || markDnc.isPending}
+                >
+                  Remove from list
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleMarkDnc}
+                  disabled={removeFromList.isPending || markDnc.isPending}
+                >
+                  Move to DNC
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedLeadIds(new Set())}
+                >
+                  Clear
+                </Button>
+              </>
             )}
             <Button
               variant="outline"

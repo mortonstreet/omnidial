@@ -205,6 +205,7 @@ export const ENDPOINTS = {
     MARK: '/dnc/mark',
     UNMARK: '/dnc/unmark',
     REMOVE_CAMPAIGN_LEADS: '/dnc/remove-campaign-leads',
+    REMOVE_LIST_LEADS: '/dnc/remove-list-leads',
   },
   CRM: {
     CONNECTED: '/crm/connected',

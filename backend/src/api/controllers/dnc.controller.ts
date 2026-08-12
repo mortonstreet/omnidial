@@ -2,10 +2,12 @@ import { AuthRequestHandler } from '@/types/handlers'
 import * as dncService from '@/services/dnc.service'
 import * as campaignLeadRepository from '@/repositories/campaign-lead.repository'
 import * as campaignRepository from '@/repositories/campaign.repository'
+import * as listService from '@/services/leadList.service'
 import type {
   ListDncRequest,
   MarkLeadsDncRequest,
   RemoveCampaignLeadsRequest,
+  RemoveListLeadsRequest,
   UnmarkDncRequest,
 } from '@shared/types/src/requests/dnc'
 
@@ -70,4 +72,22 @@ export const removeCampaignLeads: AuthRequestHandler<
   await campaignRepository.updateCounts(campaignId, organizationId)
 
   return res.json({ data: { removed } })
+}
+
+export const removeListLeads: AuthRequestHandler<
+  RemoveListLeadsRequest
+> = async (req, res) => {
+  const { organizationId, listId, leadIds } = req.validated
+
+  try {
+    // Soft removal, matching the power dialer: the entry can be restored.
+    const result = await listService.softRemoveLeadsFromList(
+      listId,
+      organizationId,
+      leadIds,
+    )
+    return res.json({ data: { removed: result.removed } })
+  } catch (error) {
+    return res.status(404).json({ error: (error as Error).message })
+  }
 }

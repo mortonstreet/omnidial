@@ -28,6 +28,16 @@ export type RemoveCampaignLeadsRequest = z.infer<
   typeof RemoveCampaignLeadsRequestSchema
 >
 
+/** Soft-remove leads from a list without suppressing them. */
+export const RemoveListLeadsRequestSchema = z.object({
+  organizationId: z.string().min(1),
+  listId: z.string().min(1),
+  leadIds: z.array(z.string().min(1)).min(1).max(500),
+})
+export type RemoveListLeadsRequest = z.infer<
+  typeof RemoveListLeadsRequestSchema
+>
+
 export interface MarkLeadsDncResponse {
   leadsMarked: number
   numbersSuppressed: number
@@ -37,6 +47,10 @@ export interface MarkLeadsDncResponse {
 }
 
 export interface RemoveCampaignLeadsResponse {
+  removed: number
+}
+
+export interface RemoveListLeadsResponse {
   removed: number
 }
 
