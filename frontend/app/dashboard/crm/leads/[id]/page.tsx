@@ -385,6 +385,14 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
               clientId: lead.client?.id,
             })
           }
+          onCallNumber={(phoneNumber) =>
+            quickCall({
+              leadId: lead.id,
+              leadName: fullName,
+              phone: phoneNumber,
+              clientId: lead.client?.id,
+            })
+          }
           aiCompanySummary={lead.aiCompanySummary}
           aiCompanyOverview={lead.aiCompanyOverview}
           aiSalesTalkingPoints={lead.aiSalesTalkingPoints as string[] | null}

@@ -44,6 +44,8 @@ interface LeadTabContentProps {
   }
   onFormChange: (data: Partial<LeadTabContentProps['formData']>) => void
   onCall: () => void
+  /** Dial one specific number rather than the lead's primary. */
+  onCallNumber?: (phoneNumber: string) => void
   // Intel tab props
   aiCompanySummary: string | null
   aiCompanyOverview: string | null
@@ -79,6 +81,7 @@ export function LeadTabContent({
   formData,
   onFormChange,
   onCall,
+  onCallNumber,
   aiCompanySummary,
   aiCompanyOverview,
   aiSalesTalkingPoints,
@@ -119,7 +122,7 @@ export function LeadTabContent({
             onCall={onCall}
           />
 
-          <ContactMethodsCard leadId={leadId} />
+          <ContactMethodsCard leadId={leadId} onCall={onCallNumber} />
 
           <LeadEnrichmentPanel
             leadId={leadId}
