@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TelnyxRTC, Call, INotification } from '@telnyx/webrtc'
-import { get, post } from '@/lib/api'
+import { get, post, getAuthHeaders } from '@/lib/api'
 import { QUERY_KEYS, ENDPOINTS, env } from '@/lib/config'
 import { useActiveOrganization, useSession } from '@/lib/auth-client'
 import { useDialerConfig } from '@/hooks/api/useDialer'
@@ -122,6 +122,10 @@ const PREVIOUS_TOKEN_CACHE_KEY_PREFIXES = [
 ]
 const TOKEN_CACHE_KEY_PREFIX = 'omnidial-token-v4'
 const TOKEN_TTL_MS = 50 * 60 * 1000 // 50 minutes
+// How long a dialed leg may sit before ringing before we call it dead and give
+// the reserved caller ID back. Real SIP setup is well under a second; this is
+// sized for a bad network, not for a working one.
+const CONNECT_TIMEOUT_MS = 20 * 1000
 // Telnyx has no in-place token update; proactively rebuild the client before the token expires
 const TOKEN_REFRESH_MS = 45 * 60 * 1000 // 45 minutes
 
@@ -368,6 +372,29 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const attemptInitRef = useRef<((token: string) => Promise<boolean>) | null>(
     null,
   )
+  // Fires when a reserved call never gets a Telnyx leg off the ground, so the
+  // reservation can be released instead of holding the caller ID hostage.
+  const connectWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isReadyRef = useRef(false)
+  isReadyRef.current = isReady
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initializeDeviceRef = useRef<(() => Promise<boolean>) | null>(null)
+
+  // Pre-authorized release request for a reservation that has not connected
+  // yet. Built up front because the unload handler has no chance to await a
+  // fresh Clerk token before the document goes away.
+  const pendingReleaseRef = useRef<{
+    url: string
+    headers: Record<string, string>
+  } | null>(null)
+
+  const clearConnectWatchdog = useCallback(() => {
+    if (connectWatchdogRef.current) {
+      clearTimeout(connectWatchdogRef.current)
+      connectWatchdogRef.current = null
+    }
+    pendingReleaseRef.current = null
+  }, [])
 
   // Central handler for Telnyx callUpdate notifications (replaces Twilio's per-call events)
   const handleCallUpdate = useCallback((call: Call) => {
@@ -417,6 +444,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     switch (state) {
       case 'ringing':
       case 'early': {
+        // The leg reached the carrier, so the reservation is no longer orphaned.
+        clearConnectWatchdog()
         if (mode === 'call') {
           console.log('Call ringing')
           setCallState('ringing')
@@ -424,6 +453,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         break
       }
       case 'active': {
+        clearConnectWatchdog()
         if (mode === 'conference') {
           const pending = conferencePendingRef.current
           console.log('[DialerProvider] Conference call accepted - connected!')
@@ -442,6 +472,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       }
       case 'hangup':
       case 'destroy': {
+        clearConnectWatchdog()
         terminatedCallIdsRef.current.add(call.id)
         if (terminatedCallIdsRef.current.size > 100) {
           terminatedCallIdsRef.current.clear()
@@ -492,7 +523,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       default:
         break
     }
-  }, [])
+  }, [clearConnectWatchdog])
 
   // Single attempt to initialize device with a given token
   const attemptInit = useCallback(
@@ -570,7 +601,21 @@ export function DialerProvider({ children }: { children: ReactNode }) {
 
       newDevice.on('telnyx.socket.close', () => {
         setIsReady(false)
+        isReadyRef.current = false
         console.log('Telnyx client unregistered (socket closed)')
+
+        // Without this the dialer sits unregistered until a full page reload:
+        // the banner says "Unable to Connect" and every Call click reserves a
+        // caller ID for a leg that can never leave the browser.
+        if (deviceRef.current !== newDevice) return
+        if (reconnectTimerRef.current) return
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null
+          if (deviceRef.current !== newDevice || isReadyRef.current) return
+          console.log('[Dialer] Socket closed — rebuilding Telnyx client')
+          deviceRef.current = null
+          void initializeDeviceRef.current?.()
+        }, 3000)
       })
 
       newDevice.on('telnyx.notification', (notification: INotification) => {
@@ -723,6 +768,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     return initPromise
   }, [refetchToken, isInitializing, isReady, attemptInit])
 
+  initializeDeviceRef.current = initializeDevice
+
   // Clear cached token on org/user switch.
   const prevOrgRef = useRef<string | undefined>(undefined)
   const prevUserRef = useRef<string | undefined>(undefined)
@@ -757,6 +804,34 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     prevOrgRef.current = organizationId
     prevUserRef.current = userId
   }, [organizationId, userId])
+
+  // Hand back a caller ID reserved for a call that never connected when the tab
+  // goes away. A connected call needs no such handling — Telnyx reports the
+  // hangup and the webhook closes the row out.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const releaseOnUnload = () => {
+      const pending = pendingReleaseRef.current
+      if (!pending) return
+      pendingReleaseRef.current = null
+      try {
+        void fetch(pending.url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: pending.headers,
+          keepalive: true,
+        })
+      } catch {
+        // Best effort — the server-side sweep is the backstop.
+      }
+    }
+
+    window.addEventListener('pagehide', releaseOnUnload)
+    return () => {
+      window.removeEventListener('pagehide', releaseOnUnload)
+    }
+  }, [])
 
   // Track first user gesture to satisfy browser autoplay policies.
   useEffect(() => {
@@ -832,15 +907,29 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   // Make outbound call
   const makeCall = useCallback(
     async (toNumber: string, leadId?: string, campaignId?: string) => {
-      const currentDevice = deviceRef.current
-      if (!currentDevice) {
-        throw new Error('Device not ready')
-      }
-
       const sanitizedToNumber = toNumber.trim()
 
       if (!sanitizedToNumber) {
         throw new Error('Phone number is required')
+      }
+
+      // Reserving a caller ID before the client is registered is what strands
+      // reservations: the backend hands out a number, `newCall()` returns a
+      // Call object, no INVITE ever leaves the browser, and no webhook ever
+      // arrives to close the row out. Register first, reserve second.
+      if (!deviceRef.current || !isReadyRef.current) {
+        const reconnected = await (initializeDeviceRef.current?.() ??
+          Promise.resolve(false))
+        if (!reconnected || !deviceRef.current) {
+          throw new Error(
+            'Dialer is not connected. Wait a moment and try again.',
+          )
+        }
+      }
+
+      const currentDevice = deviceRef.current
+      if (!currentDevice) {
+        throw new Error('Device not ready')
       }
 
       let reservedCallId: string | null = null
@@ -875,6 +964,61 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         activeCallIdRef.current = conn.id
         activeCallModeRef.current = 'call'
 
+        // `newCall()` resolving proves nothing — the SDK hands back a Call
+        // object even when the socket is dead. If the leg never reaches
+        // ringing, tear it down and hand the caller ID back rather than
+        // leaving it reserved until the server-side sweep notices.
+        clearConnectWatchdog()
+        void getAuthHeaders()
+          .then((headers) => {
+            // Only arm the unload release while the leg is still unconnected.
+            if (connectWatchdogRef.current === null) return
+            pendingReleaseRef.current = {
+              url: `${env.API_URL.toString()}${ENDPOINTS.CALLS.END(callData.id)}`,
+              headers: Object.fromEntries(headers.entries()),
+            }
+          })
+          .catch(() => {
+            // Without a token the unload release is simply skipped; the
+            // server-side sweep still reclaims the reservation.
+          })
+        connectWatchdogRef.current = setTimeout(() => {
+          connectWatchdogRef.current = null
+          if (activeCallIdRef.current !== conn.id) return
+
+          console.error(
+            '[Dialer] Call never reached the carrier — releasing reservation',
+          )
+          try {
+            conn.hangup()
+          } catch (hangupError) {
+            console.error(
+              '[Dialer] Failed to hang up stalled Telnyx leg:',
+              hangupError,
+            )
+          }
+
+          activeCallIdRef.current = null
+          activeCallModeRef.current = null
+          setConnection(null)
+          setCallState('failed')
+          setError('Call could not be connected. Please try again.')
+
+          const stalledCallId = currentCallIdRef.current
+          currentCallIdRef.current = null
+          setCurrentCallId(null)
+          if (stalledCallId) {
+            endCallMutation.mutate(stalledCallId, {
+              onError: (cleanupError) => {
+                console.error(
+                  '[Dialer] Failed to release stalled call reservation:',
+                  cleanupError,
+                )
+              },
+            })
+          }
+        }, CONNECT_TIMEOUT_MS)
+
         setConnection(conn)
       } catch (err) {
         let message = err instanceof Error ? err.message : 'Failed to make call'
@@ -905,6 +1049,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
             'Billing verification is temporarily unavailable. Please retry in a moment.'
         }
 
+        clearConnectWatchdog()
         setError(message)
         setCallState('failed')
         currentCallIdRef.current = null
@@ -925,11 +1070,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         throw err
       }
     },
-    [initiateCallMutation, endCallMutation],
+    [initiateCallMutation, endCallMutation, clearConnectWatchdog],
   )
 
   // End call
   const endCall = useCallback(async () => {
+    clearConnectWatchdog()
     // First notify backend
     if (currentCallId) {
       try {
@@ -943,7 +1089,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     if (connection) {
       connection.hangup()
     }
-  }, [connection, currentCallId, endCallMutation])
+  }, [connection, currentCallId, endCallMutation, clearConnectWatchdog])
 
   // Answer incoming call
   const answerIncomingCall = useCallback(() => {
@@ -1059,6 +1205,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     return () => {
       if (tokenRefreshTimerRef.current) {
         clearTimeout(tokenRefreshTimerRef.current)
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+      }
+      if (connectWatchdogRef.current) {
+        clearTimeout(connectWatchdogRef.current)
       }
       if (deviceRef.current) {
         deviceRef.current.disconnect().catch(() => {

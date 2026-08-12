@@ -200,8 +200,14 @@ export const markStaleOutboundReservationsFailed = async (
   organizationId: string,
   executor: DbExecutor = db,
   staleAfterMs = 15 * 60 * 1000,
+  unstartedStaleAfterMs = 2 * 60 * 1000,
 ) => {
   const cutoff = new Date(Date.now() - staleAfterMs)
+  // `twilioCallSid` is only written by the TeXML voice webhook, so a reservation
+  // that still has none never reached the carrier — the browser leg died before
+  // it sent an INVITE. Nothing will ever end it, so it is released on a much
+  // shorter clock than a call that is genuinely out on the network.
+  const unstartedCutoff = new Date(Date.now() - unstartedStaleAfterMs)
 
   const result = await sql<{ id: string }>`
     update "call" c
@@ -215,7 +221,10 @@ export const markStaleOutboundReservationsFailed = async (
       and c."direction" = 'outbound'
       and c."endedAt" is null
       and c."status" in (${sql.join(STALE_OUTBOUND_RESERVATION_STATUSES)})
-      and c."startedAt" < ${cutoff}
+      and (
+        c."startedAt" < ${cutoff}
+        or (c."twilioCallSid" is null and c."startedAt" < ${unstartedCutoff})
+      )
     returning c."id"
   `.execute(executor)
 
