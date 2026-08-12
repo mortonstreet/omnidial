@@ -38,4 +38,5 @@ export * from './smsCampaign';
 export * from './phoneProvisioning';
 export * from './crmSync';
 export * from './leadContactMethod';
+export * from './dnc';
 export * from './billing';

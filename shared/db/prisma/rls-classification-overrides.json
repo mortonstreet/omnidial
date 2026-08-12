@@ -2,5 +2,6 @@
   "enrichment_cache": "no-rls",
   "webhook_event_receipt": "no-rls",
   "user_phone_number": "direct-org",
-  "lead_contact_method": "direct-org"
+  "lead_contact_method": "direct-org",
+  "dnc_entry": "direct-org"
 }

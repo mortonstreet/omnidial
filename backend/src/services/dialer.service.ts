@@ -498,6 +498,19 @@ export const initiateOutboundCall = async (
     throw error
   }
 
+  // Do-not-call is enforced here rather than only when building a queue, so a
+  // suppressed number cannot be reached by manual dial, a stale queue or a
+  // direct API call either.
+  const { isSuppressed } = await import('@/repositories/dnc.repository')
+  if (await isSuppressed(configData.organizationId, toNumber)) {
+    const error = new Error(
+      'Call blocked: this number is on your do-not-call list',
+    ) as Error & { code: string; statusCode?: number }
+    error.code = 'DNC_SUPPRESSED'
+    error.statusCode = 403
+    throw error
+  }
+
   // Record daily call count (non-critical, don't block call if this fails)
   try {
     await usageTrackingService.recordDailyCall(

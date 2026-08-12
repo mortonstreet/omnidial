@@ -171,6 +171,19 @@ export const remove = async (campaignId: string, leadId: string) => {
   return Number(result.numDeletedRows) > 0
 }
 
+/** Drop several leads from a campaign at once; the lead records survive. */
+export const removeMany = async (campaignId: string, leadIds: string[]) => {
+  if (leadIds.length === 0) return 0
+
+  const result = await db
+    .deleteFrom('campaign_lead')
+    .where('campaignId', '=', campaignId)
+    .where('leadId', 'in', leadIds)
+    .executeTakeFirst()
+
+  return Number(result.numDeletedRows ?? 0)
+}
+
 export const getMaxDialOrder = async (campaignId: string): Promise<number> => {
   const result = await db
     .selectFrom('campaign_lead')

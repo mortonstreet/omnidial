@@ -200,6 +200,12 @@ export const ENDPOINTS = {
     CONTACT_METHODS: (leadId: string) => `/leads/${leadId}/contact-methods`,
     CONTACT_METHOD: (id: string) => `/leads/contact-methods/${id}`,
   },
+  DNC: {
+    LIST: '/dnc',
+    MARK: '/dnc/mark',
+    UNMARK: '/dnc/unmark',
+    REMOVE_CAMPAIGN_LEADS: '/dnc/remove-campaign-leads',
+  },
   CRM: {
     CONNECTED: '/crm/connected',
     PUSH: '/crm/push',
@@ -670,6 +676,7 @@ export const QUERY_KEYS = {
   // Leads (shared)
   leads: (orgId?: string) => ['leads', orgId] as const,
   lead: (id?: string) => ['lead', id] as const,
+  dncEntries: (orgId?: string) => ['dnc-entries', orgId] as const,
   leadContactMethods: (leadId?: string) =>
     ['lead-contact-methods', leadId] as const,
   leadByPhone: (phone?: string) => ['lead', 'by-phone', phone] as const,

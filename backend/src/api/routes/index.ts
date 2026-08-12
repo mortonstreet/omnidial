@@ -48,6 +48,7 @@ import notificationSettingsRoutes from './notificationSettings'
 import slackRoutes from './slack'
 import extensionRoutes from './extension'
 import crmRoutes from './crm'
+import dncRoutes from './dnc'
 import smsCampaignsRoutes from './smsCampaigns'
 import agentRoutes from './agent'
 import orchestrationRoutes from './orchestration'
@@ -121,6 +122,7 @@ router.use('/notification-settings', notificationSettingsRoutes)
 router.use('/slack', slackRoutes)
 router.use('/extension', extensionRoutes)
 router.use('/crm', crmRoutes)
+router.use('/dnc', dncRoutes)
 router.use('/sms-campaigns', smsCampaignsRoutes)
 router.use('/agents', agentRoutes)
 router.use('/orchestration', orchestrationRoutes)

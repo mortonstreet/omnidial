@@ -15,6 +15,7 @@ import {
   Search,
   FileSpreadsheet,
   Loader2,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CsvUploader } from "@/components/campaigns/CsvUploader";
+import { useMarkLeadsDnc, useRemoveCampaignLeads } from "@/hooks/api/useDnc";
 import { ScriptManager } from "@/components/campaigns/ScriptManager";
 import {
   useCampaign,
@@ -60,8 +62,13 @@ export default function CampaignDetailPage() {
   const [selectedListIds, setSelectedListIds] = useState<Set<string>>(new Set());
   const [isAddingLists, setIsAddingLists] = useState(false);
   const [leadsPage, setLeadsPage] = useState(1);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<"dnc" | "remove" | null>(null);
 
   const { data: campaign, isLoading: campaignLoading } = useCampaign(campaignId);
+  const markDnc = useMarkLeadsDnc();
+  const removeFromCampaign = useRemoveCampaignLeads();
+
   const { data: leadsData, isLoading: leadsLoading } = useCampaignLeads({
     campaignId,
     page: leadsPage,
@@ -121,7 +128,7 @@ export default function CampaignDetailPage() {
   };
 
   if (campaignLoading) {
-    return (
+  return (
       <div className="animate-pulse space-y-6">
         <div className="h-8 bg-muted rounded w-1/3" />
         <div className="h-4 bg-muted rounded w-1/4" />
@@ -149,6 +156,71 @@ export default function CampaignDetailPage() {
     campaign.dialedCount > 0
       ? Math.round((campaign.connectedCount / campaign.dialedCount) * 100)
       : 0;
+  
+  const visibleLeadIds: string[] = (leadsData?.data ?? []).map(
+    (lead: { leadId: string }) => lead.leadId,
+  );
+  const allVisibleSelected =
+    visibleLeadIds.length > 0 &&
+    visibleLeadIds.every((id) => selectedLeadIds.has(id));
+
+  const toggleLead = (leadId: string) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleLeadIds.forEach((id) => next.delete(id));
+      } else {
+        visibleLeadIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  // DNC suppresses every number the lead has and pulls them from campaigns and
+  // lists; plain removal only drops the campaign membership.
+  const handleBulkAction = async () => {
+    const leadIds = Array.from(selectedLeadIds);
+    if (leadIds.length === 0 || !bulkAction) return;
+
+    try {
+      if (bulkAction === "dnc") {
+        const result = await markDnc.mutateAsync({ leadIds });
+        const skipped = result.skipped.length;
+        toast.success(
+          `${result.leadsMarked} lead${result.leadsMarked === 1 ? "" : "s"} moved to DNC`,
+          {
+            description: `${result.numbersSuppressed} number(s) suppressed, removed from ${result.removedFromCampaigns} campaign entr${result.removedFromCampaigns === 1 ? "y" : "ies"}.${skipped ? ` ${skipped} skipped (no valid number).` : ""}`,
+          },
+        );
+      } else {
+        const result = await removeFromCampaign.mutateAsync({
+          campaignId,
+          leadIds,
+        });
+        toast.success(
+          `${result.removed} lead${result.removed === 1 ? "" : "s"} removed from campaign`,
+          { description: "The lead records and their history are unchanged." },
+        );
+      }
+      setSelectedLeadIds(new Set());
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Bulk action failed",
+      );
+    } finally {
+      setBulkAction(null);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -368,10 +440,51 @@ export default function CampaignDetailPage() {
               )}
             </div>
           ) : (
-            <div className="border rounded-xl overflow-hidden">
+            <div className="space-y-3">
+              {selectedLeadIds.size > 0 && (
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2">
+                  <span className="text-sm text-foreground">
+                    {selectedLeadIds.size} selected
+                  </span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBulkAction("remove")}
+                      disabled={removeFromCampaign.isPending || markDnc.isPending}
+                    >
+                      Remove from campaign
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setBulkAction("dnc")}
+                      disabled={removeFromCampaign.isPending || markDnc.isPending}
+                    >
+                      <Ban className="w-4 h-4 mr-1" />
+                      Move to DNC
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedLeadIds(new Set())}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <div className="border rounded-xl overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allVisibleSelected}
+                        onCheckedChange={toggleAllVisible}
+                        aria-label="Select all leads on this page"
+                      />
+                    </TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Company</TableHead>
@@ -382,6 +495,13 @@ export default function CampaignDetailPage() {
                 <TableBody>
                   {leadsData?.data?.map((lead) => (
                     <TableRow key={lead.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedLeadIds.has(lead.leadId)}
+                          onCheckedChange={() => toggleLead(lead.leadId)}
+                          aria-label={`Select ${lead.firstName ?? "lead"}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">
@@ -475,6 +595,7 @@ export default function CampaignDetailPage() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           )}
         </TabsContent>
@@ -519,6 +640,43 @@ export default function CampaignDetailPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Confirm bulk action - DNC is not trivially reversible, so both ask */}
+      <Dialog
+        open={bulkAction !== null}
+        onOpenChange={(open) => !open && setBulkAction(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === "dnc"
+                ? `Move ${selectedLeadIds.size} lead${selectedLeadIds.size === 1 ? "" : "s"} to DNC?`
+                : `Remove ${selectedLeadIds.size} lead${selectedLeadIds.size === 1 ? "" : "s"} from this campaign?`}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {bulkAction === "dnc"
+              ? "Every phone number these leads have will be suppressed across the whole organisation, and they will be pulled out of all campaigns and lists. The lead records stay, so you can still open them for notes and history."
+              : "They will be taken off this campaign only. The lead records, their notes and their contact details are untouched, and they stay dialable elsewhere."}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={bulkAction === "dnc" ? "destructive" : "default"}
+              onClick={handleBulkAction}
+              disabled={markDnc.isPending || removeFromCampaign.isPending}
+            >
+              {markDnc.isPending || removeFromCampaign.isPending
+                ? "Working…"
+                : bulkAction === "dnc"
+                  ? "Move to DNC"
+                  : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

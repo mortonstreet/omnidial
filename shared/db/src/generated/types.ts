@@ -680,6 +680,19 @@ export type Disposition = {
   createdAt: Generated<Timestamp>
   updatedAt: Timestamp
 }
+export type DncEntry = {
+  id: string
+  organizationId: string
+  normalizedPhone: string
+  /**
+   * The lead it was raised from, kept for context. Nulled if that lead is
+   * hard-deleted - the suppression itself must outlive the record.
+   */
+  leadId: string | null
+  reason: string | null
+  createdById: string | null
+  createdAt: Generated<Timestamp>
+}
 export type EnrichEngineConnection = {
   id: string
   organizationId: string
@@ -1569,6 +1582,7 @@ export type DB = {
   custom_field_schema: CustomFieldSchema
   data_vendor_connection: DataVendorConnection
   disposition: Disposition
+  dnc_entry: DncEntry
   enrichengine_connection: EnrichEngineConnection
   enrichment_cache: EnrichmentCache
   enrichment_history: EnrichmentHistory

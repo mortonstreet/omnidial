@@ -52,6 +52,7 @@ model User {
   campaignLeads            CampaignLead[]
   campaignUsers            CampaignUser[]
   leadLists                LeadList[]
+  dncEntries               DncEntry[]
   activities               Activity[]
   scheduleEvents           ScheduleEvent[]
   powerDialerProgresses    PowerDialerProgress[]
@@ -152,6 +153,7 @@ model Organization {
   campaigns              Campaign[]
   leads                  Lead[]
   leadContactMethods     LeadContactMethod[]
+  dncEntries             DncEntry[]
   leadListFolders        LeadListFolder[]
   leadLists              LeadList[]
   clients                Client[]
@@ -450,6 +452,7 @@ model Lead {
   intelligenceData CallIntelligence[]
   crmSyncRecords   CrmSyncRecord[]
   contactMethods   LeadContactMethod[]
+  dncEntries       DncEntry[]
 
   // Agent orchestration v2
   agentExecutions AgentExecution[]
@@ -500,6 +503,34 @@ model LeadContactMethod {
   @@index([leadId])
   @@index([organizationId, kind, normalizedValue])
   @@map("lead_contact_method")
+}
+
+/// Numbers this organisation must never dial again.
+///
+/// Keyed on the normalised number rather than the lead, so a CSV re-import that
+/// recreates the same person as a fresh lead stays suppressed, and unmerged
+/// duplicates are covered by the one entry.
+model DncEntry {
+  id              String @id @default(uuid())
+  organizationId  String
+  normalizedPhone String
+
+  /// The lead it was raised from, kept for context. Nulled if that lead is
+  /// hard-deleted - the suppression itself must outlive the record.
+  leadId      String?
+  reason      String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, normalizedPhone])
+  @@index([organizationId])
+  @@index([leadId])
+  @@map("dnc_entry")
 }
 
 model PipelineStage {
