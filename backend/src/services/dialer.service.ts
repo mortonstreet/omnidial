@@ -538,11 +538,16 @@ export const initiateOutboundCall = async (
     const releasedStaleCalls =
       await callRepository.markStaleOutboundReservationsFailed(
         configData.organizationId,
+        userId,
         trx as typeof db,
       )
     if (releasedStaleCalls > 0) {
       logger.warn(
-        { organizationId: configData.organizationId, releasedStaleCalls },
+        {
+          organizationId: configData.organizationId,
+          userId,
+          releasedStaleCalls,
+        },
         'Released stale outbound call reservations before caller ID allocation',
       )
     }

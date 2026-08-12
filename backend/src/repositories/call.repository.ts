@@ -196,8 +196,19 @@ export const findActiveOutboundByUser = async (
   return activeCall ?? null
 }
 
+/**
+ * Release outbound reservations that will never be closed out by a webhook.
+ *
+ * Scoped to the caller IDs currently assigned to one rep, not the whole org.
+ * This runs inside every dial transaction, so an org-wide UPDATE would make
+ * two reps dialing at the same moment contend on the same rows — the second
+ * transaction blocking on the first until it commits, even though the reps
+ * share no numbers. Per-rep scoping makes those row sets disjoint, and it
+ * matches exactly what `findAvailableByUserForDialing` considers anyway.
+ */
 export const markStaleOutboundReservationsFailed = async (
   organizationId: string,
+  userId: string,
   executor: DbExecutor = db,
   staleAfterMs = 15 * 60 * 1000,
   unstartedStaleAfterMs = 2 * 60 * 1000,
@@ -221,6 +232,12 @@ export const markStaleOutboundReservationsFailed = async (
       and c."direction" = 'outbound'
       and c."endedAt" is null
       and c."status" in (${sql.join(STALE_OUTBOUND_RESERVATION_STATUSES)})
+      and c."fromNumber" in (
+        select upn."phoneNumber"
+        from "user_phone_number" upn
+        where upn."organizationId" = ${organizationId}
+          and upn."userId" = ${userId}
+      )
       and (
         c."startedAt" < ${cutoff}
         or (c."twilioCallSid" is null and c."startedAt" < ${unstartedCutoff})

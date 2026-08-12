@@ -3,6 +3,7 @@ import * as parallelDialAttemptRepository from '@/repositories/parallelDialAttem
 import * as leadListEntryRepository from '@/repositories/leadListEntry.repository'
 import * as leadRepository from '@/repositories/lead.repository'
 import * as userPhoneNumberRepository from '@/repositories/userPhoneNumber.repository'
+import * as callRepository from '@/repositories/call.repository'
 import * as telnyxClient from '@/clients/telnyx.client'
 import * as callingNotificationService from '@/services/callingNotification.service'
 import { trigger as pusherTrigger } from '@/lib/pusher'
@@ -167,6 +168,15 @@ export const dialNextBatch = async (
   const attempts = await db.transaction().execute(async (trx) => {
     await sql`select pg_advisory_xact_lock(hashtext(${`caller-id-user:${organizationId}:${userId}`}))`.execute(
       trx,
+    )
+
+    // Parallel dialing needs N free numbers at once, so a single reservation
+    // that was never closed out silently costs a whole line. Release this
+    // rep's dead reservations first, exactly as the manual dialer does.
+    await callRepository.markStaleOutboundReservationsFailed(
+      organizationId,
+      userId,
+      trx as typeof db,
     )
 
     const assignments =
