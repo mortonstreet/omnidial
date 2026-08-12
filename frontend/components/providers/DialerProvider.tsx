@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TelnyxRTC, Call, INotification } from '@telnyx/webrtc'
 import { get, post } from '@/lib/api'
 import { QUERY_KEYS, ENDPOINTS, env } from '@/lib/config'
-import { useActiveOrganization } from '@/lib/auth-client'
+import { useActiveOrganization, useSession } from '@/lib/auth-client'
 import { useDialerConfig } from '@/hooks/api/useDialer'
 import type { CapabilityTokenResponse } from '@shared/types/src'
 
@@ -116,8 +116,11 @@ interface DialerContextValue {
 const DialerContext = createContext<DialerContextValue | null>(null)
 
 const LEGACY_TOKEN_CACHE_KEY = 'omnidial-token'
-const PREVIOUS_TOKEN_CACHE_KEY_PREFIXES = ['omnidial-token-v2']
-const TOKEN_CACHE_KEY_PREFIX = 'omnidial-token-v3'
+const PREVIOUS_TOKEN_CACHE_KEY_PREFIXES = [
+  'omnidial-token-v2',
+  'omnidial-token-v3',
+]
+const TOKEN_CACHE_KEY_PREFIX = 'omnidial-token-v4'
 const TOKEN_TTL_MS = 50 * 60 * 1000 // 50 minutes
 // Telnyx has no in-place token update; proactively rebuild the client before the token expires
 const TOKEN_REFRESH_MS = 45 * 60 * 1000 // 45 minutes
@@ -137,18 +140,30 @@ function buildSipDestination(target: string): string {
   return `sip:${target}@${sipDomain}`
 }
 
-function tokenCacheKey(organizationId?: string | null): string {
+function tokenCacheKey(
+  organizationId?: string | null,
+  userId?: string | null,
+): string {
+  if (organizationId && userId) {
+    return `${TOKEN_CACHE_KEY_PREFIX}:${organizationId}:${userId}`
+  }
   return organizationId
     ? `${TOKEN_CACHE_KEY_PREFIX}:${organizationId}`
     : TOKEN_CACHE_KEY_PREFIX
 }
 
-function removeStaleTokenCaches(organizationId?: string | null) {
+function removeStaleTokenCaches(
+  organizationId?: string | null,
+  userId?: string | null,
+) {
   localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY)
   for (const prefix of PREVIOUS_TOKEN_CACHE_KEY_PREFIXES) {
     localStorage.removeItem(prefix)
     if (organizationId) {
       localStorage.removeItem(`${prefix}:${organizationId}`)
+      if (userId) {
+        localStorage.removeItem(`${prefix}:${organizationId}:${userId}`)
+      }
     }
   }
 }
@@ -183,10 +198,13 @@ async function resumeSharedAudioContext() {
   }
 }
 
-function getCachedToken(organizationId?: string | null): string | null {
-  const cacheKey = tokenCacheKey(organizationId)
+function getCachedToken(
+  organizationId?: string | null,
+  userId?: string | null,
+): string | null {
+  const cacheKey = tokenCacheKey(organizationId, userId)
   try {
-    removeStaleTokenCaches(organizationId)
+    removeStaleTokenCaches(organizationId, userId)
     const raw = localStorage.getItem(cacheKey)
     if (!raw) return null
     const cached: CachedToken = JSON.parse(raw)
@@ -207,6 +225,7 @@ function setCachedToken(
   token: string,
   sipDomain?: string | null,
   organizationId?: string | null,
+  userId?: string | null,
 ) {
   telnyxSipDomain = requireSipDomain(sipDomain)
   try {
@@ -216,17 +235,23 @@ function setCachedToken(
       sipDomain: telnyxSipDomain,
     }
     localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY)
-    removeStaleTokenCaches(organizationId)
-    localStorage.setItem(tokenCacheKey(organizationId), JSON.stringify(data))
+    removeStaleTokenCaches(organizationId, userId)
+    localStorage.setItem(
+      tokenCacheKey(organizationId, userId),
+      JSON.stringify(data),
+    )
   } catch {
     // localStorage may be unavailable
   }
 }
 
-function clearCachedToken(organizationId?: string | null) {
+function clearCachedToken(
+  organizationId?: string | null,
+  userId?: string | null,
+) {
   try {
-    removeStaleTokenCaches(organizationId)
-    localStorage.removeItem(tokenCacheKey(organizationId))
+    removeStaleTokenCaches(organizationId, userId)
+    localStorage.removeItem(tokenCacheKey(organizationId, userId))
   } catch {
     // noop
   }
@@ -293,21 +318,26 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const deviceRef = useRef<TelnyxRTC | null>(null)
+  const currentCallIdRef = useRef<string | null>(null)
   const queryClient = useQueryClient()
 
+  const { data: session } = useSession()
+  const userId = session?.user?.id
   const activeOrganization = useActiveOrganization()
   const organizationId = activeOrganization?.data?.id
 
-  // Keep a ref so closures always read the latest organizationId
+  // Keep refs so closures always read the latest auth scope.
   const organizationIdRef = useRef(organizationId)
   organizationIdRef.current = organizationId
+  const userIdRef = useRef(userId)
+  userIdRef.current = userId
 
   // Check if dialer is configured
   const { data: dialerConfig } = useDialerConfig(organizationId)
 
   // Fetch capability token
   const { refetch: refetchToken } = useQuery({
-    queryKey: QUERY_KEYS.dialerToken(),
+    queryKey: [...QUERY_KEYS.dialerToken(), organizationId, userId],
     queryFn: async () => {
       const response = await get<{ data: CapabilityTokenResponse }>(
         ENDPOINTS.DIALER.TOKEN,
@@ -441,10 +471,20 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         } else {
           console.log('Call disconnected')
           console.log('Disconnect reason:', call.cause || 'unknown')
+          const callId = currentCallIdRef.current
+          if (callId) {
+            void post(ENDPOINTS.CALLS.END(callId)).catch((cleanupError) => {
+              console.error(
+                '[Dialer] Failed to release backend call after Telnyx disconnect:',
+                cleanupError,
+              )
+            })
+          }
           setCallState('completed')
           setTimeout(() => {
             setCallState((prev) => (prev === 'completed' ? 'idle' : prev))
             setCurrentCallId(null)
+            currentCallIdRef.current = null
           }, 3000)
         }
         break
@@ -499,6 +539,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
           clearTimeout(timeout)
           settled = true
           setIsReady(true)
+          setError(null)
           setInitStep('ready')
           console.log('[Dialer] Telnyx client registered successfully')
           resolve()
@@ -559,13 +600,14 @@ export function DialerProvider({ children }: { children: ReactNode }) {
           }
           console.log('Token expiring, refreshing...')
           try {
-            clearCachedToken(organizationIdRef.current)
+            clearCachedToken(organizationIdRef.current, userIdRef.current)
             const { data: newData } = await refetchToken()
             if (newData?.token) {
               setCachedToken(
                 newData.token,
                 newData.sipDomain,
                 organizationIdRef.current,
+                userIdRef.current,
               )
               await attemptInitRef.current?.(newData.token)
             }
@@ -600,12 +642,19 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       const MAX_RETRIES = 2
 
       try {
+        if (!organizationIdRef.current || !userIdRef.current) {
+          throw new Error('Dialer is still loading your user session')
+        }
+
         setIsInitializing(true)
         setError(null)
         setInitStep('authenticating')
 
         // Try cached token first
-        let token = getCachedToken(organizationIdRef.current)
+        let token = getCachedToken(
+          organizationIdRef.current,
+          userIdRef.current,
+        )
 
         if (!token) {
           const { data } = await refetchToken()
@@ -613,7 +662,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
             throw new Error('Failed to get capability token')
           }
           token = data.token
-          setCachedToken(token, data.sipDomain, organizationIdRef.current)
+          setCachedToken(
+            token,
+            data.sipDomain,
+            organizationIdRef.current,
+            userIdRef.current,
+          )
         }
 
         // Attempt init with retries
@@ -623,14 +677,19 @@ export function DialerProvider({ children }: { children: ReactNode }) {
             if (attempt > 0) {
               // On retry, wait 1s then re-fetch a fresh token (cached one may be bad)
               await new Promise((r) => setTimeout(r, 1000))
-              clearCachedToken(organizationIdRef.current)
+              clearCachedToken(organizationIdRef.current, userIdRef.current)
               setInitStep('authenticating')
               const { data } = await refetchToken()
               if (!data?.token) {
                 throw new Error('Failed to get capability token')
               }
               token = data.token
-              setCachedToken(token, data.sipDomain, organizationIdRef.current)
+              setCachedToken(
+                token,
+                data.sipDomain,
+                organizationIdRef.current,
+                userIdRef.current,
+              )
             }
             await attemptInit(token!)
             return true
@@ -664,16 +723,20 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     return initPromise
   }, [refetchToken, isInitializing, isReady, attemptInit])
 
-  // Clear cached token on org switch
+  // Clear cached token on org/user switch.
   const prevOrgRef = useRef<string | undefined>(undefined)
+  const prevUserRef = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (
-      prevOrgRef.current &&
-      organizationId &&
+    const orgChanged =
+      !!prevOrgRef.current &&
+      !!organizationId &&
       prevOrgRef.current !== organizationId
-    ) {
-      clearCachedToken(prevOrgRef.current)
-      clearCachedToken(organizationId)
+    const userChanged =
+      !!prevUserRef.current && !!userId && prevUserRef.current !== userId
+
+    if (orgChanged || userChanged) {
+      clearCachedToken(prevOrgRef.current, prevUserRef.current)
+      clearCachedToken(organizationId, userId)
       if (tokenRefreshTimerRef.current) {
         clearTimeout(tokenRefreshTimerRef.current)
         tokenRefreshTimerRef.current = null
@@ -688,9 +751,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       setIsReady(false)
       setCallState('idle')
       setCurrentCallId(null)
+      currentCallIdRef.current = null
+      setError(null)
     }
     prevOrgRef.current = organizationId
-  }, [organizationId])
+    prevUserRef.current = userId
+  }, [organizationId, userId])
 
   // Track first user gesture to satisfy browser autoplay policies.
   useEffect(() => {
@@ -720,13 +786,21 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     if (
       dialerConfig &&
       organizationId &&
+      userId &&
       !isReady &&
       !isInitializing &&
       !deviceRef.current
     ) {
       initializeDevice()
     }
-  }, [dialerConfig, organizationId, isReady, isInitializing, initializeDevice])
+  }, [
+    dialerConfig,
+    organizationId,
+    userId,
+    isReady,
+    isInitializing,
+    initializeDevice,
+  ])
 
   // Initiate call mutation
   const initiateCallMutation = useMutation({
@@ -769,10 +843,14 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         throw new Error('Phone number is required')
       }
 
+      let reservedCallId: string | null = null
+      let telnyxCallStarted = false
+
       try {
         requireSipDomain()
         await resumeSharedAudioContext()
         setCallState('initiated')
+        setError(null)
 
         // Create call record in backend
         const callData = await initiateCallMutation.mutateAsync({
@@ -781,6 +859,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
           campaignId,
         })
 
+        reservedCallId = callData.id
+        currentCallIdRef.current = callData.id
         setCurrentCallId(callData.id)
 
         // Dial via Telnyx WebRTC — the backend TeXML voice webhook parses the
@@ -789,6 +869,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
           destinationNumber: buildSipDestination(`callid-${callData.id}`),
           callerNumber: callData.fromNumber,
         })
+        telnyxCallStarted = true
 
         // Track the call — state transitions arrive via telnyx.notification
         activeCallIdRef.current = conn.id
@@ -826,10 +907,25 @@ export function DialerProvider({ children }: { children: ReactNode }) {
 
         setError(message)
         setCallState('failed')
+        currentCallIdRef.current = null
+        setCurrentCallId(null)
+        activeCallIdRef.current = null
+        activeCallModeRef.current = null
+
+        if (reservedCallId && !telnyxCallStarted) {
+          endCallMutation.mutate(reservedCallId, {
+            onError: (cleanupError) => {
+              console.error(
+                '[Dialer] Failed to release reserved call after Telnyx start error:',
+                cleanupError,
+              )
+            },
+          })
+        }
         throw err
       }
     },
-    [initiateCallMutation],
+    [initiateCallMutation, endCallMutation],
   )
 
   // End call
@@ -842,6 +938,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         console.error('Error ending call on backend:', error)
       }
     }
+    currentCallIdRef.current = null
     // Then hang up the browser call
     if (connection) {
       connection.hangup()

@@ -44,6 +44,7 @@ export interface CallFilters {
 }
 
 const ACTIVE_OUTBOUND_CALL_STATUSES = ['initiated', 'ringing', 'in-progress']
+const STALE_OUTBOUND_RESERVATION_STATUSES = ['initiated', 'ringing']
 
 type DbExecutor = typeof db
 
@@ -193,6 +194,32 @@ export const findActiveOutboundByUser = async (
     .executeTakeFirst()
 
   return activeCall ?? null
+}
+
+export const markStaleOutboundReservationsFailed = async (
+  organizationId: string,
+  executor: DbExecutor = db,
+  staleAfterMs = 15 * 60 * 1000,
+) => {
+  const cutoff = new Date(Date.now() - staleAfterMs)
+
+  const result = await sql<{ id: string }>`
+    update "call" c
+    set
+      "status" = 'failed',
+      "endedAt" = now(),
+      "updatedAt" = now()
+    from "twilio_config" tc
+    where tc."id" = c."twilioConfigId"
+      and tc."organizationId" = ${organizationId}
+      and c."direction" = 'outbound'
+      and c."endedAt" is null
+      and c."status" in (${sql.join(STALE_OUTBOUND_RESERVATION_STATUSES)})
+      and c."startedAt" < ${cutoff}
+    returning c."id"
+  `.execute(executor)
+
+  return result.rows.length
 }
 
 export const findByConferenceSidForOrg = async (

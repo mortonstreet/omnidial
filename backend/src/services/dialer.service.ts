@@ -526,25 +526,25 @@ export const initiateOutboundCall = async (
 
   // Allocate the caller ID on the server. The browser no longer chooses a
   // number; it receives the chosen number after the call row exists and passes
-  // that value to Telnyx WebRTC. The per-user lock prevents two rapid dials
-  // from selecting the same assigned number before either insert is visible.
+  // that value to Telnyx WebRTC. The per-user lock serializes allocation for
+  // one rep, while the availability query below decides whether any assigned
+  // caller ID is actually free. This keeps concurrency scoped to phone numbers
+  // instead of using a separate user-level active-call block.
   const callRecord = await db.transaction().execute(async (trx) => {
     await sql`select pg_advisory_xact_lock(hashtext(${`caller-id-user:${configData.organizationId}:${userId}`}))`.execute(
       trx,
     )
 
-    const activeUserCall = await callRepository.findActiveOutboundByUser(
-      configData.organizationId,
-      userId,
-      trx as typeof db,
-    )
-    if (activeUserCall) {
-      const error = new Error(
-        'You already have an active outbound call. End it before starting another.',
-      ) as Error & { code: string; statusCode: number }
-      error.code = 'USER_ALREADY_IN_CALL'
-      error.statusCode = 409
-      throw error
+    const releasedStaleCalls =
+      await callRepository.markStaleOutboundReservationsFailed(
+        configData.organizationId,
+        trx as typeof db,
+      )
+    if (releasedStaleCalls > 0) {
+      logger.warn(
+        { organizationId: configData.organizationId, releasedStaleCalls },
+        'Released stale outbound call reservations before caller ID allocation',
+      )
     }
 
     const [assignment] =
