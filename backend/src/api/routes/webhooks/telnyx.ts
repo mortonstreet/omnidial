@@ -960,8 +960,8 @@ router.post('/voice/inbound/status', async (req: Request, res: Response) => {
  * Dial status webhook - called when dial verb completes (outbound calls)
  */
 router.post('/dial-status', async (req: Request, res: Response) => {
-  const { callId, DialCallStatus, DialCallDuration, CallSid, DialCallSid } =
-    req.body
+  const callId = firstString(req.query.callId, req.body.callId)
+  const { DialCallStatus, DialCallDuration, CallSid, DialCallSid } = req.body
 
   logger.info({ callId, dialCallStatus: DialCallStatus }, 'Dial status webhook')
 
@@ -979,7 +979,7 @@ router.post('/dial-status', async (req: Request, res: Response) => {
   }
 
   try {
-    if (typeof callId === 'string') {
+    if (callId) {
       const duration = DialCallDuration ? parseInt(DialCallDuration, 10) : 0
 
       if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
@@ -1027,7 +1027,8 @@ router.post('/dial-status', async (req: Request, res: Response) => {
  * Dial events webhook - called for child call (outbound leg) status changes
  */
 router.post('/dial-events', async (req: Request, res: Response) => {
-  const { callId, CallSid, CallStatus } = req.body
+  const callId = firstString(req.query.callId, req.body.callId)
+  const { CallSid, CallStatus } = req.body
 
   logger.debug({ callId, callStatus: CallStatus }, 'Dial event received')
   const claim = await claimTelnyxWebhookEvent(req, {
@@ -1041,7 +1042,7 @@ router.post('/dial-events', async (req: Request, res: Response) => {
   }
 
   try {
-    if (typeof callId === 'string' && CallSid) {
+    if (callId && CallSid) {
       const updateData: callRepository.UpdateCallInput = {
         dialCallSid: CallSid,
       }

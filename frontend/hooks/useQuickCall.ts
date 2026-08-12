@@ -25,7 +25,12 @@ export function useQuickCall() {
 
   const quickCall = useCallback(
     async ({ leadId, leadName, phone }: QuickCallParams) => {
-      if (callState !== 'idle' || isDialing) {
+      const hasActiveCall =
+        callState === 'initiated' ||
+        callState === 'ringing' ||
+        callState === 'in-progress'
+
+      if (hasActiveCall || isDialing) {
         toast.error('Already in a call', {
           description: 'Please end the current call before starting a new one',
         })

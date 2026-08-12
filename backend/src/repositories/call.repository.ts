@@ -44,7 +44,8 @@ export interface CallFilters {
 }
 
 const ACTIVE_OUTBOUND_CALL_STATUSES = ['initiated', 'ringing', 'in-progress']
-const STALE_OUTBOUND_RESERVATION_STATUSES = ['initiated', 'ringing']
+const STALE_UNCONNECTED_OUTBOUND_STATUSES = ['initiated', 'ringing']
+const STALE_CONNECTED_OUTBOUND_STATUSES = ['in-progress']
 
 type DbExecutor = typeof db
 
@@ -210,8 +211,9 @@ export const markStaleOutboundReservationsFailed = async (
   organizationId: string,
   userId: string,
   executor: DbExecutor = db,
-  staleAfterMs = 15 * 60 * 1000,
-  unstartedStaleAfterMs = 2 * 60 * 1000,
+  staleAfterMs = 2 * 60 * 1000,
+  unstartedStaleAfterMs = 45 * 1000,
+  connectedStaleAfterMs = 4 * 60 * 60 * 1000,
 ) => {
   const cutoff = new Date(Date.now() - staleAfterMs)
   // `twilioCallSid` is only written by the TeXML voice webhook, so a reservation
@@ -219,6 +221,10 @@ export const markStaleOutboundReservationsFailed = async (
   // it sent an INVITE. Nothing will ever end it, so it is released on a much
   // shorter clock than a call that is genuinely out on the network.
   const unstartedCutoff = new Date(Date.now() - unstartedStaleAfterMs)
+  // `in-progress` rows should close from the carrier callback. If that callback
+  // never arrives, keep a hard cap so one bad webhook cannot pin a caller ID
+  // forever while still leaving room for unusually long real conversations.
+  const connectedCutoff = new Date(Date.now() - connectedStaleAfterMs)
 
   const result = await sql<{ id: string }>`
     update "call" c
@@ -231,7 +237,6 @@ export const markStaleOutboundReservationsFailed = async (
       and tc."organizationId" = ${organizationId}
       and c."direction" = 'outbound'
       and c."endedAt" is null
-      and c."status" in (${sql.join(STALE_OUTBOUND_RESERVATION_STATUSES)})
       and c."fromNumber" in (
         select upn."phoneNumber"
         from "user_phone_number" upn
@@ -239,8 +244,17 @@ export const markStaleOutboundReservationsFailed = async (
           and upn."userId" = ${userId}
       )
       and (
-        c."startedAt" < ${cutoff}
-        or (c."twilioCallSid" is null and c."startedAt" < ${unstartedCutoff})
+        (
+          c."status" in (${sql.join(STALE_UNCONNECTED_OUTBOUND_STATUSES)})
+          and (
+            c."startedAt" < ${cutoff}
+            or (c."twilioCallSid" is null and c."startedAt" < ${unstartedCutoff})
+          )
+        )
+        or (
+          c."status" in (${sql.join(STALE_CONNECTED_OUTBOUND_STATUSES)})
+          and c."startedAt" < ${connectedCutoff}
+        )
       )
     returning c."id"
   `.execute(executor)
