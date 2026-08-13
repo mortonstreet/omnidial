@@ -668,7 +668,6 @@ model LeadList {
   entries               LeadListEntry[]
   campaignLists         CampaignList[]
   smsCampaignLists      SmsCampaignList[]
-  powerDialerProgresses PowerDialerProgress[]
   favorites             ListFavorite[]
   opens                 ListOpen[]
 
@@ -909,7 +908,9 @@ model PowerDialerProgress {
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  list     LeadList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  // No relation to LeadList: campaign-wide sessions store the sentinel
+  // 'campaign-all' here, which is not a lead_list id.
 
   @@unique([userId, campaignId, listId])
   @@index([userId])

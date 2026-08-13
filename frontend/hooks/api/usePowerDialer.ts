@@ -92,31 +92,22 @@ export function usePowerDialerProgress(
 
   return useQuery({
     queryKey: QUERY_KEYS.powerDialerProgress(campaignId, listId, timezonePriority),
+    // Errors intentionally propagate: swallowing them here renders a blank
+    // dialer that is indistinguishable from an empty campaign.
     queryFn: async () => {
-      try {
-        const params = new URLSearchParams({
-          organizationId: orgId!,
-          campaignId: campaignId!,
-        });
-        if (listId) {
-          params.set('listId', listId);
-        }
-        if (timezonePriority) {
-          params.set('timezonePriority', timezonePriority);
-        }
-        return await get<PowerDialerProgress>(
-          `${ENDPOINTS.POWER_DIALER.PROGRESS}?${params.toString()}`
-        );
-      } catch (error) {
-        console.error('Failed to fetch power dialer progress:', error);
-        return {
-          currentIndex: 0,
-          totalLeads: 0,
-          dialedCount: 0,
-          isPaused: true,
-          isNew: true,
-        };
+      const params = new URLSearchParams({
+        organizationId: orgId!,
+        campaignId: campaignId!,
+      });
+      if (listId) {
+        params.set('listId', listId);
       }
+      if (timezonePriority) {
+        params.set('timezonePriority', timezonePriority);
+      }
+      return get<PowerDialerProgress>(
+        `${ENDPOINTS.POWER_DIALER.PROGRESS}?${params.toString()}`
+      );
     },
     enabled: !!orgId && !!campaignId,
   });
@@ -132,28 +123,22 @@ export function useNextLead(
 
   return useQuery({
     queryKey: QUERY_KEYS.powerDialerNextLead(campaignId, listId, timezonePriority),
+    // Errors intentionally propagate: swallowing them here reported the queue
+    // as complete/empty whenever the API failed.
     queryFn: async () => {
-      try {
-        const params = new URLSearchParams({
-          organizationId: orgId!,
-          campaignId: campaignId!,
-        });
-        if (listId) {
-          params.set('listId', listId);
-        }
-        if (timezonePriority) {
-          params.set('timezonePriority', timezonePriority);
-        }
-        return await get<NextLeadResponse>(
-          `${ENDPOINTS.POWER_DIALER.NEXT_LEAD}?${params.toString()}`
-        );
-      } catch (error) {
-        console.error('Failed to fetch next lead:', error);
-        return {
-          lead: null,
-          progress: { currentIndex: 0, totalLeads: 0, dialedCount: 0, isComplete: true },
-        };
+      const params = new URLSearchParams({
+        organizationId: orgId!,
+        campaignId: campaignId!,
+      });
+      if (listId) {
+        params.set('listId', listId);
       }
+      if (timezonePriority) {
+        params.set('timezonePriority', timezonePriority);
+      }
+      return get<NextLeadResponse>(
+        `${ENDPOINTS.POWER_DIALER.NEXT_LEAD}?${params.toString()}`
+      );
     },
     enabled: !!orgId && !!campaignId,
   });
