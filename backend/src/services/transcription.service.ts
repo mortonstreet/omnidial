@@ -32,10 +32,16 @@ async function fetchTelnyxRecording(
   recordingUrl: string,
   accountSid: string,
   apiKey: string,
+  recordingSid?: string,
 ): Promise<ArrayBuffer> {
+  // The recording SID matters: stored recording URLs are pre-signed S3 links
+  // that expire ten minutes after the call, so anything transcribed later gets
+  // a 403. `fetchRecordingAudio` re-requests a fresh media URL, but only when
+  // it is given the SID — without it the expired 403 is returned as-is.
   const response = await fetchRecordingAudio(
     { accountSid, apiKey },
     recordingUrl,
+    recordingSid,
   )
 
   if (!response.ok) {
@@ -53,6 +59,7 @@ async function fetchTelnyxRecording(
 export async function transcribeRecording(
   recordingUrl: string,
   organizationId: string,
+  recordingSid?: string,
 ): Promise<TranscriptionResult> {
   const openai = getOpenAIClient()
 
@@ -79,6 +86,7 @@ export async function transcribeRecording(
     recordingUrl,
     accountSid,
     apiKey,
+    recordingSid,
   )
 
   // Convert to File object for OpenAI SDK

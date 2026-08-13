@@ -227,6 +227,7 @@ export async function getOrCreateTranscript(
     const result = await transcriptionService.transcribeRecording(
       call.recordingUrl,
       organizationId,
+      call.recordingSid ?? undefined,
     )
     console.log(
       `Transcription complete for call ${callId}: ${result.text.length} characters`,

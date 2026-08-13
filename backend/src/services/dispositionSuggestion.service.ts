@@ -60,6 +60,7 @@ export const suggestDispositions = async (
       const result = await transcribeRecording(
         call.recordingUrl,
         organizationId,
+        call.recordingSid ?? undefined,
       )
       resolvedTranscript = result.text
     } catch (error) {
