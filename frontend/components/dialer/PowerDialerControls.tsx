@@ -107,16 +107,17 @@ export function PowerDialerControls({
   // Track pending countdown (waiting for call to end before starting countdown)
   const pendingCountdownRef = useRef(false)
 
-  const { data: progress } = usePowerDialerProgress(
+  const { data: progress, error: progressError } = usePowerDialerProgress(
     campaignId,
     listId,
     timezonePriority,
   )
-  const { data: nextLeadData } = useNextLead(
+  const { data: nextLeadData, error: nextLeadError } = useNextLead(
     campaignId,
     listId,
     timezonePriority,
   )
+  const loadError = nextLeadError || progressError
   const startMutation = useStartPowerDialer()
   const stopMutation = useStopPowerDialer()
   const skipMutation = useSkipLead()
@@ -682,6 +683,14 @@ export function PowerDialerControls({
           )}
         </div>
       </div>
+
+      {loadError && (
+        <div className="px-4 py-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg text-sm">
+          Couldn&apos;t load the dial queue. This is a server error, not an
+          empty campaign &mdash; retry, and if it persists check the power
+          dialer logs.
+        </div>
+      )}
 
       {/* Delay selector */}
       {!isRunning && (
