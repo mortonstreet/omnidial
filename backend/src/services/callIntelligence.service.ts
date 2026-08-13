@@ -5,6 +5,12 @@ import { db } from '@/lib/db'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
+// Pinned here rather than inline so the slug is changed in one place when a
+// model is retired. `anthropic/claude-3.5-sonnet` was removed from OpenRouter
+// and every analysis call 404'd until this was repointed.
+const CALL_INTELLIGENCE_MODEL =
+  process.env.CALL_INTELLIGENCE_MODEL || 'anthropic/claude-sonnet-4.5'
+
 // Minimum call duration for intelligence extraction (30 seconds)
 const MIN_INTEL_DURATION_SECONDS = 30
 
@@ -175,7 +181,7 @@ Return your analysis as JSON.`,
       'X-Title': 'OmniDial Call Intelligence',
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-3.5-sonnet',
+      model: CALL_INTELLIGENCE_MODEL,
       messages,
       max_tokens: 2000,
       temperature: 0.3,
@@ -283,7 +289,7 @@ export async function generateIntelligence(
     techStack: analysis.techStack,
     talkingPoints: analysis.talkingPoints,
     summary: analysis.summary,
-    modelUsed: 'claude-3.5-sonnet',
+    modelUsed: CALL_INTELLIGENCE_MODEL,
     tokensUsed: analysis.tokensUsed,
     analysisTimeMs,
   })

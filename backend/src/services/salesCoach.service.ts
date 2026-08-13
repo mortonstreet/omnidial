@@ -6,6 +6,11 @@ import * as transcriptionService from '@/services/transcription.service'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
+// See callIntelligence.service.ts — the 3.5 slugs were retired from OpenRouter
+// and 404'd on every request.
+const SALES_COACH_MODEL =
+  process.env.SALES_COACH_MODEL || 'anthropic/claude-sonnet-4.5'
+
 // Minimum call duration to be eligible for coaching (60 seconds)
 const MIN_COACHING_DURATION_SECONDS = 60
 
@@ -307,7 +312,7 @@ Provide your coaching feedback as JSON. Remember to find things to improve even 
       'X-Title': 'OmniDial Sales Coach',
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-3.5-sonnet',
+      model: SALES_COACH_MODEL,
       messages,
       max_tokens: 2000,
       temperature: 0.7,
@@ -408,7 +413,7 @@ export async function generateCoaching(
     strengths: analysis.strengths,
     improvements: analysis.improvements,
     feedback: analysis.feedback,
-    modelUsed: 'claude-3.5-sonnet',
+    modelUsed: SALES_COACH_MODEL,
     tokensUsed: analysis.tokensUsed,
     analysisTimeMs,
   })

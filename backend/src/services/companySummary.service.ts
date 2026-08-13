@@ -2,6 +2,12 @@ import * as leadRepo from '@/repositories/lead.repository'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+
+// `anthropic/claude-3.5-haiku` was retired from OpenRouter. `perplexity/sonar`
+// is still routable and stays as-is: it is the web-research step, not a
+// substitute for the summarisation model.
+const COMPANY_SUMMARY_MODEL =
+  process.env.COMPANY_SUMMARY_MODEL || 'anthropic/claude-haiku-4.5'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
 const EXA_API_KEY = process.env.EXA_API_KEY || ''
 const SERPER_API_KEY = process.env.SERPER_API_KEY || ''
@@ -371,7 +377,7 @@ async function callOpenRouter(messages: AIMessage[]): Promise<string> {
       'X-Title': 'OmniDial',
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-3.5-haiku',
+      model: COMPANY_SUMMARY_MODEL,
       messages,
       max_tokens: 800,
       temperature: 0.3,

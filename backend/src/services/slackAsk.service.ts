@@ -205,7 +205,7 @@ export async function processAskQuery(
   try {
     // Call Claude with tools
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       tools: TOOLS,
@@ -251,7 +251,7 @@ export async function processAskQuery(
 
       // Continue the conversation
       currentResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         tools: TOOLS,
