@@ -178,6 +178,7 @@ export const ENDPOINTS = {
     UPDATE: (id: string) => `/campaigns/${id}`,
     DELETE: (id: string) => `/campaigns/${id}`,
     UPLOAD: (id: string) => `/campaigns/${id}/upload`,
+    EXPORT: (id: string) => `/campaigns/${id}/export`,
     ASSIGN: (id: string) => `/campaigns/${id}/assign`,
     LEADS: (id: string) => `/campaigns/${id}/leads`,
   },

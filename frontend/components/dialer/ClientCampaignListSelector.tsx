@@ -10,11 +10,12 @@ interface ClientCampaignListSelectorProps {
   onSelectionChange?: (selection: {
     clientId?: string;
     campaignId?: string;
-    listId?: string; // Auto-selected from campaign lists (for parallel dialer compatibility)
+    listId?: string;
   }) => void;
   initialClientId?: string;
   initialCampaignId?: string;
   initialListId?: string;
+  autoSelectList?: boolean;
 }
 
 interface DropdownState {
@@ -27,6 +28,7 @@ export function ClientCampaignListSelector({
   initialClientId,
   initialCampaignId,
   initialListId,
+  autoSelectList = true,
 }: ClientCampaignListSelectorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | undefined>(initialClientId);
@@ -51,21 +53,19 @@ export function ClientCampaignListSelector({
   const { data: listsData } = useCampaignLists(selectedCampaignId);
   const lists = useMemo(() => listsData?.data || [], [listsData?.data]);
 
-  // Auto-select first list when campaign has lists (for parallel dialer compatibility)
-  // Power dialer no longer needs this but parallel dialer still does
+  // Auto-select first list when the caller needs list-scoped dialing.
   const effectiveListId = useMemo(() => {
+    if (!autoSelectList) return undefined;
     if (selectedListId) return selectedListId;
     if (lists.length > 0 && selectedCampaignId) return lists[0].listId;
     return undefined;
-  }, [selectedListId, lists, selectedCampaignId]);
+  }, [autoSelectList, selectedListId, lists, selectedCampaignId]);
 
   // Get selected items for display
   const selectedClient = clients?.find((c) => c.id === selectedClientId);
   const selectedCampaign = campaigns?.find((c) => c.id === selectedCampaignId);
 
   // Notify parent of selection changes
-  // Power dialer now works at campaign level (doesn't require listId)
-  // Parallel dialer still needs listId
   useEffect(() => {
     onSelectionChange?.({
       clientId: selectedClientId,

@@ -770,7 +770,7 @@ function PowerDialerTab({
             onSelectionChange={onSelectionChange}
             initialClientId={selection.clientId}
             initialCampaignId={selection.campaignId}
-            initialListId={selection.listId}
+            autoSelectList={false}
           />
         </div>
       </div>
@@ -793,7 +793,6 @@ function PowerDialerTab({
       <div className="lg:row-start-2 lg:col-start-1 order-3">
         <PowerDialerControls
           campaignId={selection.campaignId}
-          listId={selection.listId}
           onLeadSelect={onLeadSelect}
           onCallInitiated={onCallInitiated}
           onEndCall={onEndCall}

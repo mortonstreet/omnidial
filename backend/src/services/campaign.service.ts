@@ -147,6 +147,56 @@ export const getCampaignLeads = async (
   return campaignLeadRepo.findByCampaign(campaignId, filters, pagination)
 }
 
+export const exportCampaignLeads = async (
+  campaignId: string,
+  organizationId: string,
+) => {
+  const campaign = await campaignRepo.findById(campaignId, organizationId)
+  if (!campaign) {
+    throw new Error('Campaign not found')
+  }
+
+  const leads = await campaignLeadRepo.findAllByCampaign(campaignId)
+
+  const escapeCSV = (value: string | number | null | undefined): string => {
+    if (value == null) return ''
+    const str = String(value)
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`
+    }
+    return str
+  }
+
+  const headers = [
+    'First Name',
+    'Last Name',
+    'Email',
+    'Phone',
+    'Company',
+    'Title',
+    'LinkedIn URL',
+    'Status',
+  ]
+  const rows = leads.map((lead) =>
+    [
+      escapeCSV(lead.firstName),
+      escapeCSV(lead.lastName),
+      escapeCSV(lead.email),
+      escapeCSV(lead.phone),
+      escapeCSV(lead.company),
+      escapeCSV(lead.title),
+      escapeCSV(lead.linkedInUrl),
+      escapeCSV(lead.status),
+    ].join(','),
+  )
+
+  const csv = [headers.join(','), ...rows].join('\n')
+  const sanitizedName =
+    campaign.name.replace(/[^a-zA-Z0-9-_ ]/g, '').trim() || 'campaign'
+
+  return { csv, fileName: `${sanitizedName}-leads.csv` }
+}
+
 export const refreshCounts = async (
   campaignId: string,
   organizationId: string,

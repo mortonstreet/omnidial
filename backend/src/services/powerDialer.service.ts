@@ -1,7 +1,6 @@
 import * as progressRepo from '@/repositories/powerDialerProgress.repository'
 import * as leadListEntryRepo from '@/repositories/leadListEntry.repository'
 import * as leadListRepo from '@/repositories/leadList.repository'
-import * as campaignListRepo from '@/repositories/campaignList.repository'
 import * as campaignLeadRepo from '@/repositories/campaign-lead.repository'
 import * as callingNotificationService from '@/services/callingNotification.service'
 import type { PowerDialerTimezonePriority } from '@shared/types/src'
@@ -21,7 +20,7 @@ const getActiveCampaignLeadCountForUser = async (
   campaignId: string,
   userId: string,
 ) =>
-  campaignListRepo.getActiveCampaignLeadCount(
+  campaignLeadRepo.countDialableByCampaign(
     campaignId,
     await getCampaignAssignmentScope(campaignId, userId),
   )
@@ -29,7 +28,7 @@ const getActiveCampaignLeadCountForUser = async (
 export interface GetProgressParams {
   userId: string
   campaignId: string
-  listId?: string // Optional - if not provided, uses all campaign lists
+  listId?: string // Optional - if not provided, uses campaign leads
   organizationId: string
   timezonePriority?: PowerDialerTimezonePriority
 }
@@ -107,7 +106,7 @@ export const startSession = async (params: StartSessionParams) => {
   if (effectiveListId === CAMPAIGN_ALL_LISTS) {
     totalLeads = await getActiveCampaignLeadCountForUser(campaignId, userId)
     if (totalLeads === 0) {
-      throw new Error('No dialable leads found in campaign lists')
+      throw new Error('No dialable leads found in campaign')
     }
   } else {
     const list = await leadListRepo.findById(effectiveListId, organizationId)
@@ -246,9 +245,8 @@ export const getNextLead = async (params: GetNextLeadParams) => {
   // Get the lead at effective index
   let lead = null
   if (isCampaignMode) {
-    // Fetch from all campaign lists
     const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
-    const leads = await campaignListRepo.findCampaignLeadsWithOffset(
+    const leads = await campaignLeadRepo.findDialableByCampaignWithOffset(
       campaignId,
       effectiveIndex,
       1,
@@ -344,7 +342,7 @@ export const skipLead = async (params: SkipLeadParams) => {
   let lead = null
   if (isCampaignMode) {
     const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
-    const leads = await campaignListRepo.findCampaignLeadsWithOffset(
+    const leads = await campaignLeadRepo.findDialableByCampaignWithOffset(
       campaignId,
       effectiveIndex,
       1,
@@ -487,7 +485,7 @@ export const goToPrevious = async (params: GoToPreviousParams) => {
   let lead = null
   if (isCampaignMode) {
     const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
-    const leads = await campaignListRepo.findCampaignLeadsWithOffset(
+    const leads = await campaignLeadRepo.findDialableByCampaignWithOffset(
       campaignId,
       effectiveIndex,
       1,

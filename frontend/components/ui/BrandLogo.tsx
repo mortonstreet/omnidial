@@ -14,7 +14,6 @@ interface BrandLogoProps {
 const PROVIDER_DOMAINS: Record<string, string> = {
   attio: "attio.com",
   prospeo: "prospeo.io",
-  leadmagic: "leadmagic.io",
   apollo: "apollo.io",
   zoominfo: "zoominfo.com",
   clearbit: "clearbit.com",
@@ -33,7 +32,7 @@ const PROVIDER_DOMAINS: Record<string, string> = {
 const PROVIDER_NAMES: Record<string, string> = {
   attio: "Attio",
   prospeo: "Prospeo",
-  leadmagic: "Lead Magic",
+  leadmagic: "LeadMagic",
 };
 
 export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
@@ -138,10 +137,15 @@ export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
 
     case "leadmagic":
       return (
-        <CompanyLogo
-          company={PROVIDER_NAMES.leadmagic}
-          website={PROVIDER_DOMAINS.leadmagic}
-          size={s}
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src="/leadmagic-logo.jpeg"
+          alt="LeadMagic logo"
+          width={s}
+          height={s}
+          loading="lazy"
+          className="shrink-0 rounded-md bg-muted object-contain"
+          style={{ width: s, height: s }}
         />
       );
 
@@ -188,7 +192,16 @@ export function BrandLogo({ provider, size = 32 }: BrandLogoProps) {
       );
 
     case "webhook":
-      return <img src="/webhook-logo.svg" alt="Webhook" width={s} height={s} style={{ borderRadius: s * 0.2 }} />;
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src="/webhook-logo.svg"
+          alt="Webhook"
+          width={s}
+          height={s}
+          style={{ borderRadius: s * 0.2 }}
+        />
+      );
 
     default: {
       // New providers get a real logo from logo.dev without needing a hand-drawn

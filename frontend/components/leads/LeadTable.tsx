@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Phone, Mail, ExternalLink, Trash2, MoreHorizontal, Sparkles } from "lucide-react";
 import { useQuickCall } from "@/hooks/useQuickCall";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ export function LeadTable({
   isAllOnPageSelected,
   isSomeOnPageSelected,
 }: LeadTableProps) {
+  const router = useRouter();
   const { quickCall } = useQuickCall();
   const enrichLead = useEnrichLead();
   const leadIds = leads.map((l) => l.id);
@@ -130,10 +132,11 @@ export function LeadTable({
               return (
                 <TableRow
                   key={lead.id}
-                  className={isSelected ? "bg-muted/50" : undefined}
+                  className={isSelected ? "bg-muted/50 cursor-pointer" : "cursor-pointer"}
+                  onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
                 >
                   {selectable && (
-                    <TableCell>
+                    <TableCell onClick={(event) => event.stopPropagation()}>
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => onToggleSelection?.(lead.id)}
@@ -160,7 +163,15 @@ export function LeadTable({
                   </TableCell>
                   <TableCell>
                     <button
-                      onClick={() => quickCall({ leadId: lead.id, leadName: fullName, phone: lead.phone, clientId: lead.clientId })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        quickCall({
+                          leadId: lead.id,
+                          leadName: fullName,
+                          phone: lead.phone,
+                          clientId: lead.clientId,
+                        });
+                      }}
                       className="flex items-center gap-2 hover:text-primary text-left"
                     >
                       <Phone className="w-3 h-3 text-muted-foreground" />
@@ -171,6 +182,7 @@ export function LeadTable({
                     {lead.email ? (
                       <a
                         href={`mailto:${lead.email}`}
+                        onClick={(event) => event.stopPropagation()}
                         className="flex items-center gap-2 hover:text-primary truncate max-w-[200px]"
                       >
                         <Mail className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -190,7 +202,7 @@ export function LeadTable({
                   <TableCell className="text-muted-foreground text-sm">
                     {formatRelativeDate(lead.createdAt)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(event) => event.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon-sm">

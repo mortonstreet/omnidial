@@ -176,6 +176,25 @@ export const getCampaignLeads: AuthRequestHandler<
   }
 }
 
+export const exportCampaignLeads: AuthRequestHandler<
+  GetCampaignRequest
+> = async (req, res) => {
+  const { id, organizationId } = req.validated
+
+  try {
+    const { csv, fileName } = await campaignService.exportCampaignLeads(
+      id,
+      organizationId,
+    )
+
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.send(csv)
+  } catch (error) {
+    res.status(404).json({ error: 'Campaign not found' })
+  }
+}
+
 export const uploadCsv: AuthRequestHandler<UploadCsvRequest> = async (
   req,
   res,

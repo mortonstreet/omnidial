@@ -61,6 +61,7 @@ import { Label } from "@/components/ui/label";
 import { CsvUploader } from "@/components/lists/CsvUploader";
 import { GoogleSheetsExportModal } from "@/components/sheets/GoogleSheetsExportModal";
 import { GoogleSheetsIcon } from "@/components/icons/GoogleSheetsIcon";
+import { BulkEnrichButton } from "@/components/enrichment/BulkEnrichButton";
 import {
   useList,
   useListLeads,
@@ -72,6 +73,7 @@ import {
 import { EditableCell } from "@/components/lists/EditableCell";
 import { useCampaigns } from "@/hooks/api/useCampaigns";
 import { usePipelineStages } from "@/hooks/api/usePipeline";
+import { useBulkAddToCampaign } from "@/hooks/api/useLeads";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useActiveOrganization } from "@/lib/auth-client";
@@ -79,7 +81,6 @@ import { ENDPOINTS, env } from "@/lib/config";
 import { getAuthHeaders } from "@/lib/api";
 import { useQuickCall } from "@/hooks/useQuickCall";
 import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
-import { useBulkProspeoListMobileEnrich } from "@/hooks/api/useEnrichment";
 
 export default function ListDetailPage() {
   const params = useParams();
@@ -114,17 +115,15 @@ export default function ListDetailPage() {
   const updateMutation = useUpdateList();
   const deleteMutation = useDeleteList();
   const linkCampaignMutation = useAddListToCampaign();
+  const bulkAddToCampaignMutation = useBulkAddToCampaign();
   const updateLeadMutation = useUpdateLead(listId);
-  const prospeoMobileMutation = useBulkProspeoListMobileEnrich();
   const canManageLists = useOrganizationAdmin();
 
   const leads = leadsData?.data ?? [];
   const pagination = leadsData?.pagination;
   const campaigns = campaignsData?.data ?? [];
   const pipelineStages = stagesData?.data ?? [];
-  const eligibleLeadIdsOnPage = leads
-    .filter((lead) => !!lead.linkedInUrl?.trim())
-    .map((lead) => lead.id);
+  const leadIdsOnPage = leads.map((lead) => lead.id);
   const selectedLeadCount = selectedLeadIds.size;
   const markDnc = useMarkLeadsDnc();
   const removeFromList = useRemoveListLeads();
@@ -170,14 +169,12 @@ export default function ListDetailPage() {
       );
     }
   };
-  const selectedEligibleOnPageCount = eligibleLeadIdsOnPage.filter((leadId) =>
+  const selectedOnPageCount = leadIdsOnPage.filter((leadId) =>
     selectedLeadIds.has(leadId)
   ).length;
-  const allEligibleOnPageSelected =
-    eligibleLeadIdsOnPage.length > 0 &&
-    selectedEligibleOnPageCount === eligibleLeadIdsOnPage.length;
-  const someEligibleOnPageSelected =
-    selectedEligibleOnPageCount > 0 && !allEligibleOnPageSelected;
+  const allOnPageSelected =
+    leadIdsOnPage.length > 0 && selectedOnPageCount === leadIdsOnPage.length;
+  const someOnPageSelected = selectedOnPageCount > 0 && !allOnPageSelected;
 
   const handleEdit = async () => {
     if (!editName.trim()) {
@@ -217,17 +214,44 @@ export default function ListDetailPage() {
     }
 
     try {
-      const result = await linkCampaignMutation.mutateAsync({
-        campaignId: selectedCampaignId,
-        listId,
-      });
-      toast.success(
-        `List linked! ${result.leadsAdded} leads added to campaign.`
-      );
+      const campaignName =
+        campaigns.find((campaign) => campaign.id === selectedCampaignId)
+          ?.name ?? "campaign";
+      const selectedIds = Array.from(selectedLeadIds);
+
+      if (selectedIds.length > 0) {
+        const result = await bulkAddToCampaignMutation.mutateAsync({
+          campaignId: selectedCampaignId,
+          leadIds: selectedIds,
+        });
+        if (result.added > 0) {
+          toast.success(
+            `Added ${result.added} selected lead${
+              result.added === 1 ? "" : "s"
+            } to ${campaignName}.`
+          );
+        }
+        if (result.alreadyInCampaign > 0) {
+          toast.info(
+            `${result.alreadyInCampaign} selected lead${
+              result.alreadyInCampaign === 1 ? " was" : "s were"
+            } already in ${campaignName}.`
+          );
+        }
+        setSelectedLeadIds(new Set());
+      } else {
+        const result = await linkCampaignMutation.mutateAsync({
+          campaignId: selectedCampaignId,
+          listId,
+        });
+        toast.success(
+          `List linked! ${result.leadsAdded} leads added to campaign.`
+        );
+      }
       setIsLinkCampaignOpen(false);
       setSelectedCampaignId("");
     } catch {
-      toast.error("Failed to link list to campaign");
+      toast.error("Failed to add leads to campaign");
     }
   };
 
@@ -246,7 +270,7 @@ export default function ListDetailPage() {
   const handleTogglePageSelection = (checked: boolean) => {
     setSelectedLeadIds((current) => {
       const next = new Set(current);
-      eligibleLeadIdsOnPage.forEach((leadId) => {
+      leadIdsOnPage.forEach((leadId) => {
         if (checked) {
           next.add(leadId);
         } else {
@@ -257,63 +281,8 @@ export default function ListDetailPage() {
     });
   };
 
-  const handleSelectEligiblePage = () => {
+  const handleSelectPage = () => {
     handleTogglePageSelection(true);
-  };
-
-  const handleProspeoMobileEnrich = async () => {
-    if (!list) return;
-
-    const leadIds = Array.from(selectedLeadIds);
-    const scope =
-      leadIds.length > 0
-        ? `${leadIds.length.toLocaleString()} selected lead${
-            leadIds.length === 1 ? "" : "s"
-          }`
-        : `all ${list.leadCount.toLocaleString()} leads in this list`;
-
-    if (
-      !confirm(
-        `Run Prospeo verified mobile enrichment for ${scope}? Leads without LinkedIn URLs will be skipped.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const result = await prospeoMobileMutation.mutateAsync({
-        listId,
-        leadIds: leadIds.length > 0 ? leadIds : undefined,
-      });
-      const skippedText =
-        result.totalSkipped > 0
-          ? ` ${result.totalSkipped.toLocaleString()} skipped.`
-          : "";
-      const failedText =
-        result.totalFailed > 0
-          ? ` ${result.totalFailed.toLocaleString()} failed.`
-          : "";
-
-      if (result.totalUpdated > 0) {
-        toast.success(
-          `Added verified mobiles to ${result.totalUpdated.toLocaleString()} lead${
-            result.totalUpdated === 1 ? "" : "s"
-          }.${skippedText}${failedText}`
-        );
-      } else if (result.totalFailed > 0) {
-        toast.error(`Prospeo enrichment failed.${skippedText}${failedText}`);
-      } else {
-        toast.info(`No valid mobile numbers returned.${skippedText}`);
-      }
-
-      setSelectedLeadIds(new Set());
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to run Prospeo enrichment"
-      );
-    }
   };
 
   const handleExport = async () => {
@@ -484,22 +453,6 @@ export default function ListDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleProspeoMobileEnrich}
-            disabled={prospeoMobileMutation.isPending || list.leadCount === 0}
-          >
-            {prospeoMobileMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Phone className="w-4 h-4 mr-2" />
-            )}
-            Prospeo Mobile
-            {selectedLeadCount > 0 && (
-              <span>({selectedLeadCount.toLocaleString()})</span>
-            )}
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -593,18 +546,24 @@ export default function ListDetailPage() {
             )}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {eligibleLeadIdsOnPage.length > 0 && selectedLeadCount === 0 && (
+            {leadIdsOnPage.length > 0 && selectedLeadCount === 0 && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleSelectEligiblePage}
-                disabled={prospeoMobileMutation.isPending}
+                onClick={handleSelectPage}
               >
-                Select LinkedIn Page
+                Select Page
               </Button>
             )}
             {selectedLeadCount > 0 && (
               <>
+                <BulkEnrichButton
+                  leadIds={Array.from(selectedLeadIds)}
+                  onComplete={() => {
+                    setSelectedLeadIds(new Set());
+                    refetch();
+                  }}
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -630,24 +589,6 @@ export default function ListDetailPage() {
                 </Button>
               </>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleProspeoMobileEnrich}
-              disabled={
-                prospeoMobileMutation.isPending || list.leadCount === 0
-              }
-            >
-              {prospeoMobileMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Phone className="w-4 h-4 mr-2" />
-              )}
-              Prospeo Mobile
-              {selectedLeadCount > 0 && (
-                <span>({selectedLeadCount.toLocaleString()})</span>
-              )}
-            </Button>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -683,20 +624,17 @@ export default function ListDetailPage() {
                   <TableHead className="w-12">
                     <Checkbox
                       checked={
-                        allEligibleOnPageSelected
+                        allOnPageSelected
                           ? true
-                          : someEligibleOnPageSelected
+                          : someOnPageSelected
                           ? "indeterminate"
                           : false
                       }
-                      disabled={
-                        eligibleLeadIdsOnPage.length === 0 ||
-                        prospeoMobileMutation.isPending
-                      }
+                      disabled={leadIdsOnPage.length === 0}
                       onCheckedChange={(checked) =>
                         handleTogglePageSelection(checked === true)
                       }
-                      aria-label="Select eligible leads on this page"
+                      aria-label="Select leads on this page"
                     />
                   </TableHead>
                   <TableHead>First Name</TableHead>
@@ -710,34 +648,30 @@ export default function ListDetailPage() {
               </TableHeader>
               <TableBody>
                 {leads.map((lead) => {
-                  const hasLinkedInUrl = !!lead.linkedInUrl?.trim();
                   const isSelected = selectedLeadIds.has(lead.id);
 
                   return (
                     <TableRow
                       key={lead.entryId}
-                      className={isSelected ? "bg-muted/50" : undefined}
+                      className={cn(
+                        "cursor-pointer",
+                        isSelected && "bg-muted/50"
+                      )}
+                      onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
                     >
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           checked={isSelected}
-                          disabled={
-                            !hasLinkedInUrl || prospeoMobileMutation.isPending
-                          }
                           onCheckedChange={(checked) =>
                             handleToggleLeadSelection(
                               lead.id,
                               checked === true
                             )
                           }
-                          aria-label={
-                            hasLinkedInUrl
-                              ? "Select lead for Prospeo mobile enrichment"
-                              : "Lead requires a LinkedIn URL for Prospeo mobile enrichment"
-                          }
+                          aria-label="Select lead"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <EditableCell
                           value={lead.firstName}
                           onSave={(v) =>
@@ -746,7 +680,7 @@ export default function ListDetailPage() {
                           placeholder="-"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <EditableCell
                           value={lead.lastName}
                           onSave={(v) =>
@@ -755,21 +689,21 @@ export default function ListDetailPage() {
                           placeholder="-"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <EditableCell
                           value={lead.phone}
                           onSave={(v) => handleUpdateLead(lead.id, "phone", v)}
                           type="phone"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <EditableCell
                           value={lead.email}
                           onSave={(v) => handleUpdateLead(lead.id, "email", v)}
                           placeholder="-"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <EditableCell
                           value={lead.company}
                           onSave={(v) =>
@@ -778,14 +712,14 @@ export default function ListDetailPage() {
                           placeholder="-"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <EditableCell
                           value={lead.title}
                           onSave={(v) => handleUpdateLead(lead.id, "title", v)}
                           placeholder="-"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -931,8 +865,11 @@ export default function ListDetailPage() {
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <p className="text-sm text-muted-foreground">
-              All {list.leadCount} leads from this list will be added to the
-              selected campaign.
+              {selectedLeadCount > 0
+                ? `${selectedLeadCount.toLocaleString()} selected lead${
+                    selectedLeadCount === 1 ? "" : "s"
+                  } will be added to the selected campaign.`
+                : `All ${list.leadCount.toLocaleString()} leads from this list will be added to the selected campaign.`}
             </p>
             <div className="space-y-2">
               <Label>Campaign</Label>
@@ -979,9 +916,14 @@ export default function ListDetailPage() {
               </Button>
               <Button
                 onClick={handleLinkCampaign}
-                disabled={linkCampaignMutation.isPending || !selectedCampaignId}
+                disabled={
+                  linkCampaignMutation.isPending ||
+                  bulkAddToCampaignMutation.isPending ||
+                  !selectedCampaignId
+                }
               >
-                {linkCampaignMutation.isPending ? (
+                {linkCampaignMutation.isPending ||
+                bulkAddToCampaignMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Adding...

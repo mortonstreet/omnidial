@@ -44,7 +44,7 @@ export interface Lead {
   // Timezone (resolved from LinkedIn location)
   timezone?: string | null;
   timezoneResolvedAt?: string | null;
-  // List ID for campaign mode (to know which list the lead belongs to)
+  // Present only when dialing a list-scoped queue.
   listId?: string | null;
 }
 

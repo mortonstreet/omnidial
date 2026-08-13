@@ -28,6 +28,7 @@ import {
 } from '@/hooks/api/usePowerDialer'
 import { useSoftRemoveLeadFromList } from '@/hooks/api/useLists'
 import { useGenerateCompanySummary } from '@/hooks/api/useLeads'
+import { useRemoveCampaignLeads } from '@/hooks/api/useDnc'
 import {
   getTimezoneBucket,
   TIMEZONE_BUCKET_LABELS,
@@ -65,7 +66,7 @@ const getLeadDisplayName = (lead: Lead) =>
 
 interface PowerDialerControlsProps {
   campaignId?: string
-  listId?: string // Optional - if not provided, uses all campaign lists
+  listId?: string // Optional - if not provided, uses campaign leads
   onLeadSelect?: (lead: Lead) => void
   onCallInitiated?: (lead: Lead) => void
   onEndCall?: () => Promise<void> // Callback to end current call (for skipping during active call)
@@ -113,11 +114,15 @@ export function PowerDialerControls({
   const previousMutation = useGoToPrevious()
   const updateProgressMutation = useUpdatePowerDialerProgress()
   const softRemoveMutation = useSoftRemoveLeadFromList()
+  const removeCampaignLeadsMutation = useRemoveCampaignLeads()
   const generateSummaryMutation = useGenerateCompanySummary()
 
   // Enable power dialer when campaign is selected (listId is now optional)
   const isEnabled = !!campaignId
   const currentLead = nextLeadData?.lead
+  const canRemoveFromList = Boolean(listId || currentLead?.listId)
+  const isRemovingLead =
+    softRemoveMutation.isPending || removeCampaignLeadsMutation.isPending
   const progressData = nextLeadData?.progress || progress
   const currentLeadTimezone = currentLead?.timezone || null
   const currentLeadTimezoneBucket = getTimezoneBucket(currentLeadTimezone)
@@ -334,18 +339,26 @@ export function PowerDialerControls({
     }
   }, [callState, isRunning, selectedDelay])
 
-  // Handle removing lead from list
-  const handleRemoveFromList = useCallback(async () => {
-    // Use the lead's listId if prop listId is not provided (campaign mode)
+  // Handle removing the lead from the current dialer queue.
+  const handleRemoveFromQueue = useCallback(async () => {
     const effectiveListId = listId || currentLead?.listId
-    if (!effectiveListId || !currentLead || !campaignId) return
+    if (!currentLead || !campaignId) return
 
     try {
-      await softRemoveMutation.mutateAsync({
-        listId: effectiveListId,
-        leadId: currentLead.id,
-      })
-      toast.success('Lead removed from list')
+      if (effectiveListId) {
+        await softRemoveMutation.mutateAsync({
+          listId: effectiveListId,
+          leadId: currentLead.id,
+        })
+        toast.success('Lead removed from list')
+      } else {
+        await removeCampaignLeadsMutation.mutateAsync({
+          campaignId,
+          leadIds: [currentLead.id],
+        })
+        toast.success('Lead removed from campaign')
+      }
+
       // Always skip to next lead after removing for better UX
       await skipMutation.mutateAsync({ campaignId, listId, timezonePriority })
       // Only start countdown if power dialer is running
@@ -353,18 +366,17 @@ export function PowerDialerControls({
         setCountdown(selectedDelay)
       }
     } catch (error) {
-      console.error('Failed to remove lead from list:', error)
+      console.error('Failed to remove lead from dialer queue:', error)
       const rawMessage = error instanceof Error ? error.message : ''
-      let userMessage = 'Failed to remove lead from list. Please try again.'
+      let userMessage = 'Failed to remove lead. Please try again.'
 
       if (rawMessage.includes('not found') || rawMessage.includes('404')) {
-        userMessage = 'Lead or list not found. Please refresh the page.'
+        userMessage = 'Lead not found. Please refresh the page.'
       } else if (
         rawMessage.includes('permission') ||
         rawMessage.includes('403')
       ) {
-        userMessage =
-          "You don't have permission to remove leads from this list."
+        userMessage = "You don't have permission to remove this lead."
       }
 
       toast.error(userMessage)
@@ -374,6 +386,7 @@ export function PowerDialerControls({
     currentLead,
     campaignId,
     softRemoveMutation,
+    removeCampaignLeadsMutation,
     isRunning,
     skipMutation,
     selectedDelay,
@@ -652,11 +665,15 @@ export function PowerDialerControls({
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <button
-                    disabled={softRemoveMutation.isPending}
+                    disabled={isRemovingLead}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-destructive hover:text-destructive/80 border border-transparent hover:border-destructive/30 rounded-lg transition-all duration-150 disabled:opacity-50"
-                    title="Remove from list"
+                    title={
+                      canRemoveFromList
+                        ? 'Remove from list'
+                        : 'Remove from campaign'
+                    }
                   >
-                    {softRemoveMutation.isPending ? (
+                    {isRemovingLead ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
                       <UserMinus className="w-3 h-3" />
@@ -666,17 +683,24 @@ export function PowerDialerControls({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Remove from list?</AlertDialogTitle>
+                    <AlertDialogTitle>
+                      {canRemoveFromList
+                        ? 'Remove from list?'
+                        : 'Remove from campaign?'}
+                    </AlertDialogTitle>
                     <AlertDialogDescription>
                       This will remove {getLeadDisplayName(currentLead)} from
-                      the current list. The lead data will be preserved and can
-                      still be found in the global leads view.
+                      the current {canRemoveFromList ? 'list' : 'campaign'}.
+                      The lead data will be preserved and can still be found in
+                      the global leads view.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleRemoveFromList}>
-                      Remove from list
+                    <AlertDialogAction onClick={handleRemoveFromQueue}>
+                      {canRemoveFromList
+                        ? 'Remove from list'
+                        : 'Remove from campaign'}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

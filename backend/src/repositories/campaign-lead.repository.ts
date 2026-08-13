@@ -2,6 +2,36 @@ import { db } from '@/lib/db'
 import { withId } from './utils'
 import { DBPagination } from '@shared/db/src/types'
 import { withPagination } from './utils'
+import type { PowerDialerTimezonePriority } from '@shared/types/src'
+import {
+  TIMEZONE_GROUPS,
+  TIMEZONE_PRIORITY_ORDER,
+} from '@shared/types/src/constants/timezones'
+import { sql } from 'kysely'
+
+const timezoneInSql = (timezones: string[]) =>
+  sql<boolean>`lead.timezone in (${sql.join(timezones)})`
+
+const timezonePriorityRankSql = (priority: PowerDialerTimezonePriority) => {
+  const order = TIMEZONE_PRIORITY_ORDER[priority]
+
+  return sql<number>`case
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[0]])} then 0
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[1]])} then 1
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[2]])} then 2
+    when ${timezoneInSql(TIMEZONE_GROUPS[order[3]])} then 3
+    else 4
+  end`
+}
+
+const dialableLeadWhereSql = sql<boolean>`(
+  btrim(coalesce(lead.phone, '')) <> ''
+  and (
+    btrim(coalesce(lead."firstName", '')) <> ''
+    or btrim(coalesce(lead."lastName", '')) <> ''
+    or btrim(coalesce(lead.company, '')) <> ''
+  )
+)`
 
 export interface CreateCampaignLeadInput {
   campaignId: string
@@ -103,6 +133,113 @@ export const findByCampaign = async (
     data: leads,
     total: Number(countResult.count),
   }
+}
+
+export const findAllByCampaign = async (campaignId: string) => {
+  return db
+    .selectFrom('campaign_lead')
+    .innerJoin('lead', 'lead.id', 'campaign_lead.leadId')
+    .where('campaign_lead.campaignId', '=', campaignId)
+    .where('lead.deletedAt', 'is', null)
+    .select([
+      'campaign_lead.status',
+      'campaign_lead.dialOrder',
+      'lead.firstName',
+      'lead.lastName',
+      'lead.email',
+      'lead.phone',
+      'lead.company',
+      'lead.title',
+      'lead.linkedInUrl',
+    ])
+    .orderBy('campaign_lead.dialOrder', 'asc')
+    .execute()
+}
+
+export const countDialableByCampaign = async (
+  campaignId: string,
+  options: { assignedUserId?: string } = {},
+): Promise<number> => {
+  let query = db
+    .selectFrom('campaign_lead')
+    .innerJoin('lead', 'lead.id', 'campaign_lead.leadId')
+    .where('campaign_lead.campaignId', '=', campaignId)
+    .where('lead.deletedAt', 'is', null)
+    .where(dialableLeadWhereSql)
+
+  if (options.assignedUserId) {
+    query = query.where(
+      'campaign_lead.assignedUserId',
+      '=',
+      options.assignedUserId,
+    )
+  }
+
+  const result = await query
+    .select(sql<number>`count(distinct lead.id)::int`.as('count'))
+    .executeTakeFirst()
+
+  return Number(result?.count ?? 0)
+}
+
+export const findDialableByCampaignWithOffset = async (
+  campaignId: string,
+  offset: number,
+  limit: number = 1,
+  options: {
+    timezonePriority?: PowerDialerTimezonePriority
+    assignedUserId?: string
+  } = {},
+) => {
+  let query = db
+    .selectFrom('campaign_lead')
+    .innerJoin('lead', 'lead.id', 'campaign_lead.leadId')
+    .where('campaign_lead.campaignId', '=', campaignId)
+    .where('lead.deletedAt', 'is', null)
+    .where(dialableLeadWhereSql)
+    .select([
+      'lead.id',
+      'lead.firstName',
+      'lead.lastName',
+      'lead.email',
+      'lead.phone',
+      'lead.company',
+      'lead.title',
+      'lead.linkedInUrl',
+      'lead.website',
+      'lead.customFields',
+      'lead.aiCompanySummary',
+      'lead.aiCompanyOverview',
+      'lead.aiSalesTalkingPoints',
+      'lead.aiBusinessContext',
+      'lead.timezone',
+      'lead.timezoneResolvedAt',
+      'lead.createdAt',
+    ])
+
+  if (options.assignedUserId) {
+    query = query.where(
+      'campaign_lead.assignedUserId',
+      '=',
+      options.assignedUserId,
+    )
+  }
+
+  if (options.timezonePriority) {
+    query = query.orderBy(
+      timezonePriorityRankSql(options.timezonePriority),
+      'asc',
+    )
+  }
+
+  const leads = await query
+    .orderBy('campaign_lead.dialOrder', 'asc')
+    .orderBy('campaign_lead.createdAt', 'asc')
+    .offset(offset)
+    .limit(limit)
+    .execute()
+
+  return leads
 }
 
 export const getUnassignedLeads = async (campaignId: string) => {

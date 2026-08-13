@@ -26,6 +26,7 @@ import {
   deleteCampaign,
   assignLeads,
   getCampaignLeads,
+  exportCampaignLeads,
   uploadCsv,
 } from '@/api/controllers/campaign.controller'
 
@@ -99,6 +100,15 @@ router.get(
   validateAndMerge(GetCampaignLeadsRequestSchema),
   validateMemberOfOrganization,
   authenticatedRoute(getCampaignLeads),
+)
+
+// Export all campaign leads as CSV
+router.get(
+  '/:id/export',
+  withBetterAuth,
+  validateAndMerge(GetCampaignRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(exportCampaignLeads),
 )
 
 // Upload CSV to campaign

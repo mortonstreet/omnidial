@@ -1,9 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
+import type { DataVendorProvider, VendorDataType } from "@shared/types/src";
 import { Button } from "@/components/ui/button";
-import { useBulkEnrich } from "@/hooks/api/useEnrichment";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { BrandLogo } from "@/components/ui/BrandLogo";
+import {
+  useBulkEnrich,
+  useEnrichmentVendors,
+} from "@/hooks/api/useEnrichment";
+import {
+  getActiveContactEnrichmentVendors,
+  getEnrichmentProviderLabel,
+} from "@/lib/enrichment-ui";
 import { toast } from "sonner";
 
 interface BulkEnrichButtonProps {
@@ -18,10 +33,20 @@ export function BulkEnrichButton({
   onClearSelection,
 }: BulkEnrichButtonProps) {
   const bulkEnrich = useBulkEnrich();
+  const { data: vendorsData, isLoading: vendorsLoading } =
+    useEnrichmentVendors();
   const [progress, setProgress] = useState<string | null>(null);
 
-  const handleBulkEnrich = async () => {
+  const activeVendors = useMemo(
+    () => getActiveContactEnrichmentVendors(vendorsData?.data),
+    [vendorsData?.data],
+  );
+  const contactDataTypes: VendorDataType[] = ["phone", "email"];
+
+  const handleBulkEnrich = async (provider: DataVendorProvider) => {
     if (leadIds.length === 0) return;
+
+    const providerLabel = getEnrichmentProviderLabel(provider);
 
     try {
       let totalEnriched = 0;
@@ -30,7 +55,11 @@ export function BulkEnrichButton({
       let firstError: string | null = null;
 
       if (leadIds.length <= 100) {
-        const result = await bulkEnrich.mutateAsync({ leadIds });
+        const result = await bulkEnrich.mutateAsync({
+          leadIds,
+          providers: [provider],
+          dataTypes: contactDataTypes,
+        });
         totalEnriched = result.totalEnriched;
         totalFailed = result.totalFailed;
         totalCredits = result.totalCreditsUsed;
@@ -44,8 +73,14 @@ export function BulkEnrichButton({
         }
 
         for (let i = 0; i < chunks.length; i++) {
-          setProgress(`Enriching batch ${i + 1}/${chunks.length}...`);
-          const result = await bulkEnrich.mutateAsync({ leadIds: chunks[i] });
+          setProgress(
+            `${providerLabel}: batch ${i + 1}/${chunks.length}...`,
+          );
+          const result = await bulkEnrich.mutateAsync({
+            leadIds: chunks[i],
+            providers: [provider],
+            dataTypes: contactDataTypes,
+          });
           totalEnriched += result.totalEnriched;
           totalFailed += result.totalFailed;
           totalCredits += result.totalCreditsUsed;
@@ -63,7 +98,7 @@ export function BulkEnrichButton({
 
       if (totalEnriched > 0) {
         toast.success(
-          `Updated ${totalEnriched} of ${leadIds.length} leads${
+          `${providerLabel} updated ${totalEnriched} of ${leadIds.length} leads${
             totalFailed > 0 ? ` (${totalFailed} failed)` : ""
           }${totalNoUpdate > 0 ? ` (${totalNoUpdate} unchanged)` : ""} (${creditsText})`
         );
@@ -75,7 +110,7 @@ export function BulkEnrichButton({
         );
       } else {
         toast.info(
-          `No missing contact data found for ${leadIds.length} selected lead${
+          `${providerLabel} found no missing contact data for ${leadIds.length} selected lead${
             leadIds.length === 1 ? "" : "s"
           }. (${creditsText})`
         );
@@ -84,28 +119,57 @@ export function BulkEnrichButton({
       onComplete?.();
     } catch {
       setProgress(null);
-      toast.error("Bulk enrichment failed");
+      toast.error(`${providerLabel} bulk enrichment failed`);
     }
   };
 
+  const isPending = bulkEnrich.isPending;
+  const disabled =
+    vendorsLoading ||
+    isPending ||
+    leadIds.length === 0 ||
+    activeVendors.length === 0;
+
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleBulkEnrich}
-      disabled={bulkEnrich.isPending || leadIds.length === 0}
-    >
-      {bulkEnrich.isPending ? (
-        <>
-          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-          {progress || "Enriching..."}
-        </>
-      ) : (
-        <>
-          <Sparkles className="h-4 w-4 mr-1" />
-          Enrich Missing Data ({leadIds.length})
-        </>
-      )}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          title={
+            activeVendors.length === 0
+              ? "No enrichment providers connected"
+              : "Enrichment providers"
+          }
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              {progress || "Enriching..."}
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4 mr-1" />
+              Enrich with ({leadIds.length})
+              <ChevronDown className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {activeVendors.map((vendor) => (
+          <DropdownMenuItem
+            key={vendor.id}
+            onClick={() => handleBulkEnrich(vendor.provider)}
+          >
+            <span className="mr-2 flex h-4 w-4 items-center justify-center">
+              <BrandLogo provider={vendor.provider} size={16} />
+            </span>
+            {getEnrichmentProviderLabel(vendor.provider)}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

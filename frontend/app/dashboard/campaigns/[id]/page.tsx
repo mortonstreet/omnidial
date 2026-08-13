@@ -16,6 +16,7 @@ import {
   FileSpreadsheet,
   Loader2,
   Ban,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CsvUploader } from "@/components/campaigns/CsvUploader";
+import { BulkEnrichButton } from "@/components/enrichment/BulkEnrichButton";
 import { useMarkLeadsDnc, useRemoveCampaignLeads } from "@/hooks/api/useDnc";
 import { ScriptManager } from "@/components/campaigns/ScriptManager";
 import {
@@ -51,11 +53,16 @@ import {
   useAddListToCampaign,
 } from "@/hooks/api/useLists";
 import { useOrganizationAdmin } from "@/hooks/useOrganizationAdmin";
+import { useActiveOrganization } from "@/lib/auth-client";
+import { ENDPOINTS, env } from "@/lib/config";
+import { getAuthHeaders } from "@/lib/api";
 import { toast } from "sonner";
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string;
+  const activeOrganization = useActiveOrganization();
+  const orgId = activeOrganization?.data?.id;
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isAddListsOpen, setIsAddListsOpen] = useState(false);
   const [listSearch, setListSearch] = useState("");
@@ -64,12 +71,17 @@ export default function CampaignDetailPage() {
   const [leadsPage, setLeadsPage] = useState(1);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<"dnc" | "remove" | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: campaign, isLoading: campaignLoading } = useCampaign(campaignId);
   const markDnc = useMarkLeadsDnc();
   const removeFromCampaign = useRemoveCampaignLeads();
 
-  const { data: leadsData, isLoading: leadsLoading } = useCampaignLeads({
+  const {
+    data: leadsData,
+    isLoading: leadsLoading,
+    refetch: refetchCampaignLeads,
+  } = useCampaignLeads({
     campaignId,
     page: leadsPage,
     limit: 20,
@@ -160,9 +172,13 @@ export default function CampaignDetailPage() {
   const visibleLeadIds: string[] = (leadsData?.data ?? []).map(
     (lead: { leadId: string }) => lead.leadId,
   );
+  const selectedVisibleCount = visibleLeadIds.filter((id) =>
+    selectedLeadIds.has(id),
+  ).length;
   const allVisibleSelected =
-    visibleLeadIds.length > 0 &&
-    visibleLeadIds.every((id) => selectedLeadIds.has(id));
+    visibleLeadIds.length > 0 && selectedVisibleCount === visibleLeadIds.length;
+  const someVisibleSelected =
+    selectedVisibleCount > 0 && !allVisibleSelected;
 
   const toggleLead = (leadId: string) => {
     setSelectedLeadIds((prev) => {
@@ -221,6 +237,48 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleDownloadLeads = async () => {
+    if (!orgId || !campaign) return;
+
+    setIsExporting(true);
+    try {
+      const response = await fetch(
+        `${env.API_URL}${ENDPOINTS.CAMPAIGNS.EXPORT(campaignId)}?organizationId=${orgId}`,
+        {
+          credentials: "include",
+          headers: await getAuthHeaders(),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Export failed");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const fileNameMatch = contentDisposition?.match(/filename="?([^"]+)"?/);
+      a.download =
+        fileNameMatch?.[1] ??
+        `${campaign.name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim() || "campaign"}-leads.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("Campaign leads downloaded");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to download campaign leads",
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -243,8 +301,21 @@ export default function CampaignDetailPage() {
             </Badge>
           </div>
         </div>
-        {canManageCampaigns && (
-          <div className="flex gap-2">
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleDownloadLeads}
+            disabled={isExporting || campaign.leadCount === 0}
+          >
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            Download Leads
+          </Button>
+          {canManageCampaigns && (
+            <>
             <Dialog
               open={isAddListsOpen}
               onOpenChange={(open) => {
@@ -365,8 +436,9 @@ export default function CampaignDetailPage() {
               </DialogContent>
             </Dialog>
             {/* Campaign pause/resume not yet implemented */}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -447,6 +519,13 @@ export default function CampaignDetailPage() {
                     {selectedLeadIds.size} selected
                   </span>
                   <div className="flex items-center gap-2 ml-auto">
+                    <BulkEnrichButton
+                      leadIds={Array.from(selectedLeadIds)}
+                      onComplete={() => {
+                        setSelectedLeadIds(new Set());
+                        refetchCampaignLeads();
+                      }}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
@@ -480,7 +559,13 @@ export default function CampaignDetailPage() {
                   <TableRow>
                     <TableHead className="w-10">
                       <Checkbox
-                        checked={allVisibleSelected}
+                        checked={
+                          allVisibleSelected
+                            ? true
+                            : someVisibleSelected
+                            ? "indeterminate"
+                            : false
+                        }
                         onCheckedChange={toggleAllVisible}
                         aria-label="Select all leads on this page"
                       />
@@ -494,8 +579,14 @@ export default function CampaignDetailPage() {
                 </TableHeader>
                 <TableBody>
                   {leadsData?.data?.map((lead) => (
-                    <TableRow key={lead.id}>
-                      <TableCell>
+                    <TableRow
+                      key={lead.id}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        router.push(`/dashboard/leads/${lead.leadId}`)
+                      }
+                    >
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           checked={selectedLeadIds.has(lead.leadId)}
                           onCheckedChange={() => toggleLead(lead.leadId)}
@@ -543,7 +634,7 @@ export default function CampaignDetailPage() {
                           {lead.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <div className="flex gap-2">
                           <Link href={`/dashboard/leads/${lead.leadId}`}>
                             <Button variant="ghost" size="sm">
