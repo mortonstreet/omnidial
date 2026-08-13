@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useActiveOrganization } from '@/lib/auth-client';
 import { ENDPOINTS, QUERY_KEYS } from '@/lib/config';
 import { get, post } from '@/lib/api';
@@ -56,6 +56,23 @@ export interface NextLeadResponse {
     dialedCount: number;
     isComplete: boolean;
     isEmpty?: boolean;
+  };
+}
+
+export interface PowerDialerQueueLead extends Lead {
+  queueIndex: number;
+}
+
+export interface PowerDialerQueueResponse {
+  data: PowerDialerQueueLead[];
+  progress: NextLeadResponse['progress'];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
   };
 }
 
@@ -142,6 +159,48 @@ export function useNextLead(
   });
 }
 
+export function usePowerDialerQueue(
+  campaignId?: string,
+  listId?: string,
+  timezonePriority?: TimezonePriority,
+  enabled = true,
+  initialPage = 1
+) {
+  const activeOrganization = useActiveOrganization();
+  const orgId = activeOrganization?.data?.id;
+
+  return useInfiniteQuery<PowerDialerQueueResponse>({
+    queryKey: [
+      ...QUERY_KEYS.powerDialerQueue(campaignId, listId, timezonePriority),
+      initialPage,
+    ],
+    queryFn: async ({ pageParam }) => {
+      const page = typeof pageParam === 'number' ? pageParam : initialPage;
+      const params = new URLSearchParams({
+        organizationId: orgId!,
+        campaignId: campaignId!,
+        page: String(page),
+        limit: '50',
+      });
+      if (listId) {
+        params.set('listId', listId);
+      }
+      if (timezonePriority) {
+        params.set('timezonePriority', timezonePriority);
+      }
+      return get<PowerDialerQueueResponse>(
+        `${ENDPOINTS.POWER_DIALER.QUEUE}?${params.toString()}`
+      );
+    },
+    initialPageParam: initialPage,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasNextPage
+        ? lastPage.pagination.page + 1
+        : undefined,
+    enabled: !!orgId && !!campaignId && enabled,
+  });
+}
+
 export function useStartPowerDialer() {
   const queryClient = useQueryClient();
   const activeOrganization = useActiveOrganization();
@@ -169,6 +228,64 @@ export function useStartPowerDialer() {
       });
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.powerDialerNextLead(
+          variables.campaignId,
+          variables.listId,
+          variables.timezonePriority
+        ),
+      });
+    },
+  });
+}
+
+export function useJumpToPowerDialerLead() {
+  const queryClient = useQueryClient();
+  const activeOrganization = useActiveOrganization();
+  const orgId = activeOrganization?.data?.id;
+
+  return useMutation({
+    mutationFn: async (params: {
+      campaignId: string;
+      listId?: string;
+      currentIndex: number;
+      timezonePriority?: TimezonePriority;
+    }) => {
+      return post<NextLeadResponse>(ENDPOINTS.POWER_DIALER.JUMP, {
+        ...params,
+        organizationId: orgId,
+      });
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(
+        QUERY_KEYS.powerDialerNextLead(
+          variables.campaignId,
+          variables.listId,
+          variables.timezonePriority
+        ),
+        data
+      );
+      queryClient.setQueryData<PowerDialerProgress>(
+        QUERY_KEYS.powerDialerProgress(
+          variables.campaignId,
+          variables.listId,
+          variables.timezonePriority
+        ),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                currentIndex: data.progress.currentIndex,
+                totalLeads: data.progress.totalLeads,
+                dialedCount: data.progress.dialedCount,
+              }
+            : {
+                currentIndex: data.progress.currentIndex,
+                totalLeads: data.progress.totalLeads,
+                dialedCount: data.progress.dialedCount,
+                isPaused: true,
+              }
+      );
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.powerDialerQueue(
           variables.campaignId,
           variables.listId,
           variables.timezonePriority

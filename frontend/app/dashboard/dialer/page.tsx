@@ -48,7 +48,7 @@ import { useDialerContext } from '@/components/providers/DialerProvider'
 import { Button } from '@/components/ui/button'
 import { ClientUserAssignmentManager } from '@/components/settings/ClientUserAssignmentManager'
 import { toast } from 'sonner'
-import type { Lead } from '@/hooks/api/usePowerDialer'
+import type { Lead, TimezonePriority } from '@/hooks/api/usePowerDialer'
 
 type TabType =
   | 'dialer'
@@ -70,6 +70,7 @@ interface Selection {
   clientId?: string
   campaignId?: string
   listId?: string
+  timezonePriority?: TimezonePriority
 }
 
 function DialerPageContent() {
@@ -191,12 +192,25 @@ function DialerPageContent() {
   // Handle selection changes from ClientCampaignListSelector
   const handleSelectionChange = useCallback(
     (newSelection: Selection) => {
-      setSelection(newSelection)
+      setSelection({
+        ...newSelection,
+        timezonePriority: selection.timezonePriority,
+      })
       // Clear current lead and phone when selection changes
       setCurrentLead(null)
       setPowerDialerPhone('')
     },
-    [setSelection, setCurrentLead],
+    [setSelection, setCurrentLead, selection.timezonePriority],
+  )
+
+  const handleTimezonePriorityChange = useCallback(
+    (timezonePriority?: TimezonePriority) => {
+      setSelection({
+        ...selection,
+        timezonePriority,
+      })
+    },
+    [selection, setSelection],
   )
 
   // Handle lead selection from PowerDialerControls
@@ -527,6 +541,7 @@ function DialerPageContent() {
             callState={callState}
             dialTrigger={dialTrigger}
             onSelectionChange={handleSelectionChange}
+            onTimezonePriorityChange={handleTimezonePriorityChange}
             onLeadSelect={handleLeadSelect}
             onCallInitiated={handleCallInitiated}
             onCallEnd={handlePowerDialerCallEnd}
@@ -740,6 +755,7 @@ function PowerDialerTab({
   callState,
   dialTrigger,
   onSelectionChange,
+  onTimezonePriorityChange,
   onLeadSelect,
   onCallInitiated,
   onCallEnd,
@@ -752,6 +768,7 @@ function PowerDialerTab({
   callState: string
   dialTrigger: number
   onSelectionChange: (selection: Selection) => void
+  onTimezonePriorityChange: (timezonePriority?: TimezonePriority) => void
   onLeadSelect: (lead: Lead) => void
   onCallInitiated: (lead: Lead) => void
   onCallEnd: () => void
@@ -793,6 +810,8 @@ function PowerDialerTab({
       <div className="lg:row-start-2 lg:col-start-1 order-3">
         <PowerDialerControls
           campaignId={selection.campaignId}
+          timezonePriority={selection.timezonePriority}
+          onTimezonePriorityChange={onTimezonePriorityChange}
           onLeadSelect={onLeadSelect}
           onCallInitiated={onCallInitiated}
           onEndCall={onEndCall}

@@ -8,6 +8,8 @@ import {
 import {
   GetPowerDialerProgressRequestSchema,
   UpdatePowerDialerProgressRequestSchema,
+  GetPowerDialerQueueRequestSchema,
+  JumpToPowerDialerLeadRequestSchema,
   GetNextLeadRequestSchema,
   SkipLeadRequestSchema,
   StartPowerDialerRequestSchema,
@@ -17,6 +19,8 @@ import {
   getProgress,
   updateProgress,
   getNextLead,
+  getQueueLeads,
+  jumpToLead,
   skipLead,
   startSession,
   stopSession,
@@ -69,6 +73,24 @@ router.get(
   validateAndMerge(GetNextLeadRequestSchema),
   validateMemberOfOrganization,
   authenticatedRoute(getNextLead),
+)
+
+// Get a scrollable window of the current power dialer queue
+router.get(
+  '/queue',
+  withBetterAuth,
+  validateAndMerge(GetPowerDialerQueueRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(getQueueLeads),
+)
+
+// Jump directly to a queue position
+router.post(
+  '/jump',
+  withBetterAuth,
+  validateAndMerge(JumpToPowerDialerLeadRequestSchema),
+  validateMemberOfOrganization,
+  authenticatedRoute(jumpToLead),
 )
 
 // Skip current lead

@@ -97,8 +97,7 @@ export interface StartSessionParams {
 }
 
 export const startSession = async (params: StartSessionParams) => {
-  const { userId, campaignId, listId, organizationId, timezonePriority } =
-    params
+  const { userId, campaignId, listId, organizationId } = params
   const effectiveListId = listId || CAMPAIGN_ALL_LISTS
 
   // Get total leads count - from campaign or specific list
@@ -127,7 +126,6 @@ export const startSession = async (params: StartSessionParams) => {
     {
       totalLeads,
       isPaused: false,
-      ...(timezonePriority ? { currentIndex: 0 } : {}),
     },
   )
 
@@ -142,6 +140,196 @@ export const startSession = async (params: StartSessionParams) => {
   })
 
   return progress
+}
+
+const getQueueWindow = async (params: {
+  userId: string
+  campaignId: string
+  effectiveListId: string
+  organizationId: string
+  offset: number
+  limit: number
+  timezonePriority?: PowerDialerTimezonePriority
+}) => {
+  const {
+    userId,
+    campaignId,
+    effectiveListId,
+    organizationId,
+    offset,
+    limit,
+    timezonePriority,
+  } = params
+  const isCampaignMode = effectiveListId === CAMPAIGN_ALL_LISTS
+
+  if (isCampaignMode) {
+    const assignmentScope = await getCampaignAssignmentScope(campaignId, userId)
+    const activeLeadCount = await getActiveCampaignLeadCountForUser(
+      campaignId,
+      userId,
+    )
+    const leads = await campaignLeadRepo.findDialableByCampaignWithOffset(
+      campaignId,
+      offset,
+      limit,
+      { timezonePriority, ...assignmentScope },
+    )
+
+    return { leads, activeLeadCount }
+  }
+
+  const list = await leadListRepo.findById(effectiveListId, organizationId)
+  if (!list) {
+    throw new Error('List not found')
+  }
+
+  const result = await leadListEntryRepo.findByList(
+    effectiveListId,
+    {},
+    {
+      page: 1,
+      limit,
+      offset,
+    },
+    { timezonePriority, dialableOnly: true },
+  )
+
+  return { leads: result.data, activeLeadCount: result.total }
+}
+
+export interface GetQueueLeadsParams {
+  userId: string
+  campaignId: string
+  listId?: string
+  organizationId: string
+  timezonePriority?: PowerDialerTimezonePriority
+  page: number
+  limit: number
+}
+
+export const getQueueLeads = async (params: GetQueueLeadsParams) => {
+  const {
+    userId,
+    campaignId,
+    listId,
+    organizationId,
+    timezonePriority,
+    page,
+    limit,
+  } = params
+  const effectiveListId = listId || CAMPAIGN_ALL_LISTS
+  const offset = (page - 1) * limit
+  const progress = await progressRepo.findByUserCampaignList(
+    userId,
+    campaignId,
+    effectiveListId,
+  )
+  const { leads, activeLeadCount } = await getQueueWindow({
+    userId,
+    campaignId,
+    effectiveListId,
+    organizationId,
+    offset,
+    limit,
+    timezonePriority,
+  })
+  const totalPages = Math.ceil(activeLeadCount / limit)
+
+  return {
+    data: leads.map((lead, index) => ({
+      ...lead,
+      queueIndex: offset + index,
+    })),
+    progress: {
+      currentIndex: progress?.currentIndex ?? 0,
+      totalLeads: activeLeadCount,
+      dialedCount: progress?.dialedCount ?? 0,
+      isComplete: false,
+      isEmpty: activeLeadCount === 0,
+    },
+    pagination: {
+      page,
+      limit,
+      total: activeLeadCount,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+  }
+}
+
+export interface JumpToLeadParams {
+  userId: string
+  campaignId: string
+  listId?: string
+  organizationId: string
+  currentIndex: number
+  timezonePriority?: PowerDialerTimezonePriority
+}
+
+export const jumpToLead = async (params: JumpToLeadParams) => {
+  const {
+    userId,
+    campaignId,
+    listId,
+    organizationId,
+    currentIndex,
+    timezonePriority,
+  } = params
+  const effectiveListId = listId || CAMPAIGN_ALL_LISTS
+  const existingProgress = await progressRepo.findByUserCampaignList(
+    userId,
+    campaignId,
+    effectiveListId,
+  )
+  const { leads, activeLeadCount } = await getQueueWindow({
+    userId,
+    campaignId,
+    effectiveListId,
+    organizationId,
+    offset: currentIndex,
+    limit: 1,
+    timezonePriority,
+  })
+
+  if (activeLeadCount === 0) {
+    return {
+      lead: null,
+      progress: {
+        currentIndex: existingProgress?.currentIndex ?? 0,
+        totalLeads: 0,
+        dialedCount: existingProgress?.dialedCount ?? 0,
+        isComplete: false,
+        isEmpty: true,
+      },
+    }
+  }
+
+  if (currentIndex >= activeLeadCount) {
+    throw new Error('Lead position out of range')
+  }
+
+  const updatedProgress = await progressRepo.upsert(
+    userId,
+    campaignId,
+    effectiveListId,
+    {
+      currentIndex,
+      totalLeads: activeLeadCount,
+      isPaused: existingProgress?.isPaused ?? true,
+    },
+  )
+
+  return {
+    lead: leads[0] ?? null,
+    progress: {
+      currentIndex: updatedProgress?.currentIndex ?? currentIndex,
+      totalLeads: activeLeadCount,
+      dialedCount: updatedProgress?.dialedCount ?? 0,
+      isComplete: false,
+      isEmpty: false,
+    },
+  }
 }
 
 export interface StopSessionParams {

@@ -398,6 +398,8 @@ export const ENDPOINTS = {
     START: '/power-dialer/start',
     STOP: '/power-dialer/stop',
     NEXT_LEAD: '/power-dialer/next-lead',
+    QUEUE: '/power-dialer/queue',
+    JUMP: '/power-dialer/jump',
     SKIP: '/power-dialer/skip',
     ADVANCE: '/power-dialer/advance',
     PREVIOUS: '/power-dialer/previous',
@@ -768,6 +770,11 @@ export const QUERY_KEYS = {
       listId,
       timezonePriority,
     ] as const,
+  powerDialerQueue: (
+    campaignId?: string,
+    listId?: string,
+    timezonePriority?: string,
+  ) => ['power-dialer', 'queue', campaignId, listId, timezonePriority] as const,
   // Dialer Sessions
   activeSessions: (orgId?: string) => ['dialer', 'sessions', orgId] as const,
   mySession: () => ['dialer', 'session', 'me'] as const,

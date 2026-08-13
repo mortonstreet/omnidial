@@ -65,14 +65,34 @@ export function ClientCampaignListSelector({
   const selectedClient = clients?.find((c) => c.id === selectedClientId);
   const selectedCampaign = campaigns?.find((c) => c.id === selectedCampaignId);
 
-  // Notify parent of selection changes
+  // Keep local dropdown state aligned when persisted selection hydrates after mount.
   useEffect(() => {
+    setSelectedClientId(initialClientId);
+  }, [initialClientId]);
+
+  useEffect(() => {
+    setSelectedCampaignId(initialCampaignId);
+  }, [initialCampaignId]);
+
+  useEffect(() => {
+    setSelectedListId(initialListId);
+  }, [initialListId]);
+
+  useEffect(() => {
+    if (!autoSelectList || !selectedCampaignId || !effectiveListId) return;
+
     onSelectionChange?.({
       clientId: selectedClientId,
       campaignId: selectedCampaignId,
       listId: effectiveListId,
     });
-  }, [selectedClientId, selectedCampaignId, effectiveListId, onSelectionChange]);
+  }, [
+    autoSelectList,
+    selectedClientId,
+    selectedCampaignId,
+    effectiveListId,
+    onSelectionChange,
+  ]);
 
   // Reset campaign and list when client changes
   const handleClientSelect = (clientId: string) => {
@@ -80,6 +100,11 @@ export function ClientCampaignListSelector({
     setSelectedCampaignId(undefined);
     setSelectedListId(undefined);
     setDropdowns({ client: false, campaign: false });
+    onSelectionChange?.({
+      clientId,
+      campaignId: undefined,
+      listId: undefined,
+    });
   };
 
   // Reset list when campaign changes (will auto-select first list via useMemo)
@@ -87,6 +112,11 @@ export function ClientCampaignListSelector({
     setSelectedCampaignId(campaignId);
     setSelectedListId(undefined);
     setDropdowns({ client: false, campaign: false });
+    onSelectionChange?.({
+      clientId: selectedClientId,
+      campaignId,
+      listId: undefined,
+    });
   };
 
   const toggleDropdown = (key: keyof DropdownState) => {

@@ -5,6 +5,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   useRef,
   useEffect,
   ReactNode,
@@ -15,7 +16,10 @@ import { get, post, getAuthHeaders } from '@/lib/api'
 import { QUERY_KEYS, ENDPOINTS, env } from '@/lib/config'
 import { useActiveOrganization, useSession } from '@/lib/auth-client'
 import { useDialerConfig } from '@/hooks/api/useDialer'
-import type { CapabilityTokenResponse } from '@shared/types/src'
+import type {
+  CapabilityTokenResponse,
+  PowerDialerTimezonePriority,
+} from '@shared/types/src'
 
 type CallState =
   | 'idle'
@@ -42,6 +46,7 @@ interface DialerSelection {
   clientId?: string
   campaignId?: string
   listId?: string
+  timezonePriority?: PowerDialerTimezonePriority
 }
 
 // Parallel dialer session state
@@ -121,6 +126,13 @@ const PREVIOUS_TOKEN_CACHE_KEY_PREFIXES = [
   'omnidial-token-v3',
 ]
 const TOKEN_CACHE_KEY_PREFIX = 'omnidial-token-v4'
+const DIALER_SELECTION_KEY_PREFIX = 'omnidial-dialer-selection-v1'
+const TIMEZONE_PRIORITY_VALUES = new Set([
+  'eastern',
+  'central',
+  'mountain',
+  'pacific',
+])
 const TOKEN_TTL_MS = 50 * 60 * 1000 // 50 minutes
 // How long a dialed leg may sit before ringing before we call it dead and give
 // the reserved caller ID back. Real SIP setup is well under a second; this is
@@ -154,6 +166,26 @@ function tokenCacheKey(
   return organizationId
     ? `${TOKEN_CACHE_KEY_PREFIX}:${organizationId}`
     : TOKEN_CACHE_KEY_PREFIX
+}
+
+function dialerSelectionCacheKey(
+  organizationId?: string | null,
+  userId?: string | null,
+): string | null {
+  if (!organizationId || !userId) return null
+  return `${DIALER_SELECTION_KEY_PREFIX}:${organizationId}:${userId}`
+}
+
+function isDialerSelection(value: unknown): value is DialerSelection {
+  if (!value || typeof value !== 'object') return false
+  const selection = value as Record<string, unknown>
+  const keys = ['clientId', 'campaignId', 'listId', 'timezonePriority']
+
+  return keys.every((key) => {
+    if (selection[key] === undefined) return true
+    if (typeof selection[key] !== 'string') return false
+    return key !== 'timezonePriority' || TIMEZONE_PRIORITY_VALUES.has(selection[key])
+  })
 }
 
 function removeStaleTokenCaches(
@@ -287,6 +319,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
 
   // Persisted selection state (survives tab switches within dialer)
   const [dialerSelection, setDialerSelection] = useState<DialerSelection>({})
+  const [isDialerSelectionHydrated, setIsDialerSelectionHydrated] =
+    useState(false)
 
   // Parallel dialer session state
   const [parallelSession, setParallelSession] = useState<ParallelDialerSession>(
@@ -329,6 +363,67 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const userId = session?.user?.id
   const activeOrganization = useActiveOrganization()
   const organizationId = activeOrganization?.data?.id
+  const dialerSelectionKey = useMemo(
+    () => dialerSelectionCacheKey(organizationId, userId),
+    [organizationId, userId],
+  )
+  const hydratedDialerSelectionKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!dialerSelectionKey) {
+      hydratedDialerSelectionKeyRef.current = null
+      setIsDialerSelectionHydrated(false)
+      return
+    }
+
+    if (hydratedDialerSelectionKeyRef.current === dialerSelectionKey) {
+      return
+    }
+
+    setIsDialerSelectionHydrated(false)
+    hydratedDialerSelectionKeyRef.current = dialerSelectionKey
+
+    try {
+      const raw = localStorage.getItem(dialerSelectionKey)
+      if (!raw) {
+        setDialerSelection({})
+        setIsDialerSelectionHydrated(true)
+        return
+      }
+
+      const parsed = JSON.parse(raw)
+      const isValidSelection = isDialerSelection(parsed)
+      setDialerSelection(isValidSelection ? parsed : {})
+      if (!isValidSelection) {
+        localStorage.removeItem(dialerSelectionKey)
+      }
+    } catch {
+      localStorage.removeItem(dialerSelectionKey)
+      setDialerSelection({})
+    }
+    setIsDialerSelectionHydrated(true)
+  }, [dialerSelectionKey])
+
+  const updateDialerSelection = useCallback(
+    (selection: DialerSelection) => {
+      setDialerSelection(selection)
+
+      if (
+        !dialerSelectionKey ||
+        hydratedDialerSelectionKeyRef.current !== dialerSelectionKey ||
+        !isDialerSelectionHydrated
+      ) {
+        return
+      }
+
+      try {
+        localStorage.setItem(dialerSelectionKey, JSON.stringify(selection))
+      } catch {
+        // Ignore storage errors
+      }
+    },
+    [dialerSelectionKey, isDialerSelectionHydrated],
+  )
 
   // Keep refs so closures always read the latest auth scope.
   const organizationIdRef = useRef(organizationId)
@@ -1252,7 +1347,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setError,
     // Persisted selection state
     dialerSelection,
-    setDialerSelection,
+    setDialerSelection: updateDialerSelection,
     // Parallel dialer session state
     parallelSession,
     setParallelSession,

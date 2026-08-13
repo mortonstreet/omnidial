@@ -3,6 +3,8 @@ import { AuthRequestHandler } from '@/types/handlers'
 import {
   GetPowerDialerProgressRequest,
   UpdatePowerDialerProgressRequest,
+  GetPowerDialerQueueRequest,
+  JumpToPowerDialerLeadRequest,
   GetNextLeadRequest,
   SkipLeadRequest,
   StartPowerDialerRequest,
@@ -108,6 +110,66 @@ export const getNextLead: AuthRequestHandler<GetNextLeadRequest> = async (
     const status = message === 'List not found' ? 400 : 500
     if (status === 500) {
       console.error('Failed to get next lead:', error)
+    }
+    res.status(status).json({ error: message })
+  }
+}
+
+export const getQueueLeads: AuthRequestHandler<
+  GetPowerDialerQueueRequest
+> = async (req, res) => {
+  const { organizationId, campaignId, listId, timezonePriority, page, limit } =
+    req.validated
+  const userId = req.user.id
+
+  try {
+    const result = await powerDialerService.getQueueLeads({
+      userId,
+      campaignId,
+      listId,
+      organizationId,
+      timezonePriority,
+      page,
+      limit,
+    })
+    res.json(result)
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to get queue leads'
+    const status = message === 'List not found' ? 400 : 500
+    if (status === 500) {
+      console.error('Failed to get queue leads:', error)
+    }
+    res.status(status).json({ error: message })
+  }
+}
+
+export const jumpToLead: AuthRequestHandler<
+  JumpToPowerDialerLeadRequest
+> = async (req, res) => {
+  const { organizationId, campaignId, listId, timezonePriority, currentIndex } =
+    req.validated
+  const userId = req.user.id
+
+  try {
+    const result = await powerDialerService.jumpToLead({
+      userId,
+      campaignId,
+      listId,
+      organizationId,
+      timezonePriority,
+      currentIndex,
+    })
+    res.json(result)
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to jump to lead'
+    const status =
+      message === 'List not found' || message === 'Lead position out of range'
+        ? 400
+        : 500
+    if (status === 500) {
+      console.error('Failed to jump to lead:', error)
     }
     res.status(status).json({ error: message })
   }

@@ -39,6 +39,27 @@ export const GetNextLeadRequestSchema = z.object({
 });
 export type GetNextLeadRequest = z.infer<typeof GetNextLeadRequestSchema>;
 
+// Get a paged window of leads in the current power dialer queue order
+export const GetPowerDialerQueueRequestSchema = z.object({
+  organizationId: z.string().min(1),
+  campaignId: z.string().uuid(),
+  listId: z.string().uuid().optional(),
+  timezonePriority: PowerDialerTimezonePrioritySchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type GetPowerDialerQueueRequest = z.infer<typeof GetPowerDialerQueueRequestSchema>;
+
+// Jump directly to a lead's position in the current queue order
+export const JumpToPowerDialerLeadRequestSchema = z.object({
+  organizationId: z.string().min(1),
+  campaignId: z.string().uuid(),
+  listId: z.string().uuid().optional(),
+  timezonePriority: PowerDialerTimezonePrioritySchema.optional(),
+  currentIndex: z.number().int().min(0),
+});
+export type JumpToPowerDialerLeadRequest = z.infer<typeof JumpToPowerDialerLeadRequestSchema>;
+
 // Skip current lead
 export const SkipLeadRequestSchema = z.object({
   organizationId: z.string().min(1),

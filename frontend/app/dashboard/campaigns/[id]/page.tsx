@@ -57,6 +57,22 @@ import { useActiveOrganization } from "@/lib/auth-client";
 import { ENDPOINTS, env } from "@/lib/config";
 import { getAuthHeaders } from "@/lib/api";
 import { toast } from "sonner";
+
+const campaignLeadStatusMeta = {
+  pending: {
+    label: "Not called",
+    className: "bg-muted/60 text-muted-foreground border-border",
+  },
+  dialed: {
+    label: "Dialed",
+    className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
+  },
+  completed: {
+    label: "Connected",
+    className: "bg-green-500/10 text-green-500 border-green-500/30",
+  },
+} as const;
+
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -623,15 +639,10 @@ export default function CampaignDetailPage() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={
-                            lead.status === "completed"
-                              ? "bg-green-500/10 text-green-500"
-                              : lead.status === "dialed"
-                              ? "bg-yellow-500/10 text-yellow-500"
-                              : ""
-                          }
+                          className={campaignLeadStatusMeta[lead.status].className}
+                          title={`Stored status: ${lead.status}`}
                         >
-                          {lead.status}
+                          {campaignLeadStatusMeta[lead.status].label}
                         </Badge>
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>

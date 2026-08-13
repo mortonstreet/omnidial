@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import Link from 'next/link'
 import {
   Play,
   Pause,
   ChevronRight,
+  ChevronDown,
   Loader2,
   Phone,
   ChevronLeft,
   UserMinus,
   Globe,
+  List,
 } from 'lucide-react'
 import { CompanySummaryCard } from '@/components/leads/CompanySummaryCard'
 import { ProspectLocalTime } from '@/components/dialer/ProspectLocalTime'
@@ -23,6 +25,8 @@ import {
   useAdvanceToNext,
   useGoToPrevious,
   useUpdatePowerDialerProgress,
+  usePowerDialerQueue,
+  useJumpToPowerDialerLead,
   type Lead,
   type TimezonePriority,
 } from '@/hooks/api/usePowerDialer'
@@ -73,6 +77,8 @@ interface PowerDialerControlsProps {
   callEndedCount?: number // Counter that increments when call ends - triggers advance
   callState?: string // Current call state from dialer context - wait for idle before next call
   delaySeconds?: number
+  timezonePriority?: TimezonePriority
+  onTimezonePriorityChange?: (timezonePriority?: TimezonePriority) => void
 }
 
 export function PowerDialerControls({
@@ -84,13 +90,17 @@ export function PowerDialerControls({
   callEndedCount = 0,
   callState = 'idle',
   delaySeconds = 5,
+  timezonePriority: initialTimezonePriority,
+  onTimezonePriorityChange,
 }: PowerDialerControlsProps) {
   const [isRunning, setIsRunning] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [selectedDelay, setSelectedDelay] = useState(delaySeconds)
-  const [timezonePriority, setTimezonePriority] = useState<
+  const [timezonePriority, setTimezonePriorityState] = useState<
     TimezonePriority | undefined
-  >()
+  >(initialTimezonePriority)
+  const [isLeadGridOpen, setIsLeadGridOpen] = useState(false)
+  const queueScrollRef = useRef<HTMLDivElement>(null)
 
   // Track the last processed call end count to detect new call ends
   const lastProcessedCallEndRef = useRef(callEndedCount)
@@ -113,6 +123,7 @@ export function PowerDialerControls({
   const advanceMutation = useAdvanceToNext()
   const previousMutation = useGoToPrevious()
   const updateProgressMutation = useUpdatePowerDialerProgress()
+  const jumpToLeadMutation = useJumpToPowerDialerLead()
   const softRemoveMutation = useSoftRemoveLeadFromList()
   const removeCampaignLeadsMutation = useRemoveCampaignLeads()
   const generateSummaryMutation = useGenerateCompanySummary()
@@ -129,9 +140,40 @@ export function PowerDialerControls({
   const selectedTimezoneOrder = TIMEZONE_PRIORITY_OPTIONS.find(
     (option) => option.value === timezonePriority,
   )?.order
+  const totalQueueLeads = progressData?.totalLeads ?? 0
+  const effectiveCurrentIndex =
+    totalQueueLeads > 0
+      ? (progressData?.currentIndex ?? 0) % totalQueueLeads
+      : 0
+  const queueInitialPage = Math.max(
+    1,
+    Math.floor(effectiveCurrentIndex / 50) + 1,
+  )
+  const {
+    data: queueData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isQueueLoading,
+  } = usePowerDialerQueue(
+    campaignId,
+    listId,
+    timezonePriority,
+    isLeadGridOpen,
+    queueInitialPage,
+  )
+  const queueLeads = queueData?.pages.flatMap((page) => page.data) ?? []
+  const queueTotal =
+    queueData?.pages[0]?.pagination.total ?? progressData?.totalLeads ?? 0
+  const activeQueueIndex =
+    queueTotal > 0 ? (progressData?.currentIndex ?? 0) % queueTotal : 0
 
   // Track the previous lead ID to detect lead changes
   const previousLeadIdRef = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    setTimezonePriorityState(initialTimezonePriority)
+  }, [initialTimezonePriority])
 
   // Reset mutation state when lead changes to prevent showing stale summary data
   useEffect(() => {
@@ -170,7 +212,8 @@ export function PowerDialerControls({
     (nextPriority?: TimezonePriority) => {
       if (isRunning) return
 
-      setTimezonePriority(nextPriority)
+      setTimezonePriorityState(nextPriority)
+      onTimezonePriorityChange?.(nextPriority)
       setCountdown(null)
 
       if (campaignId) {
@@ -181,7 +224,13 @@ export function PowerDialerControls({
         })
       }
     },
-    [campaignId, listId, isRunning, updateProgressMutation],
+    [
+      campaignId,
+      listId,
+      isRunning,
+      onTimezonePriorityChange,
+      updateProgressMutation,
+    ],
   )
 
   const handleStart = useCallback(async () => {
@@ -298,6 +347,59 @@ export function PowerDialerControls({
       },
     )
   }, [campaignId, listId, previousMutation, timezonePriority])
+
+  const handleQueueScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      const element = event.currentTarget
+      const remaining =
+        element.scrollHeight - element.scrollTop - element.clientHeight
+
+      if (remaining < 96 && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage()
+      }
+    },
+    [fetchNextPage, hasNextPage, isFetchingNextPage],
+  )
+
+  const handleJumpToLead = useCallback(
+    (currentIndex: number) => {
+      if (!campaignId) return
+
+      const isCallActive =
+        callState === 'ringing' || callState === 'in-progress'
+      if (isCallActive && onEndCall) {
+        onEndCall()
+      }
+
+      jumpToLeadMutation.mutate(
+        {
+          campaignId,
+          listId,
+          currentIndex,
+          timezonePriority,
+        },
+        {
+          onSuccess: () => {
+            setCountdown(isRunning ? selectedDelay : null)
+          },
+          onError: (error) => {
+            console.error('Failed to jump to lead:', error)
+            toast.error('Failed to jump to that lead. Please try again.')
+          },
+        },
+      )
+    },
+    [
+      campaignId,
+      callState,
+      isRunning,
+      jumpToLeadMutation,
+      listId,
+      onEndCall,
+      selectedDelay,
+      timezonePriority,
+    ],
+  )
 
   // Called when a call ends to advance to next lead
   const handleCallComplete = useCallback(async () => {
@@ -690,9 +792,9 @@ export function PowerDialerControls({
                     </AlertDialogTitle>
                     <AlertDialogDescription>
                       This will remove {getLeadDisplayName(currentLead)} from
-                      the current {canRemoveFromList ? 'list' : 'campaign'}.
-                      The lead data will be preserved and can still be found in
-                      the global leads view.
+                      the current {canRemoveFromList ? 'list' : 'campaign'}. The
+                      lead data will be preserved and can still be found in the
+                      global leads view.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -833,6 +935,121 @@ export function PowerDialerControls({
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {currentLead && !progressData?.isEmpty && (
+        <div className="border border-border/50 rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setIsLeadGridOpen((open) => !open)}
+            className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors"
+          >
+            <span className="min-w-0 flex items-center gap-2 font-medium">
+              <List className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="truncate">Lead grid</span>
+            </span>
+            <span className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+              {queueTotal > 0
+                ? `${activeQueueIndex + 1} / ${queueTotal}`
+                : '0 leads'}
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${
+                  isLeadGridOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </span>
+          </button>
+
+          {isLeadGridOpen && (
+            <div className="border-t border-border/50 bg-muted/10">
+              <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_4.75rem] border-b border-border/50 text-[11px] font-medium uppercase text-muted-foreground">
+                <div className="border-r border-border/50 px-2 py-2 text-center">
+                  #
+                </div>
+                <div className="px-3 py-2">Lead</div>
+                <div className="px-2 py-2 text-right">Jump</div>
+              </div>
+              <div
+                ref={queueScrollRef}
+                onScroll={handleQueueScroll}
+                className="max-h-72 overflow-y-auto"
+              >
+                {isQueueLoading && queueLeads.length === 0 ? (
+                  <div className="space-y-1 p-2">
+                    {[1, 2, 3, 4].map((index) => (
+                      <div
+                        key={index}
+                        className="h-12 rounded-md bg-muted/70 animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : queueLeads.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No dialable leads in this queue
+                  </div>
+                ) : (
+                  queueLeads.map((lead) => {
+                    const isActive = lead.queueIndex === activeQueueIndex
+                    const displayName = getLeadDisplayName(lead)
+                    const secondary = [lead.company, lead.title]
+                      .filter(Boolean)
+                      .join(' - ')
+
+                    return (
+                      <button
+                        key={`${lead.id}-${lead.queueIndex}`}
+                        type="button"
+                        onClick={() => handleJumpToLead(lead.queueIndex)}
+                        disabled={jumpToLeadMutation.isPending}
+                        className={`grid w-full grid-cols-[3.25rem_minmax(0,1fr)_4.75rem] text-left transition-colors disabled:opacity-60 ${
+                          isActive
+                            ? 'bg-primary/10 text-foreground'
+                            : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <div
+                          className={`flex items-center justify-center border-r border-border/50 px-2 py-2 text-xs tabular-nums ${
+                            isActive
+                              ? 'font-semibold text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        >
+                          {lead.queueIndex + 1}
+                        </div>
+                        <div className="min-w-0 px-3 py-2">
+                          <div className="truncate text-sm font-medium">
+                            {displayName}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {secondary || lead.phone}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end px-2 py-2 text-xs text-muted-foreground">
+                          {isActive ? (
+                            <span className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-primary">
+                              Current
+                            </span>
+                          ) : jumpToLeadMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <span>Select</span>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+
+                {isFetchingNextPage && queueLeads.length > 0 && (
+                  <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Loading leads
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
