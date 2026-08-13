@@ -1,6 +1,6 @@
 import * as campaignRepo from '@/repositories/campaign.repository'
 import * as campaignLeadRepo from '@/repositories/campaign-lead.repository'
-import * as campaignListRepo from '@/repositories/campaignList.repository'
+import * as leadListService from '@/services/leadList.service'
 import { DBPagination } from '@shared/db/src/types'
 
 export interface CreateCampaignParams {
@@ -22,14 +22,21 @@ export const create = async (params: CreateCampaignParams) => {
 
   // If a list was provided, link it to the campaign
   if (params.listId) {
-    await campaignListRepo.addListToCampaign(campaign.id, params.listId)
+    await leadListService.addListToCampaign(
+      campaign.id,
+      params.listId,
+      params.organizationId,
+    )
   }
 
   if (params.assignedUserIds?.length) {
     await campaignRepo.addUsers(campaign.id, params.assignedUserIds)
   }
 
-  return campaign
+  return (
+    (await campaignRepo.findById(campaign.id, params.organizationId)) ??
+    campaign
+  )
 }
 
 export const getById = async (id: string, organizationId: string) => {
