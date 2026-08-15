@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['nodejs_20', 'pnpm']
+nixPkgs = ['nodejs_20', 'pnpm', 'ffmpeg']
 
 [phases.install]
 cmds = ['pnpm install --filter backend --filter @shared/db --filter @shared/types --frozen-lockfile']
@@ -17,4 +17,3 @@ cmd = "pnpm --filter @shared/db db:deploy && node backend/dist/server.mjs"
 [variables]
 HUSKY = '0'
 CI = 'true'
-

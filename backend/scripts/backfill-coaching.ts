@@ -15,12 +15,13 @@
 import { Pool } from 'pg'
 import { Kysely, PostgresDialect } from 'kysely'
 import type { DB } from '@shared/db/src'
-import OpenAI, { toFile } from 'openai'
+import OpenAI from 'openai'
 import dotenv from 'dotenv'
 import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { createDecipheriv } from 'crypto'
+import { transcribeAudioBuffer } from '../src/lib/audioTranscription'
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../.env') })
@@ -35,6 +36,8 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || ''
 const MIN_DURATION_SECONDS = 60
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const SALES_COACH_MODEL =
+  process.env.SALES_COACH_MODEL || 'anthropic/claude-sonnet-4.5'
 
 // Excluded dispositions
 const EXCLUDED_DISPOSITION_LABELS = [
@@ -105,7 +108,7 @@ async function fetchCallRecording(
   recordingUrl: string,
   _accountSid: string,
   apiKey: string,
-): Promise<ArrayBuffer> {
+): Promise<{ buffer: Buffer; contentType?: string | null }> {
   const isTelnyxUrl = recordingUrl.includes('telnyx.com')
 
   const response = await fetch(recordingUrl, {
@@ -118,7 +121,10 @@ async function fetchCallRecording(
     )
   }
 
-  return response.arrayBuffer()
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type'),
+  }
 }
 
 // Transcribe recording with OpenAI Whisper
@@ -126,28 +132,22 @@ async function transcribeRecording(
   recordingUrl: string,
   accountSid: string,
   authToken: string,
-): Promise<string> {
+): Promise<{
+  text: string
+  source: 'openai-whisper' | 'openai-whisper-chunked'
+  chunkCount: number
+}> {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is required for transcription')
   }
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY })
-  const audioBuffer = await fetchCallRecording(
+  const audio = await fetchCallRecording(recordingUrl, accountSid, authToken)
+
+  return transcribeAudioBuffer(openai, audio.buffer, {
+    contentType: audio.contentType,
     recordingUrl,
-    accountSid,
-    authToken,
-  )
-  const audioFile = await toFile(Buffer.from(audioBuffer), 'recording.mp3', {
-    type: 'audio/mpeg',
   })
-
-  const transcription = await openai.audio.transcriptions.create({
-    file: audioFile,
-    model: 'whisper-1',
-    response_format: 'text',
-  })
-
-  return transcription
 }
 
 // Generate coaching analysis
@@ -215,7 +215,7 @@ Remember: Even if the call was great, find something to improve. A 10/10 doesn't
       'X-Title': 'OmniDial Sales Coach Backfill',
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-3.5-sonnet',
+      model: SALES_COACH_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -389,12 +389,15 @@ async function backfillCoaching() {
 
         // Step 1: Transcribe
         console.log('   📝 Transcribing...')
-        const transcriptText = await transcribeRecording(
+        const transcription = await transcribeRecording(
           call.recordingUrl!,
           call.accountSid,
           authToken,
         )
-        console.log(`   ✓ Transcribed (${transcriptText.length} chars)`)
+        const transcriptText = transcription.text
+        console.log(
+          `   ✓ Transcribed (${transcriptText.length} chars, ${transcription.chunkCount} audio chunk(s))`,
+        )
 
         // Step 2: Create transcript record
         const transcriptId = randomUUID()
@@ -405,7 +408,7 @@ async function backfillCoaching() {
             callId: call.id,
             organizationId: call.organizationId,
             transcriptText,
-            transcriptSource: 'openai-whisper',
+            transcriptSource: transcription.source,
             speakerLabels: JSON.stringify([]),
             durationSeconds: call.duration || 0,
             language: 'en-US',
@@ -440,7 +443,7 @@ async function backfillCoaching() {
             strengths: analysis.strengths,
             improvements: analysis.improvements,
             feedback: JSON.stringify(analysis.feedback),
-            modelUsed: 'claude-3.5-sonnet',
+            modelUsed: SALES_COACH_MODEL,
             tokensUsed: analysis.tokensUsed,
             analysisTimeMs,
             createdAt: new Date(),

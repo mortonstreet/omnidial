@@ -1,5 +1,8 @@
 import * as intelligenceRepo from '@/repositories/callIntelligence.repository'
-import { getOrCreateTranscript } from '@/services/salesCoach.service'
+import {
+  assertTranscriptReadyForAnalysis,
+  getOrCreateTranscript,
+} from '@/services/salesCoach.service'
 import { db } from '@/lib/db'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
@@ -254,6 +257,7 @@ export async function generateIntelligence(
   if (!transcript) {
     throw new Error('Could not create transcript for call')
   }
+  assertTranscriptReadyForAnalysis(transcript)
 
   // Get call details for context
   const call = await db

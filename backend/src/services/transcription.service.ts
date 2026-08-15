@@ -1,6 +1,7 @@
-import OpenAI, { toFile } from 'openai'
+import OpenAI from 'openai'
 import * as twilioConfigRepository from '@/repositories/twilioConfig.repository'
 import * as phoneProvisioningRepository from '@/repositories/phoneProvisioning.repository'
+import { transcribeAudioBuffer } from '@/lib/audioTranscription'
 import { decryptAuthToken, fetchRecordingAudio } from '@/lib/telnyx'
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
@@ -22,7 +23,15 @@ function getOpenAIClient(): OpenAI {
 
 export interface TranscriptionResult {
   text: string
-  source: 'openai-whisper'
+  source: 'openai-whisper' | 'openai-whisper-chunked'
+  chunkCount: number
+  audioBytes: number
+  chunkBytes: number[]
+}
+
+interface FetchedRecordingAudio {
+  buffer: Buffer
+  contentType?: string | null
 }
 
 /**
@@ -33,7 +42,7 @@ async function fetchTelnyxRecording(
   accountSid: string,
   apiKey: string,
   recordingSid?: string,
-): Promise<ArrayBuffer> {
+): Promise<FetchedRecordingAudio> {
   // The recording SID matters: stored recording URLs are pre-signed S3 links
   // that expire ten minutes after the call, so anything transcribed later gets
   // a 403. `fetchRecordingAudio` re-requests a fresh media URL, but only when
@@ -50,7 +59,10 @@ async function fetchTelnyxRecording(
     )
   }
 
-  return response.arrayBuffer()
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type'),
+  }
 }
 
 /**
@@ -82,29 +94,18 @@ export async function transcribeRecording(
       : decryptAuthToken(telnyxConfig.authTokenEncrypted)
 
   // Fetch the recording from Telnyx
-  const audioBuffer = await fetchTelnyxRecording(
+  const audio = await fetchTelnyxRecording(
     recordingUrl,
     accountSid,
     apiKey,
     recordingSid,
   )
 
-  // Convert to File object for OpenAI SDK
-  const audioFile = await toFile(Buffer.from(audioBuffer), 'recording.mp3', {
-    type: 'audio/mpeg',
+  return transcribeAudioBuffer(openai, audio.buffer, {
+    contentType: audio.contentType,
+    filename: recordingSid ? `recording-${recordingSid}` : 'recording',
+    recordingUrl,
   })
-
-  // Send to OpenAI Whisper API
-  const transcription = await openai.audio.transcriptions.create({
-    file: audioFile,
-    model: 'whisper-1',
-    response_format: 'text',
-  })
-
-  return {
-    text: transcription,
-    source: 'openai-whisper',
-  }
 }
 
 /**

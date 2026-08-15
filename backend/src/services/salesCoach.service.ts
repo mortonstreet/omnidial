@@ -90,6 +90,35 @@ export interface CoachingResult {
   transcript: coachingRepo.TranscriptWithCoaching
 }
 
+export function isTranscriptReadyForAnalysis(
+  transcript: Pick<
+    coachingRepo.TranscriptWithCoaching,
+    'transcriptSource' | 'transcriptText'
+  >,
+): boolean {
+  const transcriptText = transcript.transcriptText.trim()
+
+  return (
+    transcript.transcriptSource !== 'pending' &&
+    transcriptText.length > 0 &&
+    !transcriptText.startsWith('[Transcription failed:') &&
+    !transcriptText.startsWith('[Transcription unavailable')
+  )
+}
+
+export function assertTranscriptReadyForAnalysis(
+  transcript: Pick<
+    coachingRepo.TranscriptWithCoaching,
+    'transcriptSource' | 'transcriptText'
+  >,
+): void {
+  if (!isTranscriptReadyForAnalysis(transcript)) {
+    throw new Error(
+      'Transcription did not produce a usable transcript. Fix transcription and retry coaching.',
+    )
+  }
+}
+
 /**
  * Check if a call is eligible for coaching
  * Must be 60+ seconds, connected, and not a voicemail/no answer
@@ -230,7 +259,7 @@ export async function getOrCreateTranscript(
       call.recordingSid ?? undefined,
     )
     console.log(
-      `Transcription complete for call ${callId}: ${result.text.length} characters`,
+      `Transcription complete for call ${callId}: ${result.text.length} characters across ${result.chunkCount} audio chunk(s)`,
     )
 
     // If pending transcript exists, update it; otherwise create new
@@ -381,6 +410,7 @@ export async function generateCoaching(
   if (!transcript) {
     throw new Error('Could not create transcript for call')
   }
+  assertTranscriptReadyForAnalysis(transcript)
 
   // Get call details for context
   const call = await db
