@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MoreHorizontal, Phone, Mail, Building, Trash2 } from "lucide-react";
+import { MoreHorizontal, Phone, Mail, Trash2 } from "lucide-react";
 import { LinkedInIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { CompanyLogo } from "@/components/ui/CompanyLogo";

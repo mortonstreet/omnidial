@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -256,9 +257,9 @@ function SlackLinkContent() {
             </Button>
             <p className="text-xs text-muted-foreground text-center">
               Don&apos;t have an account?{" "}
-              <a href="/signup" className="text-primary hover:underline">
+              <Link href="/signup" className="text-primary hover:underline">
                 Sign up
-              </a>
+              </Link>
             </p>
           </CardContent>
         </Card>
