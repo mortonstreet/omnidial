@@ -122,12 +122,13 @@ export function useDropVoicemail() {
 }
 
 /**
- * Send dialpad digits to the far end of a live call.
+ * Send dialpad digits to the far end of a live outbound call.
  *
- * The Telnyx browser SDK's `call.dtmf()` only injects tones into the WebRTC
- * leg, which for an outbound call terminates at our TeXML application rather
- * than at the callee — so digits pressed in the UI never reached the IVR. The
- * server emits them from the leg that actually faces the callee instead.
+ * The server emits the tone on the child leg that faces the callee. Use this
+ * INSTEAD of the SDK's `call.dtmf()` for outbound calls, not alongside it:
+ * Telnyx relays SDK tones across the <Dial> bridge as well, so doing both
+ * delivers every digit twice. Inbound calls have no child leg and should use
+ * `call.dtmf()` only.
  */
 export function useSendDtmf() {
   return useMutation({

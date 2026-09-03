@@ -489,11 +489,11 @@ export function DialerPanel({
 
   const handleDialpadPress = (digit: string) => {
     if (connection) {
-      // Inject locally so the caller hears the tone immediately...
-      connection.dtmf(digit)
-      // ...and emit server-side, which is what actually reaches the callee.
-      // The WebRTC leg ends at our TeXML application, not at the far end, so
-      // the SDK call alone never made it to their IVR.
+      // Send each digit exactly once, server-side, on the child leg that
+      // faces the callee. Previously this also called `connection.dtmf()`;
+      // Telnyx relays that across the <Dial> bridge too, so every press
+      // reached the IVR as a double digit ("11") ~300ms apart, which phone
+      // trees reject as an invalid entry.
       if (currentCallId) {
         sendDtmfMutation.mutate(
           { callId: currentCallId, digits: digit },
