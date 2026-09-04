@@ -849,18 +849,20 @@ export const dropVoicemail = async (
 }
 
 /**
- * Send dialpad digits to the far end of a call.
+ * Send dialpad digits to the far end of an outbound call.
  *
- * The browser SDK's `call.dtmf()` only injects tones into the WebRTC leg. An
- * outbound call here is two legs — browser → TeXML application, then `<Dial>` →
- * the callee — so digits pressed in the UI stopped at the application and never
- * reached the callee's IVR.
+ * Emits the tones via Call Control `send_dtmf` on `dialCallSid` (the `<Dial>`
+ * child leg to the destination), so the callee hears them. Telnyx accepts
+ * this on TeXML-managed legs; the event log shows the command executing on
+ * the PSTN leg.
  *
- * Emitting from `dialCallSid` (the child leg to the destination) puts the tones
- * directly in front of the callee, rather than depending on the bridge to
- * forward them, which is the step that was failing. `twilioCallSid` is the
- * fallback for calls placed without a child leg — same reasoning as
- * `dropVoicemail` above.
+ * The frontend must send each digit through exactly one path. Telnyx also
+ * relays the browser SDK's `call.dtmf()` across the bridge, so calling both
+ * delivered "11" for a single press and IVRs ignored it.
+ *
+ * `twilioCallSid` is only a fallback for calls without a child leg. For an
+ * inbound call that is the caller's leg, so the tone would play toward the
+ * rep, not the caller — inbound UIs use the SDK path instead.
  */
 export const sendDtmfDigits = async (
   callId: string,

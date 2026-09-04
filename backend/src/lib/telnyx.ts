@@ -248,12 +248,9 @@ export const playRecording = async (
 /**
  * Send DTMF digits on behalf of a call leg.
  *
- * The browser SDK's `call.dtmf()` injects digits into the WebRTC leg only.
- * Outbound calls here are two legs — browser → TeXML application, then
- * `<Dial>` → the callee — so digits pressed in the UI never reached the far
- * end's IVR. This Call Control action emits the tones from the given leg such
- * that the *other* end of the call hears them, which is what navigating a
- * phone tree requires.
+ * This Call Control action emits the tones from the given leg such that the
+ * *other* end of the call hears them. Telnyx accepts it on legs created by a
+ * TeXML `<Dial>`, so it works on the child leg of an outbound call.
  *
  * `callControlId` is the leg's control ID (stored on the call row as
  * `twilioCallSid`, e.g. `v3:AZKn...`), not a TeXML CallSid path segment.

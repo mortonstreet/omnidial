@@ -20,8 +20,7 @@ import Link from 'next/link'
 import { useInboundCalls } from '@/hooks/api/useCalls'
 import { DispositionSelector } from './DispositionSelector'
 import { VoicemailDropButton } from './VoicemailDropButton'
-import { useDispositions, useSendDtmf } from '@/hooks/api/useCalls'
-import { toast } from 'sonner'
+import { useDispositions } from '@/hooks/api/useCalls'
 import { useActiveOrganization } from '@/lib/auth-client'
 import { useLookupLead } from '@/hooks/api/useLeads'
 import type { Call } from '@telnyx/webrtc'
@@ -88,7 +87,6 @@ export function InboundCallsPanel({
   const { data, isLoading } = useInboundCalls()
   const calls = data?.data || []
   const lookupLead = useLookupLead()
-  const sendDtmfMutation = useSendDtmf()
 
   // Track previous call state for transition handling
   const prevCallStateRef = useRef(callState)
@@ -179,24 +177,14 @@ export function InboundCallsPanel({
 
   const handleDialpadPress = (digit: string) => {
     if (!connection) return
-    // Local injection gives the caller audible feedback; the server-side send
-    // is what actually reaches the far end, since the WebRTC leg terminates at
-    // our TeXML application rather than at the other party.
+    // Inbound calls have a single leg between the caller and this browser
+    // (the rep is reached via <Dial><Sip>), so the SDK's tone crosses the
+    // bridge to the caller directly. Don't also POST to /dtmf: an inbound
+    // call has no child leg, so the server would emit the tone from the
+    // caller's leg back toward the rep, and the caller would hear the digit
+    // twice or not at all.
     connection.dtmf(digit)
     setDtmfDigits((prev) => prev + digit)
-    if (currentCallId) {
-      sendDtmfMutation.mutate(
-        { callId: currentCallId, digits: digit },
-        {
-          onError: (error) =>
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Failed to send keypad digit',
-            ),
-        },
-      )
-    }
   }
 
   const handleDialpadDelete = () => {
