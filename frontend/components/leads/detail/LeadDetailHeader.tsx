@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { AddToCampaignDropdown } from '@/components/leads/AddToCampaignDropdown'
 import { EnrichButton } from '@/components/enrichment/EnrichButton'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 
 interface PipelineStage {
   id: string
@@ -82,6 +83,7 @@ export function LeadDetailHeader({
   isHubSpotSyncing = false,
   onHubSpotSync,
 }: LeadDetailHeaderProps) {
+  const { copy: copyEmail, copied: emailCopied } = useCopyToClipboard()
   const formattedDate = new Date(createdAt).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -185,16 +187,23 @@ export function LeadDetailHeader({
                   <PhoneOutgoing className="w-5 h-5" aria-hidden="true" />
                 </Button>
                 {email && (
-                  <a href={`mailto:${email}`}>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10"
-                      aria-label="Email lead"
-                    >
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10"
+                    aria-label="Copy email address"
+                    title={`Copy ${email}`}
+                    onClick={() => copyEmail(email, 'Email copied')}
+                  >
+                    {emailCopied ? (
+                      <Check
+                        className="w-5 h-5 text-green-500"
+                        aria-hidden="true"
+                      />
+                    ) : (
                       <Mail className="w-5 h-5" aria-hidden="true" />
-                    </Button>
-                  </a>
+                    )}
+                  </Button>
                 )}
                 <EnrichButton
                   leadId={leadId}

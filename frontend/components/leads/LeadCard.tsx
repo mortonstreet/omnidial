@@ -5,6 +5,8 @@ import { MoreHorizontal, Phone, Mail, Trash2 } from "lucide-react";
 import { LinkedInIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { CompanyLogo } from "@/components/ui/CompanyLogo";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { useQuickCall } from "@/hooks/useQuickCall";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +47,9 @@ export function LeadCard({ lead, onDelete }: LeadCardProps) {
       ? `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
       : "Unknown";
 
+  const { quickCall } = useQuickCall();
+  const { copy } = useCopyToClipboard();
+
   return (
     <div className="bg-card border rounded-xl p-4 hover:border-primary/50 transition-colors">
       <div className="flex items-start justify-between mb-3">
@@ -69,18 +74,24 @@ export function LeadCard({ lead, onDelete }: LeadCardProps) {
             <DropdownMenuItem asChild>
               <Link href={`/dashboard/leads/${lead.id}`}>View Lead</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <a href={`tel:${lead.phone}`}>
-                <Phone className="w-4 h-4 mr-2" />
-                Call
-              </a>
+            <DropdownMenuItem
+              onClick={() =>
+                quickCall({
+                  leadId: lead.id,
+                  leadName: fullName,
+                  phone: lead.phone,
+                })
+              }
+            >
+              <Phone className="w-4 h-4 mr-2" />
+              Call
             </DropdownMenuItem>
             {lead.email && (
-              <DropdownMenuItem asChild>
-                <a href={`mailto:${lead.email}`}>
-                  <Mail className="w-4 h-4 mr-2" />
-                  Email
-                </a>
+              <DropdownMenuItem
+                onClick={() => copy(lead.email!, "Email copied")}
+              >
+                <Mail className="w-4 h-4 mr-2" />
+                Copy Email
               </DropdownMenuItem>
             )}
             {normalizeUrl(lead.linkedInUrl) && (

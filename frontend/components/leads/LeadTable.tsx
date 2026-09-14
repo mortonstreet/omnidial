@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Phone, Mail, ExternalLink, Trash2, MoreHorizontal, Sparkles } from "lucide-react";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useQuickCall } from "@/hooks/useQuickCall";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -76,6 +77,7 @@ export function LeadTable({
 }: LeadTableProps) {
   const router = useRouter();
   const { quickCall } = useQuickCall();
+  const { copy } = useCopyToClipboard();
   const enrichLead = useEnrichLead();
   const leadIds = leads.map((l) => l.id);
   const allSelected = isAllOnPageSelected?.(leadIds) ?? false;
@@ -180,14 +182,17 @@ export function LeadTable({
                   </TableCell>
                   <TableCell>
                     {lead.email ? (
-                      <a
-                        href={`mailto:${lead.email}`}
-                        onClick={(event) => event.stopPropagation()}
-                        className="flex items-center gap-2 hover:text-primary truncate max-w-[200px]"
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          copy(lead.email!, "Email copied");
+                        }}
+                        title={`Copy ${lead.email}`}
+                        className="flex items-center gap-2 hover:text-primary truncate max-w-[200px] text-left"
                       >
                         <Mail className="w-3 h-3 text-muted-foreground shrink-0" />
                         <span className="truncate">{lead.email}</span>
-                      </a>
+                      </button>
                     ) : (
                       <span className="text-muted-foreground">-</span>
                     )}
@@ -222,11 +227,11 @@ export function LeadTable({
                           Call
                         </DropdownMenuItem>
                         {lead.email && (
-                          <DropdownMenuItem asChild>
-                            <a href={`mailto:${lead.email}`}>
-                              <Mail className="w-4 h-4" />
-                              Email
-                            </a>
+                          <DropdownMenuItem
+                            onClick={() => copy(lead.email!, "Email copied")}
+                          >
+                            <Mail className="w-4 h-4" />
+                            Copy Email
                           </DropdownMenuItem>
                         )}
                         {normalizeUrl(lead.linkedInUrl) && (

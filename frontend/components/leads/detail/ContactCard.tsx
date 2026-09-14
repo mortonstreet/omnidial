@@ -2,6 +2,7 @@
 
 import {
   Building2,
+  Check,
   Mail,
   Phone,
   Globe,
@@ -12,6 +13,7 @@ import { LinkedInIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { normalizeUrl, parseCustomFields } from "./utils";
 
 interface ContactCardProps {
@@ -58,6 +60,7 @@ export function ContactCard({
   onCall,
 }: ContactCardProps) {
   const customFieldEntries = parseCustomFields(customFields);
+  const { copy: copyEmail, copied: emailCopied } = useCopyToClipboard();
 
   return (
     <div className="p-4 sm:p-6 rounded-xl border border-border bg-card">
@@ -157,16 +160,20 @@ export function ContactCard({
             </Button>
           )}
           {email && (
-            <a href={`mailto:${email}`}>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-muted-foreground transition-all duration-200 hover:text-white hover:border-white/50 hover:bg-transparent"
-              >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => copyEmail(email, "Email copied")}
+              title="Copy email address"
+              className="text-muted-foreground transition-all duration-200 hover:text-white hover:border-white/50 hover:bg-transparent"
+            >
+              {emailCopied ? (
+                <Check className="w-4 h-4 text-green-500" />
+              ) : (
                 <Mail className="w-4 h-4" />
-                {email}
-              </Button>
-            </a>
+              )}
+              {email}
+            </Button>
           )}
         </div>
       )}
@@ -285,12 +292,18 @@ export function ContactCard({
               Call
             </Button>
             {email && (
-              <a href={`mailto:${email}`} className="flex-1">
-                <Button variant="outline" className="w-full h-12 touch-manipulation">
+              <Button
+                variant="outline"
+                className="flex-1 h-12 touch-manipulation"
+                onClick={() => copyEmail(email, "Email copied")}
+              >
+                {emailCopied ? (
+                  <Check className="w-5 h-5 mr-2 text-green-500" />
+                ) : (
                   <Mail className="w-5 h-5 mr-2" />
-                  Email
-                </Button>
-              </a>
+                )}
+                {emailCopied ? "Copied" : "Copy Email"}
+              </Button>
             )}
           </div>
         </div>

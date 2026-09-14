@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Phone, Mail, Building, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useQuickCall } from "@/hooks/useQuickCall";
 
 interface MobileLeadCardProps {
@@ -22,6 +23,7 @@ interface MobileLeadCardProps {
 
 export function MobileLeadCard({ lead, onCall }: MobileLeadCardProps) {
   const { quickCall } = useQuickCall();
+  const { copy } = useCopyToClipboard();
   const fullName =
     lead.firstName || lead.lastName
       ? `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
@@ -98,12 +100,13 @@ export function MobileLeadCard({ lead, onCall }: MobileLeadCardProps) {
             variant="outline"
             size="sm"
             className="flex-1 h-11 touch-manipulation"
-            asChild
+            onClick={(e) => {
+              e.preventDefault();
+              copy(lead.email!, "Email copied");
+            }}
           >
-            <a href={`mailto:${lead.email}`}>
-              <Mail className="w-4 h-4 mr-2" aria-hidden="true" />
-              Email
-            </a>
+            <Mail className="w-4 h-4 mr-2" aria-hidden="true" />
+            Copy Email
           </Button>
         )}
       </div>

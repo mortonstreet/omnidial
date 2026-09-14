@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Mail, Phone, Plus, Star, Trash2, PhoneOutgoing } from 'lucide-react'
+import { Copy, Mail, Phone, Plus, Star, Trash2, PhoneOutgoing } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,7 @@ import {
   useDeleteContactMethod,
   useUpdateContactMethod,
 } from '@/hooks/api/useContactMethods'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import type { ContactMethodKind } from '@shared/types/src/requests/leadContactMethod'
 
 const LABELS = ['office', 'mobile', 'direct', 'personal', 'assistant', 'other']
@@ -34,6 +35,7 @@ export function ContactMethodsCard({ leadId, onCall }: ContactMethodsCardProps) 
   const addMethod = useAddContactMethod(leadId)
   const updateMethod = useUpdateContactMethod(leadId)
   const deleteMethod = useDeleteContactMethod(leadId)
+  const { copy } = useCopyToClipboard()
 
   const [isAdding, setIsAdding] = useState(false)
   const [kind, setKind] = useState<ContactMethodKind>('phone')
@@ -91,7 +93,25 @@ export function ContactMethodsCard({ leadId, onCall }: ContactMethodsCardProps) 
         <Mail className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
       )}
 
-      <span className="text-sm text-foreground truncate">{method.value}</span>
+      {method.kind === 'email' ? (
+        <button
+          onClick={() => copy(method.value, 'Email copied')}
+          className="text-sm text-foreground truncate hover:text-primary text-left"
+          title={`Copy ${method.value}`}
+        >
+          {method.value}
+        </button>
+      ) : onCall ? (
+        <button
+          onClick={() => onCall(method.value)}
+          className="text-sm text-foreground truncate hover:text-primary text-left"
+          title={`Call ${method.value}`}
+        >
+          {method.value}
+        </button>
+      ) : (
+        <span className="text-sm text-foreground truncate">{method.value}</span>
+      )}
 
       {method.label && (
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">
@@ -112,6 +132,15 @@ export function ContactMethodsCard({ leadId, onCall }: ContactMethodsCardProps) 
             title={`Call ${method.value}`}
           >
             <PhoneOutgoing className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        )}
+        {method.kind === 'email' && (
+          <button
+            onClick={() => copy(method.value, 'Email copied')}
+            className="p-1 hover:bg-muted rounded"
+            title={`Copy ${method.value}`}
+          >
+            <Copy className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         )}
         {!method.isPrimary && (
