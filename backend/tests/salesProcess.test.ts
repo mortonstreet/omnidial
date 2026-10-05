@@ -97,6 +97,17 @@ test("quiet deals are judged against the org's own rhythm, not a fixed number", 
   assert.equal(s.quietDeals[0].daysSilent, 10)
 })
 
+test('same-day dial attempts are one touch day for gaps', () => {
+  const t = buildTimeline([
+    { kind: 'call', direction: 'outbound', at: at(0, 9) },
+    { kind: 'call', direction: 'outbound', at: at(0, 11) },
+    { kind: 'call', direction: 'outbound', at: at(0, 15) },
+    { kind: 'call', direction: 'outbound', at: at(5, 9) },
+  ])!
+  assert.equal(t.touches, 4)
+  assert.deepEqual(t.gapsDays, [5])
+})
+
 test('no data means nulls, not zeros', () => {
   const s = summarizeSalesProcess({
     touchesByLead: new Map(),
