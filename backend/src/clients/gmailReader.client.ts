@@ -16,8 +16,8 @@ export const GMAIL_READONLY_SCOPES = [
 // across orgs would leak tokens between concurrent requests.
 const newOAuthClient = () =>
   new google.auth.OAuth2(
-    config.providers.google.clientId,
-    config.providers.google.clientSecret,
+    config.providers.gmailReader.clientId,
+    config.providers.gmailReader.clientSecret,
   )
 
 export const getOAuthUrl = (state: string, redirectUri: string): string =>

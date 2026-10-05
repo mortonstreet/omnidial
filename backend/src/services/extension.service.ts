@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { sql } from 'kysely'
 import * as leadService from './lead.service'
 import * as enrichmentService from './enrichment.service'
 import * as crmService from './crm.service'
@@ -817,7 +818,7 @@ async function getVendorProfileData(
         await db
           .updateTable('data_vendor_connection')
           .set({
-            creditsUsed: connection.creditsUsed + (result.creditsUsed ?? 1),
+            creditsUsed: sql`"creditsUsed" + ${result.creditsUsed ?? 1}`,
             lastSyncAt: new Date(),
             updatedAt: new Date(),
           })
@@ -863,7 +864,7 @@ async function getVendorProfileData(
         await db
           .updateTable('data_vendor_connection')
           .set({
-            creditsUsed: connection.creditsUsed + (result.creditsUsed ?? 1),
+            creditsUsed: sql`"creditsUsed" + ${result.creditsUsed ?? 1}`,
             lastSyncAt: new Date(),
             updatedAt: new Date(),
           })
@@ -904,7 +905,7 @@ async function getVendorProfileData(
         await db
           .updateTable('data_vendor_connection')
           .set({
-            creditsUsed: connection.creditsUsed + (result.creditsUsed ?? 1),
+            creditsUsed: sql`"creditsUsed" + ${result.creditsUsed ?? 1}`,
             lastSyncAt: new Date(),
             updatedAt: new Date(),
           })

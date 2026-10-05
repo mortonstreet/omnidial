@@ -254,7 +254,12 @@ export async function testConnection(apiKey: string): Promise<{
 
     if (!response.ok || data.error) {
       // Check for specific error types
-      if (data.message === 'INVALID_API_KEY') {
+      // Prospeo reports error codes in error_code (message is human text).
+      if (
+        data.error_code === 'INVALID_API_KEY' ||
+        data.message === 'INVALID_API_KEY' ||
+        response.status === 401
+      ) {
         return {
           success: false,
           message: 'Invalid API key. Please check your Prospeo API key.',
@@ -263,7 +268,10 @@ export async function testConnection(apiKey: string): Promise<{
       }
       return {
         success: false,
-        message: data.message || `Connection failed: ${response.status}`,
+        message:
+          data.message ||
+          data.error_code ||
+          `Connection failed: ${response.status}`,
         creditsRemaining: null,
       }
     }

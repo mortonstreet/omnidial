@@ -110,8 +110,8 @@ export function IntegrationsSettings() {
     });
   };
 
+  // Confirmation happens in the modal (two-click button).
   const handleDisconnect = async (provider: string) => {
-    if (!confirm("Are you sure you want to disconnect this integration?")) return;
     if (provider === "enrichengine") {
       disconnectEnrichEngineMutation.mutate(undefined, {
         onSuccess: () => {
@@ -127,6 +127,8 @@ export function IntegrationsSettings() {
     disconnectMutation.mutate(provider, {
       onSuccess: () => {
         toast.success("Integration disconnected");
+        setConfigModalOpen(false);
+        setSelectedIntegration(null);
       },
       onError: () => {
         toast.error("Failed to disconnect integration");
@@ -238,11 +240,9 @@ export function IntegrationsSettings() {
                   key={integration.provider}
                   integration={integration}
                   onConnect={() => handleConnect(integration.provider)}
-                  onDisconnect={() => handleDisconnect(integration.provider)}
                   onConfigure={() => handleConfigure(integration)}
                   onImport={getImportHandler(integration.provider)}
                   isConnecting={connectMutation.isPending}
-                  isDisconnecting={disconnectMutation.isPending || disconnectEnrichEngineMutation.isPending}
                 />
               ))}
             </div>
@@ -255,6 +255,8 @@ export function IntegrationsSettings() {
         <IntegrationConfigModal
           integration={selectedIntegration}
           isOpen={configModalOpen}
+          onDisconnect={() => handleDisconnect(selectedIntegration.provider)}
+          isDisconnecting={disconnectMutation.isPending || disconnectEnrichEngineMutation.isPending}
           onClose={() => {
             setConfigModalOpen(false);
             setSelectedIntegration(null);
@@ -308,21 +310,17 @@ export function IntegrationsSettings() {
 interface IntegrationCardProps {
   integration: IntegrationResponse;
   onConnect: () => void;
-  onDisconnect: () => void;
   onConfigure: () => void;
   onImport?: () => void;
   isConnecting: boolean;
-  isDisconnecting: boolean;
 }
 
 function IntegrationCard({
   integration,
   onConnect,
-  onDisconnect,
   onConfigure,
   onImport,
   isConnecting,
-  isDisconnecting,
 }: IntegrationCardProps) {
   return (
     <div className="group relative flex flex-col gap-4 p-4 bg-card border border-border rounded-xl hover:border-foreground/20 hover:shadow-sm transition-all">
@@ -362,16 +360,7 @@ function IntegrationCard({
               </Button>
             )}
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onConfigure}>
-              Configure
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10 ml-auto"
-              onClick={onDisconnect}
-              disabled={isDisconnecting}
-            >
-              Disconnect
+              Manage
             </Button>
           </>
         ) : (

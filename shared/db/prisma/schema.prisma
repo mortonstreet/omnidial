@@ -1634,19 +1634,25 @@ model CallbackRoute {
 
 // Data Vendor Connection - API keys for enrichment vendors
 model DataVendorConnection {
-  id               String    @id @default(uuid())
-  organizationId   String
-  provider         String // "zoominfo" | "apollo" | "clearbit" | "lusha" | "enrichengine"
-  apiKeyEncrypted  String // Encrypted API key
-  isActive         Boolean   @default(true)
-  priority         Int       @default(0) // Order for waterfall enrichment
-  enabledDataTypes String[]  @default(["phone", "email", "profile"])
-  creditsUsed      Int       @default(0)
-  creditsLimit     Int? // Monthly limit if set
-  lastSyncAt       DateTime?
-  connectedById    String
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @default(now()) @updatedAt
+  id                     String    @id @default(uuid())
+  organizationId         String
+  provider               String // "zoominfo" | "apollo" | "clearbit" | "lusha" | "enrichengine"
+  apiKeyEncrypted        String // Encrypted API key
+  isActive               Boolean   @default(true)
+  priority               Int       @default(0) // Order for waterfall enrichment
+  enabledDataTypes       String[]  @default(["phone", "email", "profile"])
+  creditsUsed            Int       @default(0)
+  creditsLimit           Int? // Monthly limit if set
+  lastSyncAt             DateTime?
+  // Live vendor account state, refreshed by Test and on list (creditsUsed is
+  // OmniDial's own usage count, not the vendor balance).
+  vendorCreditsRemaining Int?
+  creditsCheckedAt       DateTime?
+  lastCheckStatus        String? // "ok" | "failed" | "unverified" (no live check for this vendor)
+  lastCheckMessage       String?
+  connectedById          String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @default(now()) @updatedAt
 
   enrichmentHistory EnrichmentHistory[]
 

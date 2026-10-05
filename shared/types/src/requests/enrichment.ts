@@ -181,7 +181,13 @@ export interface VendorConnectionResponse {
   enabledDataTypes: VendorDataType[]
   creditsUsed: number
   creditsLimit: number | null
+  /** Remaining under the org's own creditsLimit (OmniDial-side cap). */
   creditsRemaining: number | null
+  /** Balance reported by the vendor's account API at creditsCheckedAt. */
+  vendorCreditsRemaining: number | null
+  creditsCheckedAt: string | null
+  lastCheckStatus: VendorCheckStatus | null
+  lastCheckMessage: string | null
   lastSyncAt: string | null
   connectedById: string
   connectedByName: string | null
@@ -193,8 +199,12 @@ export interface VendorConnectionListResponse {
   data: VendorConnectionResponse[]
 }
 
+/** ok = vendor reachable; failed = key or account problem; unverified = no live check exists. */
+export type VendorCheckStatus = 'ok' | 'failed' | 'unverified'
+
 export interface VendorTestResult {
   success: boolean
+  status: VendorCheckStatus
   message: string
   responseTimeMs: number
   creditsRemaining: number | null

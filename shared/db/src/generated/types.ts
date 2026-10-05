@@ -686,6 +686,10 @@ export type DataVendorConnection = {
   creditsUsed: Generated<number>
   creditsLimit: number | null
   lastSyncAt: Timestamp | null
+  vendorCreditsRemaining: number | null
+  creditsCheckedAt: Timestamp | null
+  lastCheckStatus: string | null
+  lastCheckMessage: string | null
   connectedById: string
   createdAt: Generated<Timestamp>
   updatedAt: Generated<Timestamp>
