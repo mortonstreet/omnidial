@@ -304,11 +304,11 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     if (contact.linkedInUrl) properties.hs_linkedin_url = contact.linkedInUrl
 
     // HubSpot models extras as dedicated fields rather than a list: the first
-    // secondary phone becomes the work number, the next the mobile, and
-    // additional emails go to the multi-value hs_additional_emails property.
-    const [workPhone, mobilePhone] = contact.secondaryPhones ?? []
-    if (workPhone) properties.company_phone = workPhone
-    if (mobilePhone) properties.mobilephone = mobilePhone
+    // secondary phone becomes the mobile number (`company_phone` is not a
+    // default contact property and portals reject it), and additional emails
+    // go to the multi-value hs_additional_emails property.
+    const [secondaryPhone] = contact.secondaryPhones ?? []
+    if (secondaryPhone) properties.mobilephone = secondaryPhone
     if (contact.secondaryEmails?.length) {
       properties.hs_additional_emails = contact.secondaryEmails.join(';')
     }

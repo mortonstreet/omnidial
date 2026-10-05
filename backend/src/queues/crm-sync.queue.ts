@@ -20,6 +20,24 @@ export const crmSyncQueue = new Queue<CrmSyncEvent>(QueueName.CRM_SYNC, {
 const DEBOUNCE_MS = 5_000
 
 /**
+ * BullMQ waits indefinitely for Redis. Sync is bookkeeping, so cap the wait:
+ * a Redis outage must never hang a lead edit. The 6-hourly reconcile catches
+ * anything that failed to enqueue.
+ */
+const ENQUEUE_TIMEOUT_MS = 3_000
+const withTimeout = <T>(promise: Promise<T>): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(new Error('CRM sync enqueue timed out (Redis unavailable?)')),
+        ENQUEUE_TIMEOUT_MS,
+      ).unref(),
+    ),
+  ])
+
+/**
  * Queue a HubSpot push for a lead that just changed. No-op when HubSpot isn't
  * connected or auto-sync is off. Never throws: sync must not fail the edit.
  */
@@ -38,17 +56,19 @@ export const enqueueCrmSync = async (
     // Bucketed job id: repeated edits in one window coalesce, while an edit
     // that lands during a running push still gets its own follow-up job.
     const bucket = Math.floor(Date.now() / DEBOUNCE_MS)
-    await crmSyncQueue.add(
-      CrmSyncEventType.PUSH_LEAD,
-      { type: CrmSyncEventType.PUSH_LEAD, organizationId, leadId },
-      {
-        jobId: `push-${organizationId}-${leadId}-${bucket}`,
-        delay: DEBOUNCE_MS,
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 10_000 },
-        removeOnComplete: 100,
-        removeOnFail: 500,
-      },
+    await withTimeout(
+      crmSyncQueue.add(
+        CrmSyncEventType.PUSH_LEAD,
+        { type: CrmSyncEventType.PUSH_LEAD, organizationId, leadId },
+        {
+          jobId: `push-${organizationId}-${leadId}-${bucket}`,
+          delay: DEBOUNCE_MS,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 10_000 },
+          removeOnComplete: 100,
+          removeOnFail: 500,
+        },
+      ),
     )
   } catch (error) {
     logger.error(
@@ -64,17 +84,19 @@ export const enqueueCrmSync = async (
  */
 export const enqueueCallSync = async (callId: string) => {
   try {
-    await crmSyncQueue.add(
-      CrmSyncEventType.SYNC_CALL,
-      { type: CrmSyncEventType.SYNC_CALL, callId },
-      {
-        jobId: `call-${callId}-${Math.floor(Date.now() / DEBOUNCE_MS)}`,
-        delay: 30_000,
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 10_000 },
-        removeOnComplete: 100,
-        removeOnFail: 500,
-      },
+    await withTimeout(
+      crmSyncQueue.add(
+        CrmSyncEventType.SYNC_CALL,
+        { type: CrmSyncEventType.SYNC_CALL, callId },
+        {
+          jobId: `call-${callId}-${Math.floor(Date.now() / DEBOUNCE_MS)}`,
+          delay: 30_000,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 10_000 },
+          removeOnComplete: 100,
+          removeOnFail: 500,
+        },
+      ),
     )
   } catch (error) {
     logger.error({ error, callId }, 'Failed to enqueue call sync')

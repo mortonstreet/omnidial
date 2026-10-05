@@ -23,7 +23,11 @@ import * as dealSignalRepository from '@/repositories/dealSignal.repository'
 import * as dealTrackingRepository from '@/repositories/dealTracking.repository'
 import * as contactMethodRepository from '@/repositories/leadContactMethod.repository'
 import * as leadService from '@/services/lead.service'
-import { normalizeEmail, parseMoney } from '@/lib/lead-hygiene'
+import {
+  normalizeEmail,
+  normalizePhoneValue,
+  parseMoney,
+} from '@/lib/lead-hygiene'
 import { resolveStageOutcome } from '@shared/types/src/requests/dealMetrics'
 import {
   CONTACT_FIELDS,
@@ -111,17 +115,32 @@ const contactUrl = (portalId: string | null | undefined, contactId: string) =>
     ? `https://app.hubspot.com/contacts/${portalId}/record/0-1/${contactId}`
     : `https://app.hubspot.com/contacts/${contactId}`
 
-/**
- * Last local edit per field. Fields edited before tracking existed fall back
- * to the lead's updatedAt, so pre-existing data isn't treated as infinitely
- * old (which would let every HubSpot value overwrite it on the first sync).
- */
+/** Last recorded OmniDial edit of a synced field (absent before tracking). */
 const editedAt = (
-  lead: { syncFieldUpdatedAt: unknown; updatedAt: Date },
+  lead: { syncFieldUpdatedAt: unknown },
   field: string,
-): string =>
-  ((lead.syncFieldUpdatedAt ?? {}) as Record<string, string>)[field] ??
-  lead.updatedAt.toISOString()
+): string | undefined =>
+  ((lead.syncFieldUpdatedAt ?? {}) as Record<string, string>)[field]
+
+const isBlank = (value: unknown) =>
+  value === null ||
+  value === undefined ||
+  (typeof value === 'string' && value.trim() === '')
+
+/** OmniDial's own HubSpot app id, to recognise values written by earlier pushes. */
+let cachedAppId: string | undefined
+const ownAppId = async (
+  organizationId: string,
+): Promise<string | undefined> => {
+  if (config.hubspot.appId) return String(config.hubspot.appId)
+  if (!cachedAppId) {
+    cachedAppId = await hs
+      .getTokenInfo(organizationId)
+      .then((info) => String(info.app_id))
+      .catch(() => undefined)
+  }
+  return cachedAppId
+}
 
 // ------------------------------------------------------------ stages
 
@@ -314,6 +333,8 @@ interface RemoteChange {
   field: string
   remoteValue: string | null
   remoteEditedAt: string | Date | undefined
+  /** The HubSpot value was written by OmniDial's own app. */
+  remoteFromOmniDial?: boolean
 }
 
 /**
@@ -378,6 +399,26 @@ const applyRemoteChanges = async (
       if (sameValue('dealClosedAt', lead.dealClosedAt, change.remoteValue))
         continue
       incoming = change.remoteValue ? new Date(change.remoteValue) : null
+    } else if (change.field === 'phone') {
+      if (sameValue('phone', lead.phone, change.remoteValue)) continue
+      // Only valid numbers come back from HubSpot; junk stays out of the dialer.
+      const phone = change.remoteValue
+        ? normalizePhoneValue(change.remoteValue)?.e164
+        : null
+      if (change.remoteValue && !phone) {
+        await syncRepo.logEvents([
+          {
+            organizationId,
+            leadId: lead.id,
+            direction,
+            objectType: 'contact',
+            status: 'skipped',
+            message: `HubSpot phone "${change.remoteValue}" is not a valid number; not applied`,
+          },
+        ])
+        continue
+      }
+      incoming = phone
     } else if (change.field === 'email') {
       incoming = normalizeEmail(change.remoteValue)
       if (sameValue('email', lead.email, incoming as string | null)) continue
@@ -387,10 +428,14 @@ const applyRemoteChanges = async (
       continue
     }
 
-    if (
-      resolveConflict(editedAt(lead, change.field), change.remoteEditedAt) ===
-      'local'
-    ) {
+    const winner = resolveConflict(
+      { editedAt: editedAt(lead, change.field), isEmpty: isBlank(localValue) },
+      {
+        editedAt: change.remoteEditedAt,
+        fromOmniDial: change.remoteFromOmniDial,
+      },
+    )
+    if (winner === 'local') {
       localWins.push(change.field)
       continue
     }
@@ -454,34 +499,51 @@ const applyRemoteChanges = async (
   return { applied: Object.keys(applied), localWins }
 }
 
-const historyOf = (obj: hs.HubSpotObject, property: string) =>
-  obj.propertiesWithHistory?.[property]?.[0]?.timestamp
+/** Latest HubSpot edit of a property, and whether OmniDial's app made it. */
+const historyOf = (
+  obj: hs.HubSpotObject,
+  property: string,
+  appId: string | undefined,
+) => {
+  const latest = obj.propertiesWithHistory?.[property]?.[0]
+  return {
+    remoteEditedAt: latest?.timestamp,
+    remoteFromOmniDial:
+      !!appId &&
+      latest?.sourceType === 'INTEGRATION' &&
+      String(latest.sourceId ?? '').split(':')[0] === appId,
+  }
+}
 
-const contactChanges = (contact: hs.HubSpotObject): RemoteChange[] =>
+const contactChanges = (
+  contact: hs.HubSpotObject,
+  appId: string | undefined,
+): RemoteChange[] =>
   (Object.keys(CONTACT_FIELDS) as ContactProperty[]).map((prop) => ({
     field: CONTACT_FIELDS[prop],
     remoteValue: contact.properties[prop] ?? null,
-    remoteEditedAt: historyOf(contact, prop),
+    ...historyOf(contact, prop, appId),
   }))
 
 const dealChanges = (
   cfg: HubSpotSyncConfig,
   deal: hs.HubSpotObject,
+  appId: string | undefined,
 ): RemoteChange[] => [
   {
     field: STAGE_FIELD,
     remoteValue: deal.properties[cfg.stageProperty] ?? null,
-    remoteEditedAt: historyOf(deal, cfg.stageProperty),
+    ...historyOf(deal, cfg.stageProperty, appId),
   },
   {
     field: 'dealValue',
     remoteValue: deal.properties.amount ?? null,
-    remoteEditedAt: historyOf(deal, 'amount'),
+    ...historyOf(deal, 'amount', appId),
   },
   {
     field: 'dealClosedAt',
     remoteValue: deal.properties.closedate ?? null,
-    remoteEditedAt: historyOf(deal, 'closedate'),
+    ...historyOf(deal, 'closedate', appId),
   },
 ]
 
@@ -571,6 +633,7 @@ export const pushLead = async (
   }
 
   try {
+    const appId = await ownAppId(organizationId)
     // ---- newest-wins check against HubSpot's current values
     let pulled: string[] = []
     const skipContact = new Set<string>()
@@ -589,7 +652,7 @@ export const pushLead = async (
           organizationId,
           cfg,
           lead,
-          contactChanges(remote),
+          contactChanges(remote, appId),
           'pull',
         )
         pulled = result.applied
@@ -663,7 +726,7 @@ export const pushLead = async (
             organizationId,
             cfg,
             fresh,
-            dealChanges(cfg, remote),
+            dealChanges(cfg, remote, appId),
             'pull',
           )
           pulledDeal.push(...result.applied)
@@ -1197,6 +1260,7 @@ const handleEventForOrg = async (
               field,
               remoteValue: event.propertyValue ?? null,
               remoteEditedAt: occurredAt,
+              remoteFromOmniDial: isOwnEcho(event),
             },
           ],
           'pull',
@@ -1230,6 +1294,7 @@ const handleEventForOrg = async (
             field,
             remoteValue: event.propertyValue ?? null,
             remoteEditedAt: occurredAt,
+            remoteFromOmniDial: isOwnEcho(event),
           },
         ],
         'pull',
@@ -1382,6 +1447,7 @@ export const reconcile = async (
   const contactById = new Map(contacts.map((c) => [c.id, c]))
   const dealById = new Map(deals.map((d) => [d.id, d]))
   const stages = await pipelineRepository.findByOrganizationId(organizationId)
+  const appId = await ownAppId(organizationId)
 
   for (const record of records) {
     const lead = leads.get(record.leadId)
@@ -1407,7 +1473,7 @@ export const reconcile = async (
       ? dealById.get(record.externalDealId)
       : undefined
 
-    const items = diffLead(lead, contact, deal, cfg, stages)
+    const items = diffLead(lead, contact, deal, cfg, stages, appId)
     if (items.length === 0) {
       report.inSync++
       continue
@@ -1418,8 +1484,8 @@ export const reconcile = async (
     if (options.fix) {
       try {
         const remoteChanges = [
-          ...contactChanges(contact),
-          ...(deal ? dealChanges(cfg, deal) : []),
+          ...contactChanges(contact, appId),
+          ...(deal ? dealChanges(cfg, deal, appId) : []),
         ].filter((c) =>
           items.some((i) => i.field === c.field && i.winner === 'hubspot'),
         )
@@ -1509,41 +1575,41 @@ const diffLead = (
   deal: hs.HubSpotObject | undefined,
   cfg: HubSpotSyncConfig,
   stages: DBPipelineStage[],
+  appId: string | undefined,
 ): DriftItem[] => {
   const items: DriftItem[] = []
-  const tracked = (lead.syncFieldUpdatedAt ?? {}) as Record<string, string>
   const expected = buildContactProperties(lead as LeadForSync)
+  const winnerFor = (
+    field: string,
+    local: unknown,
+    obj: hs.HubSpotObject,
+    prop: string,
+  ) => {
+    const remote = historyOf(obj, prop, appId)
+    const winner = resolveConflict(
+      { editedAt: editedAt(lead, field), isEmpty: isBlank(local) },
+      {
+        editedAt: remote.remoteEditedAt,
+        fromOmniDial: remote.remoteFromOmniDial,
+      },
+    )
+    return winner === 'local' ? 'omnidial' : 'hubspot'
+  }
 
   for (const prop of Object.keys(CONTACT_FIELDS) as ContactProperty[]) {
     const field = CONTACT_FIELDS[prop]
-    const local =
-      prop === 'phone' ? lead.normalizedPhone : (expected[prop] ?? null)
+    const local = expected[prop] ?? null
     const remote = contact.properties[prop] ?? null
-    // Both empty, or HubSpot has data OmniDial never had and never cleared.
     if (sameValue(field, local, remote)) continue
-    if (!local && !tracked[field]) {
-      // HubSpot has data OmniDial never had (and never cleared): fill it in.
-      items.push({
-        leadId: lead.id,
-        object: 'contact',
-        field,
-        omnidial: null,
-        hubspot: remote,
-        winner: 'hubspot',
-      })
-      continue
-    }
+    // OmniDial blank and HubSpot blank-equivalent is not drift; blank vs value is.
+    if (isBlank(remote) && isBlank(local)) continue
     items.push({
       leadId: lead.id,
       object: 'contact',
       field,
       omnidial: local,
       hubspot: remote,
-      winner:
-        resolveConflict(editedAt(lead, field), historyOf(contact, prop)) ===
-        'local'
-          ? 'omnidial'
-          : 'hubspot',
+      winner: winnerFor(field, local, contact, prop),
     })
   }
 
@@ -1559,13 +1625,12 @@ const diffLead = (
           stages.find((s) => s.id === lead.pipelineStageId)?.label ??
           lead.pipelineStageId,
         hubspot: remoteStage,
-        winner:
-          resolveConflict(
-            editedAt(lead, STAGE_FIELD),
-            historyOf(deal, cfg.stageProperty),
-          ) === 'local'
-            ? 'omnidial'
-            : 'hubspot',
+        winner: winnerFor(
+          STAGE_FIELD,
+          lead.pipelineStageId,
+          deal,
+          cfg.stageProperty,
+        ),
       })
     }
     if (
@@ -1577,13 +1642,7 @@ const diffLead = (
         field: 'dealValue',
         omnidial: lead.dealValue,
         hubspot: deal.properties.amount,
-        winner:
-          resolveConflict(
-            editedAt(lead, 'dealValue'),
-            historyOf(deal, 'amount'),
-          ) === 'local'
-            ? 'omnidial'
-            : 'hubspot',
+        winner: winnerFor('dealValue', lead.dealValue, deal, 'amount'),
       })
     }
     if (
@@ -1600,13 +1659,7 @@ const diffLead = (
         field: 'dealClosedAt',
         omnidial: lead.dealClosedAt,
         hubspot: deal.properties.closedate,
-        winner:
-          resolveConflict(
-            editedAt(lead, 'dealClosedAt'),
-            historyOf(deal, 'closedate'),
-          ) === 'local'
-            ? 'omnidial'
-            : 'hubspot',
+        winner: winnerFor('dealClosedAt', lead.dealClosedAt, deal, 'closedate'),
       })
     }
   }
