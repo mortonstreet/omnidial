@@ -1,6 +1,6 @@
 'use client';
 
-import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneOutgoing, Clock, Star } from 'lucide-react';
 
 interface MobileQuickStatsProps {
   metrics: {
@@ -68,6 +68,7 @@ export function MobileQuickStats({ metrics, isLoading }: MobileQuickStatsProps) 
       color: 'text-amber-500',
       bgColor: 'bg-amber-500/10',
       isTime: true,
+      isSuccessMetric: true,
     },
   ];
 
@@ -76,7 +77,11 @@ export function MobileQuickStats({ metrics, isLoading }: MobileQuickStatsProps) 
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="bg-card border border-border rounded-xl p-4 flex flex-col min-h-[100px]"
+          className={`bg-card border rounded-xl p-4 flex flex-col min-h-[100px] ${
+            'isSuccessMetric' in stat && stat.isSuccessMetric
+              ? 'border-amber-500/50 ring-1 ring-amber-500/20'
+              : 'border-border'
+          }`}
         >
           <div className="flex items-center gap-2 mb-2">
             <div className={`p-1.5 rounded-lg ${stat.bgColor}`}>
@@ -85,6 +90,9 @@ export function MobileQuickStats({ metrics, isLoading }: MobileQuickStatsProps) 
             <span className="text-xs text-muted-foreground font-medium">
               {stat.label}
             </span>
+            {'isSuccessMetric' in stat && stat.isSuccessMetric && (
+              <Star className="h-3 w-3 ml-auto text-amber-500 fill-amber-500" aria-label="Success metric" />
+            )}
           </div>
           <span className="text-2xl font-bold text-foreground mt-auto">
             {stat.isTime ? stat.value : stat.value.toLocaleString()}

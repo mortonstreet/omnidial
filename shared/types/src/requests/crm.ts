@@ -9,6 +9,7 @@ export const CreatePipelineStageRequestSchema = z.object({
   color: z.string().default('#6B7280'),
   sortOrder: z.number().int().default(0),
   isDefault: z.boolean().default(false),
+  outcome: z.enum(['open', 'won', 'lost']).nullable().optional(),
 });
 export type CreatePipelineStageRequest = z.infer<typeof CreatePipelineStageRequestSchema>;
 
@@ -18,6 +19,7 @@ export const UpdatePipelineStageRequestSchema = z.object({
   color: z.string().optional(),
   sortOrder: z.number().int().optional(),
   isDefault: z.boolean().optional(),
+  outcome: z.enum(['open', 'won', 'lost']).nullable().optional(),
 });
 export type UpdatePipelineStageRequest = z.infer<typeof UpdatePipelineStageRequestSchema>;
 

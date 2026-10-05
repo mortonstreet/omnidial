@@ -12,6 +12,8 @@ export const IntegrationProviderSchema = z.enum([
   'pipedrive',
   'monday',
   'attio',
+  'gmail',
+  'grain',
 ]);
 export type IntegrationProvider = z.infer<typeof IntegrationProviderSchema>;
 
@@ -80,6 +82,8 @@ export const IntegrationConfigSchema = z.object({
   webhookEvents: z.array(z.string()).optional(),
   // Auto-sync to CRM after enrichment
   autoSyncToCrm: z.boolean().optional(),
+  // Gmail (read-only pipeline scoring): the connected mailbox address
+  mailbox: z.string().optional(),
 });
 export type IntegrationConfig = z.infer<typeof IntegrationConfigSchema>;
 

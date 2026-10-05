@@ -19,6 +19,12 @@ export interface UpdateCrmSyncRecordInput {
   syncStatus?: string
   lastSyncedAt?: Date
   errorMessage?: string | null
+  externalDealId?: string | null
+  externalTaskId?: string | null
+  lastPushedAt?: Date
+  lastPulledAt?: Date
+  pushedHash?: string | null
+  remoteDeletedAt?: Date | null
 }
 
 export const findByOrgLeadProvider = async (

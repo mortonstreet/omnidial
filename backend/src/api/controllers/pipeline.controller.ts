@@ -53,7 +53,7 @@ export const createPipelineStage: AuthRequestHandler<
     return res.status(400).json({ error: 'No active organization' })
   }
 
-  const { label, color, sortOrder, isDefault } = req.validated
+  const { label, color, sortOrder, isDefault, outcome } = req.validated
 
   // If this stage is default, clear others
   if (isDefault) {
@@ -66,6 +66,7 @@ export const createPipelineStage: AuthRequestHandler<
     color,
     sortOrder,
     isDefault,
+    outcome: outcome ?? null,
     createdAt: new Date(),
   })
 

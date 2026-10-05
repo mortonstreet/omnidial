@@ -26,6 +26,8 @@ const PROVIDER_DOMAINS: Record<string, string> = {
   pipedrive: "pipedrive.com",
   monday: "monday.com",
   google_sheets: "google.com",
+  gmail: "gmail.com",
+  grain: "grain.com",
 };
 
 /** Display names for the logo.dev fallback's initials tile. */

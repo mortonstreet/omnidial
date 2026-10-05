@@ -423,6 +423,7 @@ export type Call = {
   wasParallelAbandoned: Generated<boolean>
   predictiveScore: string | null
   poolNumberId: string | null
+  crmActivityId: string | null
 }
 export type CallAnswerPattern = {
   id: string
@@ -625,6 +626,19 @@ export type CreditTransaction = {
   createdAt: Generated<Timestamp>
   updatedAt: Timestamp
 }
+export type CrmSyncEvent = {
+  id: string
+  organizationId: string
+  leadId: string | null
+  provider: string
+  direction: string
+  objectType: string
+  externalId: string | null
+  status: string
+  changes: Generated<unknown>
+  message: string | null
+  createdAt: Generated<Timestamp>
+}
 export type CrmSyncRecord = {
   id: string
   organizationId: string
@@ -632,6 +646,12 @@ export type CrmSyncRecord = {
   provider: string
   externalId: string
   externalUrl: string | null
+  externalDealId: string | null
+  externalTaskId: string | null
+  lastPushedAt: Timestamp | null
+  lastPulledAt: Timestamp | null
+  pushedHash: string | null
+  remoteDeletedAt: Timestamp | null
   syncDirection: string
   syncStatus: string
   lastSyncedAt: Timestamp
@@ -667,6 +687,32 @@ export type DataVendorConnection = {
   creditsLimit: number | null
   lastSyncAt: Timestamp | null
   connectedById: string
+  createdAt: Generated<Timestamp>
+  updatedAt: Generated<Timestamp>
+}
+export type DealSignal = {
+  id: string
+  organizationId: string
+  leadId: string
+  userId: string | null
+  source: string
+  sourceId: string
+  sourceUrl: string | null
+  sourceUpdatedAt: Timestamp | null
+  occurredAt: Timestamp
+  summary: Generated<string>
+  nextStep: string | null
+  nextStepSecured: Generated<boolean>
+  nextStepChannel: string | null
+  nextStepDueAt: Timestamp | null
+  nextStepScore: number | null
+  championScore: number | null
+  championName: string | null
+  engagementScore: number | null
+  qualityScore: number | null
+  sentiment: string | null
+  evidence: Generated<unknown>
+  modelUsed: string | null
   createdAt: Generated<Timestamp>
   updatedAt: Generated<Timestamp>
 }
@@ -773,6 +819,7 @@ export type Integration = {
   config: unknown | null
   autoSyncToCrm: Generated<boolean>
   lastSyncAt: Timestamp | null
+  externalAccountId: string | null
   createdAt: Generated<Timestamp>
   updatedAt: Generated<Timestamp>
 }
@@ -823,6 +870,13 @@ export type Lead = {
   timezoneResolvedAt: Timestamp | null
   hasPersonalVoicemail: boolean | null
   clientId: string | null
+  stageEnteredAt: Timestamp | null
+  initialDealValue: string | null
+  dealOutcome: string | null
+  dealClosedAt: Timestamp | null
+  dealOutcomeReason: string | null
+  dealOutcomeNotes: string | null
+  syncFieldUpdatedAt: unknown | null
 }
 export type LeadContactInfo = {
   id: string
@@ -928,6 +982,19 @@ export type LeadQualification = {
   slackChannelId: string | null
   createdAt: Generated<Timestamp>
   updatedAt: Timestamp
+}
+export type LeadStageHistory = {
+  id: string
+  organizationId: string
+  leadId: string
+  fromStageId: string | null
+  toStageId: string | null
+  fromStageLabel: string | null
+  toStageLabel: string | null
+  dealValue: string | null
+  source: Generated<string>
+  changedById: string | null
+  createdAt: Generated<Timestamp>
 }
 export type ListFavorite = {
   id: string
@@ -1126,6 +1193,7 @@ export type PipelineStage = {
   color: Generated<string>
   sortOrder: Generated<number>
   isDefault: Generated<boolean>
+  outcome: string | null
   createdAt: Generated<Timestamp>
 }
 export type PowerDialerProgress = {
@@ -1578,9 +1646,11 @@ export type DB = {
   coach_card: CoachCard
   coach_card_trigger: CoachCardTrigger
   credit_transaction: CreditTransaction
+  crm_sync_event: CrmSyncEvent
   crm_sync_record: CrmSyncRecord
   custom_field_schema: CustomFieldSchema
   data_vendor_connection: DataVendorConnection
+  deal_signal: DealSignal
   disposition: Disposition
   dnc_entry: DncEntry
   enrichengine_connection: EnrichEngineConnection
@@ -1598,6 +1668,7 @@ export type DB = {
   lead_list_folder: LeadListFolder
   lead_predictive_score: LeadPredictiveScore
   lead_qualification: LeadQualification
+  lead_stage_history: LeadStageHistory
   list_favorite: ListFavorite
   list_open: ListOpen
   live_transcript_segment: LiveTranscriptSegment

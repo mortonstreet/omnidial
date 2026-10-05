@@ -13,6 +13,8 @@ import {
   PhoneProvisioning,
   LeadContactMethod,
   DncEntry,
+  LeadStageHistory,
+  DealSignal,
 } from "./generated/types";
 
 
@@ -55,6 +57,12 @@ export type InsertDBLead = Insertable<Lead>;
 export type DBPipelineStage = Selectable<PipelineStage>;
 export type UpdateDBPipelineStage = Updateable<PipelineStage>;
 export type InsertDBPipelineStage = Insertable<PipelineStage>;
+
+export type DBLeadStageHistory = Selectable<LeadStageHistory>;
+export type InsertDBLeadStageHistory = Insertable<LeadStageHistory>;
+
+export type DBDealSignal = Selectable<DealSignal>;
+export type InsertDBDealSignal = Insertable<DealSignal>;
 
 export type DBTask = Selectable<Task>;
 export type UpdateDBTask = Updateable<Task>;

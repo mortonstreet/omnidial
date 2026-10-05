@@ -6,6 +6,9 @@ import * as leadListEntryRepository from '@/repositories/leadListEntry.repositor
 import * as googleSheetsService from '@/services/googleSheets.service'
 import * as enrichEngineService from '@/services/enrichEngine.service'
 import * as hubspotService from '@/services/hubspot.service'
+import * as gmailReader from '@/clients/gmailReader.client'
+import * as hubspotSyncService from '@/services/hubspotSync.service'
+import * as grainClient from '@/clients/grain.client'
 import * as analyticsService from '@/services/analytics.service'
 import { encrypt, decrypt } from '@/lib/encryption'
 import { config } from '@/config'
@@ -102,6 +105,20 @@ const INTEGRATION_METADATA: Record<
     description: 'Sync contacts and log activities in Attio CRM',
     category: 'crm',
     authType: 'oauth',
+  },
+  gmail: {
+    name: 'Gmail (read-only)',
+    description:
+      'Score email threads with pipeline leads for next steps and champion engagement. Read-only - never sends.',
+    category: 'communication',
+    authType: 'oauth',
+  },
+  grain: {
+    name: 'Grain',
+    description:
+      'Score recorded sales meetings for next-step quality, champion engagement and rep execution',
+    category: 'communication',
+    authType: 'api_key',
   },
 }
 
@@ -236,6 +253,17 @@ export const initiateOAuthFlow = async (
     return { url, state }
   }
 
+  if (provider === 'gmail') {
+    const url = gmailReader.getOAuthUrl(state, callbackUri)
+    return { url, state }
+  }
+
+  if (provider === 'grain') {
+    throw new Error(
+      'Grain uses API token authentication. Use the /deal-metrics/grain/connect endpoint.',
+    )
+  }
+
   if (provider === 'salesforce') {
     const params = new URLSearchParams({
       response_type: 'code',
@@ -343,19 +371,22 @@ export const handleOAuthCallback = async (
     })
   }
 
-  if (provider === 'hubspot') {
-    const tokens = await hubspotService.exchangeCodeForTokens(code, callbackUri)
-
+  if (provider === 'gmail') {
+    const tokens = await gmailReader.exchangeCodeForTokens(code, callbackUri)
     const existing = await integrationRepository.findByOrganizationAndProvider(
       organizationId,
       provider,
     )
+    const gmailConfig = { mailbox: tokens.mailbox ?? undefined }
 
     if (existing) {
       return integrationRepository.update(organizationId, provider, {
         accessToken: encryptToken(tokens.accessToken),
-        refreshToken: encryptToken(tokens.refreshToken),
+        ...(tokens.refreshToken && {
+          refreshToken: encryptToken(tokens.refreshToken),
+        }),
         tokenExpiresAt: tokens.expiresAt,
+        config: gmailConfig,
       })
     }
 
@@ -366,10 +397,50 @@ export const handleOAuthCallback = async (
       refreshToken: encryptToken(tokens.refreshToken),
       tokenExpiresAt: tokens.expiresAt,
       connectedById: userId,
+      config: gmailConfig,
+    })
+  }
+
+  if (provider === 'hubspot') {
+    const tokens = await hubspotService.exchangeCodeForTokens(code, callbackUri)
+
+    const existing = await integrationRepository.findByOrganizationAndProvider(
+      organizationId,
+      provider,
+    )
+
+    if (existing) {
+      const updated = await integrationRepository.update(
+        organizationId,
+        provider,
+        {
+          accessToken: encryptToken(tokens.accessToken),
+          refreshToken: encryptToken(tokens.refreshToken),
+          tokenExpiresAt: tokens.expiresAt,
+        },
+      )
+      // Portal id routes webhooks to this org. Best effort: status/CLI retry.
+      await hubspotSyncService
+        .ensurePortalId(organizationId)
+        .catch(() => undefined)
+      return updated
+    }
+
+    const created = await integrationRepository.create({
+      organizationId,
+      provider,
+      accessToken: encryptToken(tokens.accessToken),
+      refreshToken: encryptToken(tokens.refreshToken),
+      tokenExpiresAt: tokens.expiresAt,
+      connectedById: userId,
       config: {
         importContacts: true,
       },
     })
+    await hubspotSyncService
+      .ensurePortalId(organizationId)
+      .catch(() => undefined)
+    return created
   }
 
   if (provider === 'salesforce') {
@@ -625,7 +696,15 @@ export const updateIntegrationConfig = async (
   provider: string,
   config: IntegrationConfig,
 ) => {
-  return integrationRepository.update(organizationId, provider, { config })
+  // Merge: the settings form only knows a few keys, and replacing the whole
+  // object would wipe sync state such as the HubSpot stage map.
+  const existing = await integrationRepository.findByOrganizationAndProvider(
+    organizationId,
+    provider,
+  )
+  return integrationRepository.update(organizationId, provider, {
+    config: { ...((existing?.config as object) ?? {}), ...config },
+  })
 }
 
 export const disconnectIntegration = async (
@@ -664,6 +743,15 @@ export const testConnection = async (
     return hubspotService.testConnection(organizationId)
   }
 
+  if (provider === 'grain') {
+    const token = decryptToken(integration.accessToken)
+    if (!token) return { success: false, message: 'No Grain API token stored' }
+    return grainClient
+      .testToken(token)
+      .then(() => ({ success: true, message: 'Grain token is valid' }))
+      .catch((error: Error) => ({ success: false, message: error.message }))
+  }
+
   if (provider === 'webhook') {
     // For webhooks, just verify the URL is configured
     const webhookConfig = integration.config as IntegrationConfig | null
@@ -674,6 +762,34 @@ export const testConnection = async (
   }
 
   return { success: true, message: 'Connection successful' }
+}
+
+// ===== Grain (API token) =====
+
+/** Verify the token against Grain before storing it, encrypted. */
+export const connectGrain = async (
+  organizationId: string,
+  userId: string,
+  apiToken: string,
+) => {
+  await grainClient.testToken(apiToken)
+
+  const existing = await integrationRepository.findByOrganizationAndProvider(
+    organizationId,
+    'grain',
+  )
+  if (existing) {
+    return integrationRepository.update(organizationId, 'grain', {
+      accessToken: encryptToken(apiToken),
+    })
+  }
+  return integrationRepository.create({
+    organizationId,
+    provider: 'grain',
+    accessToken: encryptToken(apiToken),
+    connectedById: userId,
+    config: {},
+  })
 }
 
 // ===== Google Sheets specific functions =====

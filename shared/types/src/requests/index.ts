@@ -40,3 +40,4 @@ export * from './crmSync';
 export * from './leadContactMethod';
 export * from './dnc';
 export * from './billing';
+export * from './dealMetrics';

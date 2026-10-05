@@ -16,6 +16,7 @@ import { GoogleSheetsPicker } from "./GoogleSheetsPicker";
 import { ColumnMappingModal } from "./ColumnMappingModal";
 import { EnrichEngineListPicker } from "./EnrichEngineListPicker";
 import { EnrichEngineConnectModal } from "./EnrichEngineConnectModal";
+import { GrainConnectModal } from "./GrainConnectModal";
 import { HubSpotContactImporter } from "./HubSpotContactImporter";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
@@ -53,6 +54,8 @@ export function IntegrationsSettings() {
 
   // EnrichEngine flows (API Key auth)
   const [enrichEngineConnectOpen, setEnrichEngineConnectOpen] = useState(false);
+  // Grain uses an API token rather than OAuth
+  const [grainConnectOpen, setGrainConnectOpen] = useState(false);
   const [enrichEnginePickerOpen, setEnrichEnginePickerOpen] = useState(false);
 
   const integrations = useMemo(() => {
@@ -89,6 +92,10 @@ export function IntegrationsSettings() {
   const handleConnect = async (provider: string) => {
     if (provider === "enrichengine") {
       setEnrichEngineConnectOpen(true);
+      return;
+    }
+    if (provider === "grain") {
+      setGrainConnectOpen(true);
       return;
     }
     connectMutation.mutate(provider, {
@@ -281,6 +288,12 @@ export function IntegrationsSettings() {
         isOpen={enrichEngineConnectOpen}
         onClose={() => setEnrichEngineConnectOpen(false)}
         onSuccess={handleEnrichEngineConnectSuccess}
+      />
+
+      <GrainConnectModal
+        isOpen={grainConnectOpen}
+        onClose={() => setGrainConnectOpen(false)}
+        onSuccess={() => refetch()}
       />
 
       <EnrichEngineListPicker

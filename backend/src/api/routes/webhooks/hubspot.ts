@@ -3,6 +3,8 @@ import { createHash } from 'crypto'
 import * as crmService from '@/services/crm.service'
 import * as webhookEventReceiptRepository from '@/repositories/webhookEventReceipt.repository'
 import logger from '@/lib/logger'
+import { config } from '@/config'
+import { verifyHubSpotSignature } from '@/lib/hubspot-signature'
 
 const router = Router()
 const WEBHOOK_PROVIDER = 'hubspot'
@@ -73,6 +75,20 @@ const claimHubSpotWebhookEvent = async (
 }
 
 router.post('/', async (req, res) => {
+  // Unsigned requests could delete leads or move deals, so nothing is
+  // processed until HubSpot's signature checks out.
+  const verification = verifyHubSpotSignature({
+    clientSecret: config.hubspot.clientSecret || '',
+    method: req.method,
+    uri: `${(config.backendUrl || '').replace(/\/$/, '')}${req.originalUrl}`,
+    rawBody: getRawBodyString(req) ?? '',
+    headers: req.headers,
+  })
+  if (!verification.valid) {
+    logger.warn({ reason: verification.reason }, 'Rejected HubSpot webhook')
+    return res.status(401).json({ error: 'Invalid HubSpot signature' })
+  }
+
   const payload = Array.isArray(req.body) ? req.body : [req.body]
   const events = payload as crmService.HubSpotWebhookEvent[]
   const claims: HubSpotWebhookClaim[] = []

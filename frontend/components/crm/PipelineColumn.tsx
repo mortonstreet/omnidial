@@ -15,6 +15,10 @@ import {
   X,
 } from "lucide-react";
 import {
+  resolveStageOutcome,
+  type StageOutcomeSetting,
+} from "@shared/types/src/requests/dealMetrics";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -47,7 +51,10 @@ interface PipelineColumnProps {
   onLeadClick?: (lead: PipelineLead) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent, stageId: string) => void;
-  onUpdateStage?: (id: string, data: { label?: string; color?: string }) => void;
+  onUpdateStage?: (
+    id: string,
+    data: { label?: string; color?: string; outcome?: StageOutcomeSetting }
+  ) => void;
   onDeleteStage?: (id: string) => void;
   onStageDragStart?: (e: React.DragEvent, stageId: string) => void;
   onStageDragEnd?: () => void;
@@ -69,6 +76,12 @@ function formatCurrency(value: number): string {
     maximumFractionDigits: 0,
   }).format(value);
 }
+
+const STAGE_OUTCOMES: { value: StageOutcomeSetting; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
+];
 
 const STAGE_COLORS = [
   "#6B7280", // Gray
@@ -105,12 +118,18 @@ export function PipelineColumn({
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(stage.label);
   const [editColor, setEditColor] = useState(stage.color);
+  const outcome = resolveStageOutcome(stage);
+  const [editOutcome, setEditOutcome] = useState<StageOutcomeSetting>(outcome);
 
   const canDelete = totalStages > 3;
 
   const handleSaveEdit = () => {
     if (editLabel.trim() && onUpdateStage) {
-      onUpdateStage(stage.id, { label: editLabel.trim(), color: editColor });
+      onUpdateStage(stage.id, {
+        label: editLabel.trim(),
+        color: editColor,
+        ...(editOutcome !== outcome && { outcome: editOutcome }),
+      });
     }
     setIsEditing(false);
   };
@@ -118,6 +137,7 @@ export function PipelineColumn({
   const handleCancelEdit = () => {
     setEditLabel(stage.label);
     setEditColor(stage.color);
+    setEditOutcome(outcome);
     setIsEditing(false);
   };
 
@@ -178,6 +198,27 @@ export function PipelineColumn({
                 />
               ))}
             </div>
+            <div className="space-y-1">
+              <p className="text-[11px] text-muted-foreground">
+                Deals in this stage count as
+              </p>
+              <div className="grid grid-cols-3 gap-1">
+                {STAGE_OUTCOMES.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setEditOutcome(option.value)}
+                    className={`text-xs rounded border px-2 py-1 transition-colors ${
+                      editOutcome === option.value
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center gap-1 justify-end">
               <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
                 <X className="w-3 h-3" />
@@ -201,6 +242,18 @@ export function PipelineColumn({
                 style={{ backgroundColor: stage.color }}
               />
               <h3 className="font-medium text-sm text-foreground truncate">{stage.label}</h3>
+              {outcome !== "open" && (
+                <span
+                  className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${
+                    outcome === "won"
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : "bg-red-500/15 text-red-600 dark:text-red-400"
+                  }`}
+                  title={`Deals moved here are closed ${outcome}`}
+                >
+                  {outcome}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">
                 {stage.leadCount}
               </span>
@@ -221,7 +274,12 @@ export function PipelineColumn({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setEditOutcome(outcome);
+                      setIsEditing(true);
+                    }}
+                  >
                     <Pencil className="w-4 h-4 mr-2" />
                     Edit Stage
                   </DropdownMenuItem>

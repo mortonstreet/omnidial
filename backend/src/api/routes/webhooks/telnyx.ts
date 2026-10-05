@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express'
+import { enqueueCallSync } from '@/queues/crm-sync.queue'
 import { createHash, randomUUID } from 'crypto'
 import { VoiceResponse, setDefaultVoice } from '@/lib/texml'
 import * as dialerService from '@/services/dialer.service'
@@ -49,6 +50,8 @@ const recordCallUsage = async (callId: string, duration: number) => {
     if (orgId) {
       await usageTrackingService.recordCallMinutes(orgId, duration)
     }
+    // Log the finished call as a HubSpot activity (no-op without HubSpot).
+    await enqueueCallSync(callId)
   } catch (err) {
     logger.warn({ err, callId, duration }, 'Failed to record call usage')
   }
