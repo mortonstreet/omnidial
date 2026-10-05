@@ -28,7 +28,8 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000
 const STRONG_CHAMPION = 7
 const WEAK_CHAMPION = 3
-const LIST_LIMIT = 10
+/** Lists scroll inside fixed-height cards, so they can be long. */
+const LIST_LIMIT = 100
 
 const round = (n: number, places = 2) => {
   const f = 10 ** places

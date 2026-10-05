@@ -182,11 +182,13 @@ function RecentCloses({
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-xs font-medium text-muted-foreground mb-2">Recent closes</div>
+      <div className="text-xs font-medium text-muted-foreground mb-2">
+        Recent closes{deals.length > 0 && <span className="ml-1 tabular-nums">({deals.length})</span>}
+      </div>
       {deals.length === 0 ? (
         <p className="text-xs text-muted-foreground">No recent closes.</p>
       ) : (
-        <ul className="divide-y divide-border max-h-72 overflow-y-auto pr-1">
+        <ul className="divide-y divide-border max-h-72 overflow-y-auto overscroll-contain pr-1">
           {deals.map((deal) => (
             <li key={deal.leadId} className="flex items-center justify-between gap-3 py-2">
               <div className="min-w-0">

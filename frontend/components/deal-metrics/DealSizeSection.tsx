@@ -25,10 +25,11 @@ export function DealSizeSection({
       {d && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Avg won" value={formatCurrency(d.avgWon)} />
-            <Stat label="Median won" value={formatCurrency(d.medianWon)} />
-            <Stat label="Avg lost" value={formatCurrency(d.avgLost)} />
-            <Stat label="Avg open" value={formatCurrency(d.avgOpen)} />
+            {/* "—" when no deal in the group has a value, never a fake $0. */}
+            <Stat label="Avg won" value={d.avgWon ? formatCurrency(d.avgWon) : '—'} />
+            <Stat label="Median won" value={d.medianWon ? formatCurrency(d.medianWon) : '—'} />
+            <Stat label="Avg lost" value={d.avgLost ? formatCurrency(d.avgLost) : '—'} />
+            <Stat label="Avg open" value={d.avgOpen ? formatCurrency(d.avgOpen) : '—'} />
           </div>
 
           {d.comparableWonDeals === 0 ? (

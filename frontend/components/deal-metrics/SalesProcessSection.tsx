@@ -72,9 +72,8 @@ export function SalesProcessSection({
               />
             </div>
           </div>
-          <div className="max-h-80 overflow-y-auto pr-1">
           <DealList
-            title={`Gone quiet${p.quietDeals.length ? ` (${p.quietDeals.length})` : ''}`}
+            title="Gone quiet"
             deals={p.quietDeals}
             emptyText={
               p.typicalGapDays === null
@@ -87,7 +86,6 @@ export function SalesProcessSection({
               </span>
             )}
           />
-          </div>
         </div>
       )}
     </MetricSection>
