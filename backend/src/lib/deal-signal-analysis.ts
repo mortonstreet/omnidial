@@ -4,7 +4,8 @@
  * are testable without an LLM.
  */
 
-export type SignalSource = 'call' | 'email' | 'meeting'
+/** manual = entered by a rep on the lead page (never sent to the model). */
+export type SignalSource = 'call' | 'email' | 'meeting' | 'manual'
 
 export const DEAL_SIGNAL_SYSTEM_PROMPT = `You are a B2B sales pipeline analyst. You score ONE sales touchpoint (a call transcript, an email thread, or a recorded meeting) for deal health. Be strict and evidence-based: only score what is actually present.
 
@@ -31,6 +32,7 @@ const SOURCE_LABEL: Record<SignalSource, string> = {
   call: 'phone call transcript',
   email: 'email thread',
   meeting: 'recorded sales meeting transcript',
+  manual: 'rep notes',
 }
 
 /** Long transcripts are trimmed from the middle: openings and closes carry the next step. */

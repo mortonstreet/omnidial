@@ -19,7 +19,10 @@ export interface CallMetrics {
   connectedCalls: number;
   connectionRate: number;
   totalTalkTimeSeconds: number;
+  /** Average length of real conversations (voicemails excluded). */
   avgCallDurationSeconds: number;
+  /** Talk time on conversations only; totalTalkTimeSeconds includes voicemail greetings. */
+  conversationTalkTimeSeconds: number;
 }
 
 // Disposition Breakdown Item

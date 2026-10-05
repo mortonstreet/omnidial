@@ -244,3 +244,16 @@ export const findCallActivity = (callId: string) =>
     ])
     .where('call.id', '=', callId)
     .executeTakeFirst()
+
+export const earliestStageHistoryAt = async (
+  organizationId: string,
+  leadId: string,
+) =>
+  (
+    await db
+      .selectFrom('lead_stage_history')
+      .select((eb) => eb.fn.min('createdAt').as('first'))
+      .where('organizationId', '=', organizationId)
+      .where('leadId', '=', leadId)
+      .executeTakeFirst()
+  )?.first ?? null

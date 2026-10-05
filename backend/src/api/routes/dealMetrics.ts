@@ -9,6 +9,7 @@ import {
   reconcileHubSpot,
   syncHubSpotStages,
   getLeadDealSignals,
+  recordManualSignal,
   setDealOutcome,
   syncDealSignals,
 } from '@/api/controllers/dealMetrics.controller'
@@ -18,6 +19,7 @@ import {
   GetHubSpotSyncStatusRequestSchema,
   ReconcileHubSpotRequestSchema,
   GetLeadDealSignalsRequestSchema,
+  RecordManualSignalRequestSchema,
   SetDealOutcomeRequestSchema,
   SyncDealSignalsRequestSchema,
 } from '@shared/types/src'
@@ -46,6 +48,14 @@ router.get(
   withBetterAuth,
   validateAndMerge(GetLeadDealSignalsRequestSchema),
   authenticatedRoute(getLeadDealSignals),
+)
+
+// Rep-entered next step / champion for a lead
+router.post(
+  '/leads/:leadId/signals',
+  withBetterAuth,
+  validateAndMerge(RecordManualSignalRequestSchema),
+  authenticatedRoute(recordManualSignal),
 )
 
 // Score new calls / Gmail threads / Grain meetings now

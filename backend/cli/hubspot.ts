@@ -7,6 +7,7 @@
  *   pnpm --filter backend hubspot map-stages --set "Demo Booked=Appointment Scheduled"
  *   pnpm --filter backend hubspot setup-properties
  *   pnpm --filter backend hubspot sync-stages
+ *   pnpm --filter backend hubspot backfill-stage-history
  *   pnpm --filter backend hubspot config [autoSync=true] [autoReconcile=true] [writeBacks.calls=false]
  *   pnpm --filter backend hubspot reconcile [--fix]
  *   pnpm --filter backend hubspot push --lead <leadId> | --unlinked
@@ -103,6 +104,9 @@ const commands: Record<string, (org: string) => Promise<unknown>> = {
   },
 
   'setup-properties': (org) => sync.setupProperties(org),
+
+  /** Replay HubSpot stage history into OmniDial (velocity + conversion backfill). */
+  'backfill-stage-history': (org) => sync.backfillStageHistory(org),
 
   /** Add OmniDial stages missing from HubSpot's stage dropdown, then re-map. */
   'sync-stages': (org) => sync.syncStagesToHubSpot(org),

@@ -16,6 +16,26 @@ export const completeJson = async <T>(params: {
   title: string
   maxTokens?: number
 }): Promise<{ data: T; tokensUsed: number }> => {
+  try {
+    return await completeJsonOnce<T>(params)
+  } catch (error) {
+    // Models occasionally emit malformed JSON (an unescaped quote in a
+    // transcript excerpt). One stricter retry fixes nearly all of them.
+    if (!(error instanceof SyntaxError)) throw error
+    return completeJsonOnce<T>({
+      ...params,
+      user: `${params.user}\n\nReturn strictly valid JSON: escape any double quotes inside string values.`,
+    })
+  }
+}
+
+const completeJsonOnce = async <T>(params: {
+  model: string
+  system: string
+  user: string
+  title: string
+  maxTokens?: number
+}): Promise<{ data: T; tokensUsed: number }> => {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) {
     throw new Error('OpenRouter API key not configured')

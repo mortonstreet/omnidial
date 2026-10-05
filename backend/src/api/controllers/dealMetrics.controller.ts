@@ -9,6 +9,7 @@ import {
   GetDealMetricsRequest,
   GetHubSpotSyncStatusRequest,
   GetLeadDealSignalsRequest,
+  RecordManualSignalRequest,
   ReconcileHubSpotRequest,
   SetDealOutcomeRequest,
   SyncDealSignalsRequest,
@@ -74,6 +75,23 @@ export const getLeadDealSignals: AuthRequestHandler<
     req.validated.leadId,
   )
   return res.json({ data })
+}
+
+export const recordManualSignal: AuthRequestHandler<
+  RecordManualSignalRequest
+> = async (req, res) => {
+  const organizationId = getOrganizationId(req.session)
+  if (!organizationId) {
+    return res.status(400).json({ error: 'No active organization' })
+  }
+  const { leadId, ...input } = req.validated
+  const data = await dealSignalService.recordManualSignal({
+    organizationId,
+    leadId,
+    userId: req.user.id,
+    ...input,
+  })
+  return res.status(201).json({ data })
 }
 
 export const syncDealSignals: AuthRequestHandler<

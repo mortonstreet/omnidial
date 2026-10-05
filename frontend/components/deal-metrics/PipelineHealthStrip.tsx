@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
 import { useDealMetrics } from '@/hooks/api/useDealMetrics'
-import { formatCurrency, formatPercent, formatScore } from './format'
+import { formatCurrency, formatDays, formatPercent } from './format'
 
 /** Compact deal-health row for the main dashboard; full view lives on the CRM tab. */
 export function PipelineHealthStrip({
@@ -18,29 +18,38 @@ export function PipelineHealthStrip({
   const { data, isLoading } = useDealMetrics({ startDate, endDate, clientId })
   const m = data?.data
 
-  const items = [
-    { label: 'Win rate', value: m ? formatPercent(m.summary.winRate) : '—' },
+  // Every value shows its sample, or "—" with what would fill it in.
+  const closed = m ? m.summary.wonDeals + m.summary.lostDeals : 0
+  const calling = m?.activity.calling
+  const items: Array<{ label: string; value: string; hint?: string }> = [
     {
-      label: 'Avg won deal',
-      value: m ? formatCurrency(m.summary.avgWonDealSize) : '—',
+      label: 'Win rate',
+      value: closed ? formatPercent(m!.summary.winRate) : '—',
+      hint: closed ? `${m!.summary.wonDeals} won of ${closed}` : 'no closes yet',
     },
     {
-      label: 'Sales velocity',
-      value: m ? `${formatCurrency(m.summary.salesVelocityPerDay)}/day` : '—',
+      label: 'Sales cycle',
+      value: m?.summary.avgSalesCycleDays ? formatDays(m.summary.avgSalesCycleDays) : '—',
+      hint: m?.summary.avgSalesCycleDays
+        ? m.summary.salesCycleBasis === 'first_touch'
+          ? 'first touch → win'
+          : 'stage entry → win'
+        : 'needs a won deal',
+    },
+    {
+      label: 'Conversation rate',
+      value: calling?.conversationRate != null ? formatPercent(calling.conversationRate) : '—',
+      hint: calling ? `${calling.conversations} of ${calling.dials} dials` : undefined,
     },
     {
       label: 'Next step secured',
-      value:
-        m && m.nextSteps.touchpoints
-          ? formatPercent(m.nextSteps.securedRate)
-          : '—',
+      value: m && m.nextSteps.touchpoints ? formatPercent(m.nextSteps.securedRate) : '—',
+      hint: m && m.nextSteps.touchpoints ? `${m.nextSteps.touchpoints} touchpoints scored` : 'score calls in Settings',
     },
     {
-      label: 'Avg champion',
-      value:
-        m && m.champions.dealsScored
-          ? formatScore(m.champions.avgChampionScore)
-          : '—',
+      label: 'Avg won deal',
+      value: m && m.summary.wonDeals && m.summary.avgWonDealSize > 0 ? formatCurrency(m.summary.avgWonDealSize) : '—',
+      hint: m && m.summary.wonDeals && !m.summary.avgWonDealSize ? 'add deal values' : undefined,
     },
   ]
 
@@ -68,6 +77,9 @@ export function PipelineHealthStrip({
               <div className="text-lg font-medium text-foreground">
                 {item.value}
               </div>
+            )}
+            {item.hint && !isLoading && (
+              <div className="text-xs text-muted-foreground truncate">{item.hint}</div>
             )}
           </div>
         ))}

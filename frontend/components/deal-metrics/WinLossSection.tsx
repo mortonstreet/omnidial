@@ -1,6 +1,10 @@
 'use client'
 
+import { useState } from 'react'
+import Link from 'next/link'
 import { Swords, AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { DealOutcomeDialog } from '@/components/crm/DealOutcomeDialog'
 import {
   Bar,
   BarChart,
@@ -10,8 +14,8 @@ import {
   YAxis,
 } from 'recharts'
 import { cn } from '@/lib/utils'
-import { DealList, EmptyMetric, MetricSection, Stat } from './MetricSection'
-import { formatDays, formatDuration, formatPercent } from './format'
+import { EmptyMetric, MetricSection, Stat } from './MetricSection'
+import { formatCurrency, formatDays, formatDuration, formatPercent, leadHref } from './format'
 import {
   DEAL_LOSS_REASONS,
   DEAL_WIN_REASONS,
@@ -74,6 +78,7 @@ export function WinLossSection({
   isLoading?: boolean
 }) {
   const w = winLoss
+  const [reasonFor, setReasonFor] = useState<RecentClose | null>(null)
 
   return (
     <MetricSection
@@ -149,30 +154,77 @@ export function WinLossSection({
               </div>
             </div>
 
-            <DealList
-              title="Recent closes"
-              deals={w.recent}
-              emptyText="No recent closes."
-              detail={(deal) => (
-                <>
-                  <div
-                    className={cn(
-                      'font-medium',
-                      deal.outcome === 'won'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400',
-                    )}
-                  >
-                    {deal.outcome === 'won' ? 'Won' : 'Lost'}
-                  </div>
-                  <div className="truncate">
-                    {reasonLabel(deal.reason) ?? 'No reason'}
-                  </div>
-                </>
-              )}
-            />
+            <RecentCloses deals={w.recent} onAddReason={setReasonFor} />
           </div>
         ))}
+      {reasonFor && (
+        <DealOutcomeDialog
+          open
+          onOpenChange={(open) => !open && setReasonFor(null)}
+          leadId={reasonFor.leadId}
+          leadName={reasonFor.name}
+          outcome={reasonFor.outcome}
+        />
+      )}
     </MetricSection>
+  )
+}
+
+type RecentClose = DealMetricsResponse['winLoss']['recent'][number]
+
+/** Recent closes with inline fixes: record a missing reason or deal value. */
+function RecentCloses({
+  deals,
+  onAddReason,
+}: {
+  deals: RecentClose[]
+  onAddReason: (deal: RecentClose) => void
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs font-medium text-muted-foreground mb-2">Recent closes</div>
+      {deals.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No recent closes.</p>
+      ) : (
+        <ul className="divide-y divide-border max-h-72 overflow-y-auto pr-1">
+          {deals.map((deal) => (
+            <li key={deal.leadId} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <Link href={leadHref(deal.leadId)} className="text-sm text-foreground hover:underline truncate block">
+                  {deal.name}
+                </Link>
+                <div className="text-xs text-muted-foreground truncate">
+                  {deal.dealValue !== null ? (
+                    formatCurrency(deal.dealValue)
+                  ) : (
+                    <Link href={leadHref(deal.leadId)} className="text-amber-600 dark:text-amber-400 hover:underline">
+                      Add deal value
+                    </Link>
+                  )}
+                  {deal.closedAt && ` · ${new Date(deal.closedAt).toLocaleDateString()}`}
+                </div>
+              </div>
+              <div className="text-xs text-right shrink-0">
+                <div
+                  className={cn(
+                    'font-medium',
+                    deal.outcome === 'won' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+                  )}
+                >
+                  {deal.outcome === 'won' ? 'Won' : 'Lost'}
+                </div>
+                {deal.reason ? (
+                  <div className="text-muted-foreground">{reasonLabel(deal.reason)}</div>
+                ) : (
+                  <Button size="sm" variant="outline" className="h-6 px-2 mt-1 text-xs" onClick={() => onAddReason(deal)}>
+                    Add reason
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

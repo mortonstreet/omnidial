@@ -6,6 +6,7 @@
  *   email   -> read-only Gmail threads with pipeline leads
  *   meeting -> Grain meeting recordings matched to leads by attendee email
  */
+import { randomUUID } from 'crypto'
 import * as dealSignalRepository from '@/repositories/dealSignal.repository'
 import * as integrationRepository from '@/repositories/integration.repository'
 import * as gmailReader from '@/clients/gmailReader.client'
@@ -652,6 +653,47 @@ export const syncAllSignals = async (organizationId: string) => {
     run(!!grain, () => syncGrainSignals(organizationId)),
   ])
   return { calls, email, hubspotEmail, meetings }
+}
+
+/**
+ * A rep records the next step / champion by hand. Stored as a touchpoint
+ * signal (source "manual") so it counts exactly like an AI-scored one.
+ */
+export const recordManualSignal = async (params: {
+  organizationId: string
+  leadId: string
+  userId: string
+  nextStep?: string | null
+  nextStepDueAt?: string | null
+  championName?: string | null
+  championScore?: number | null
+}) => {
+  const now = new Date()
+  const dueAt = params.nextStepDueAt ? new Date(params.nextStepDueAt) : null
+  return saveSignal(
+    {
+      organizationId: params.organizationId,
+      leadId: params.leadId,
+      userId: params.userId,
+      source: 'manual',
+      sourceId: randomUUID(),
+      occurredAt: now,
+    },
+    {
+      nextStep: params.nextStep || null,
+      nextStepSecured: !!params.nextStep && !!dueAt,
+      nextStepChannel: null,
+      nextStepDueAt: dueAt,
+      nextStepScore: null,
+      championScore: params.championScore ?? null,
+      championName: params.championName || null,
+      engagementScore: null,
+      qualityScore: null,
+      sentiment: null,
+      summary: 'Entered by rep',
+      evidence: { nextStep: null, champion: null, risks: [] },
+    },
+  )
 }
 
 export const getLeadSignals = (organizationId: string, leadId: string) =>

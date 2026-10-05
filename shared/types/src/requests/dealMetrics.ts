@@ -83,6 +83,17 @@ export const GetLeadDealSignalsRequestSchema = z.object({
 });
 export type GetLeadDealSignalsRequest = z.infer<typeof GetLeadDealSignalsRequestSchema>;
 
+/** Rep-entered context where AI scoring has nothing to go on. */
+export const RecordManualSignalRequestSchema = z.object({
+  leadId: z.string().uuid(),
+  nextStep: z.string().trim().max(500).nullable().optional(),
+  /** ISO date/time; a dated next step counts as secured. */
+  nextStepDueAt: z.string().datetime({ offset: true }).nullable().optional(),
+  championName: z.string().trim().max(200).nullable().optional(),
+  championScore: z.number().int().min(0).max(10).nullable().optional(),
+});
+export type RecordManualSignalRequest = z.infer<typeof RecordManualSignalRequestSchema>;
+
 export const SyncDealSignalsRequestSchema = z.object({
   source: z.enum(['all', 'calls', 'gmail', 'hubspot_email', 'grain']).default('all'),
 });
@@ -255,6 +266,23 @@ export interface DealMetricsResponse {
     meetingsScored: number;
     avgMeetingQuality: number;
     emailThreadsScored: number;
+    /** Cold-call funnel: dials -> real conversations -> steps forward. */
+    calling: {
+      dials: number;
+      conversations: number;
+      conversationRate: number | null;
+      dialsPerConversation: number | null;
+      voicemails: number;
+      badNumbers: number;
+      noAnswer: number;
+      unclear: number;
+      conversationSeconds: number;
+      avgConversationSeconds: number | null;
+      medianConversationSeconds: number | null;
+      positiveOutcomes: number;
+      positiveRate: number | null;
+      voicemailCutoffSeconds: number | null;
+    };
   };
   sources: {
     calls: SignalSourceStatus;

@@ -63,6 +63,7 @@ export function useAnalyticsCalls({
           connectionRate: 0,
           totalTalkTimeSeconds: 0,
           avgCallDurationSeconds: 0,
+          conversationTalkTimeSeconds: 0,
         },
         dispositionBreakdown: [],
         callsOverTime: [],
