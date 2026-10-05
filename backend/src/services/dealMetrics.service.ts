@@ -4,6 +4,7 @@ import * as pipelineRepository from '@/repositories/pipeline.repository'
 import * as integrationRepository from '@/repositories/integration.repository'
 import * as dealTouchpointRepository from '@/repositories/dealTouchpoint.repository'
 import { summarizeSalesProcess, type Touch } from '@/lib/sales-process'
+import { summarizeCalling, voicemailCutoff } from '@/lib/call-outcomes'
 import {
   average,
   classifyTrend,
@@ -27,7 +28,8 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000
 const STRONG_CHAMPION = 7
 const WEAK_CHAMPION = 3
-const LIST_LIMIT = 10
+/** Lists scroll inside fixed-height cards, so they can be long. */
+const LIST_LIMIT = 100
 
 const round = (n: number, places = 2) => {
   const f = 10 ** places
@@ -106,16 +108,29 @@ export const getDealMetrics = async (params: {
     (d) => d.dealOutcome === 'lost' && inRange(d.dealClosedAt, start, end),
   )
 
-  const [talkByLead, touchesByLead] = await Promise.all([
-    dealTrackingRepository.findTalkTimeByLead(
-      organizationId,
-      [...won, ...lost].map((d) => d.id),
-    ),
-    dealTouchpointRepository.findTouchesForLeads(
-      organizationId,
-      deals.map((d) => d.id),
-    ),
-  ])
+  const [talkByLead, touchesByLead, funnelCalls, voicemailDurations] =
+    await Promise.all([
+      dealTrackingRepository.findTalkTimeByLead(
+        organizationId,
+        [...won, ...lost].map((d) => d.id),
+      ),
+      dealTouchpointRepository.findTouchesForLeads(
+        organizationId,
+        deals.map((d) => d.id),
+      ),
+      dealTrackingRepository.findCallsForFunnel(organizationId, start, end),
+      dealTrackingRepository.findVoicemailDurations(organizationId),
+    ])
+  const securedCallIds = new Set(
+    signals
+      .filter((s) => s.source === 'call' && s.nextStepSecured)
+      .map((s) => s.sourceId),
+  )
+  const calling = summarizeCalling(
+    funnelCalls,
+    voicemailCutoff(voicemailDurations),
+    securedCallIds,
+  )
 
   const salesProcess = buildSalesProcess(
     touchesByLead,
@@ -156,7 +171,10 @@ export const getDealMetrics = async (params: {
     nextSteps: buildNextSteps(scopedSignals, scopedLatest, openDeals, toItem),
     champions: buildChampions(scopedLatest, openDeals, toItem),
     winLoss: buildWinLoss(won, lost, talkByLead, toItem),
-    activity: buildActivity(callStats, scopedSignals, won.length),
+    activity: {
+      ...buildActivity(callStats, scopedSignals, won.length),
+      calling,
+    },
     sources: buildSources(integrations),
   }
 }
@@ -241,6 +259,8 @@ const buildSalesProcess = (
       .filter((d) => d.dealClosedAt)
       .map((d) => ({ leadId: d.id, closedAt: d.dealClosedAt! })),
     openLeadIds: openDeals.map((d) => d.id),
+    // The list scrolls, so show every quiet deal (capped for payload size).
+    quietLimit: 100,
   })
   const openById = new Map(openDeals.map((d) => [d.id, d]))
   const touchesInPeriod = { call: 0, email: 0, meeting: 0 }

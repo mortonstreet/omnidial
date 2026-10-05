@@ -115,11 +115,13 @@ export function DealList<T extends DealListItem>({
     <div className="min-w-0">
       <div className="text-xs font-medium text-muted-foreground mb-2">
         {title}
+        {deals.length > 0 && <span className="ml-1 tabular-nums">({deals.length})</span>}
       </div>
       {deals.length === 0 ? (
         <p className="text-xs text-muted-foreground">{emptyText}</p>
       ) : (
-        <ul className="divide-y divide-border">
+        // Fixed height: 200 names scroll inside the card instead of growing it.
+        <ul className="divide-y divide-border max-h-72 overflow-y-auto overscroll-contain pr-1">
           {deals.map((deal) => (
             <li key={deal.leadId}>
               <Link

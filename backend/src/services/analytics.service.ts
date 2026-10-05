@@ -30,6 +30,7 @@ export const getCallAnalytics = async (params: GetAnalyticsParams) => {
         connectionRate: 0,
         totalTalkTimeSeconds: 0,
         avgCallDurationSeconds: 0,
+        conversationTalkTimeSeconds: 0,
       },
       dispositionBreakdown: [],
       callsOverTime: [],

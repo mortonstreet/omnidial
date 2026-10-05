@@ -1,5 +1,41 @@
 import { db } from '@/lib/db'
 import { sql } from 'kysely'
+import {
+  BAD_NUMBER_LABEL,
+  VOICEMAIL_LABEL,
+  voicemailCutoff,
+} from '@/lib/call-outcomes'
+
+/**
+ * SQL twin of classifyCall (lib/call-outcomes): a conversation is a call with
+ * any disposition that is not voicemail-like or a bad number, or an
+ * undispositioned call longer than the org's voicemail cutoff. Expects the
+ * disposition joined as `disposition`.
+ */
+const conversationSql = (cutoffSeconds: number | null) =>
+  sql`(
+    (disposition.label IS NOT NULL
+      AND disposition.label !~* ${VOICEMAIL_LABEL.source}
+      AND disposition.label !~* ${BAD_NUMBER_LABEL.source})
+    OR (disposition.label IS NULL AND call.duration > ${cutoffSeconds ?? 2147483647})
+  )`
+
+/** Lengths of calls reps marked as voicemail, for the org's voicemail cutoff. */
+export const getVoicemailCutoffSeconds = async (
+  twilioConfigId: string,
+): Promise<number | null> => {
+  const rows = await db
+    .selectFrom('call')
+    .innerJoin('disposition', 'disposition.id', 'call.dispositionId')
+    .select('call.duration')
+    .where('call.twilioConfigId', '=', twilioConfigId)
+    .where(sql<boolean>`disposition.label ~* ${VOICEMAIL_LABEL.source}`)
+    .where('call.duration', '>', 0)
+    .orderBy('call.startedAt', 'desc')
+    .limit(2000)
+    .execute()
+  return voicemailCutoff(rows.map((r) => r.duration))
+}
 
 export interface CallMetrics {
   totalCalls: number
@@ -9,6 +45,8 @@ export interface CallMetrics {
   connectionRate: number
   totalTalkTimeSeconds: number
   avgCallDurationSeconds: number
+  /** Talk time on conversations only (voicemail greetings excluded). */
+  conversationTalkTimeSeconds: number
 }
 
 export interface DispositionBreakdown {
@@ -40,33 +78,40 @@ export interface AnalyticsFilters {
 export const getCallMetrics = async (
   filters: AnalyticsFilters,
 ): Promise<CallMetrics> => {
+  const cutoff = await getVoicemailCutoffSeconds(filters.twilioConfigId)
+  const isConversation = conversationSql(cutoff)
   let query = db
     .selectFrom('call')
+    .leftJoin('disposition', 'disposition.id', 'call.dispositionId')
     .select([
-      db.fn.count('id').as('totalCalls'),
-      sql<number>`COUNT(*) FILTER (WHERE direction = 'outbound')`.as(
+      db.fn.count('call.id').as('totalCalls'),
+      sql<number>`COUNT(*) FILTER (WHERE call.direction = 'outbound')`.as(
         'outboundCalls',
       ),
-      sql<number>`COUNT(*) FILTER (WHERE direction = 'inbound')`.as(
+      sql<number>`COUNT(*) FILTER (WHERE call.direction = 'inbound')`.as(
         'inboundCalls',
       ),
-      sql<number>`COUNT(*) FILTER (WHERE status = 'completed' AND duration > 0)`.as(
+      // "Connected" = a real conversation, not a voicemail greeting.
+      sql<number>`COUNT(*) FILTER (WHERE ${isConversation})`.as(
         'connectedCalls',
       ),
-      sql<number>`COALESCE(SUM(duration), 0)`.as('totalTalkTimeSeconds'),
-      sql<number>`COALESCE(AVG(NULLIF(duration, 0)), 0)`.as(
+      sql<number>`COALESCE(SUM(call.duration), 0)`.as('totalTalkTimeSeconds'),
+      sql<number>`COALESCE(SUM(call.duration) FILTER (WHERE ${isConversation}), 0)`.as(
+        'conversationTalkTimeSeconds',
+      ),
+      sql<number>`COALESCE(AVG(call.duration) FILTER (WHERE ${isConversation}), 0)`.as(
         'avgCallDurationSeconds',
       ),
     ])
-    .where('twilioConfigId', '=', filters.twilioConfigId)
-    .where('startedAt', '>=', filters.startDate)
-    .where('startedAt', '<=', filters.endDate)
+    .where('call.twilioConfigId', '=', filters.twilioConfigId)
+    .where('call.startedAt', '>=', filters.startDate)
+    .where('call.startedAt', '<=', filters.endDate)
 
   if (filters.userId) {
-    query = query.where('userId', '=', filters.userId)
+    query = query.where('call.userId', '=', filters.userId)
   }
   if (filters.campaignId) {
-    query = query.where('campaignId', '=', filters.campaignId)
+    query = query.where('call.campaignId', '=', filters.campaignId)
   }
 
   const result = await query.executeTakeFirst()
@@ -82,6 +127,9 @@ export const getCallMetrics = async (
     connectionRate:
       totalCalls > 0 ? Math.round((connectedCalls / totalCalls) * 100) : 0,
     totalTalkTimeSeconds: Number(result?.totalTalkTimeSeconds || 0),
+    conversationTalkTimeSeconds: Number(
+      result?.conversationTalkTimeSeconds || 0,
+    ),
     avgCallDurationSeconds: Math.round(
       Number(result?.avgCallDurationSeconds || 0),
     ),
@@ -182,14 +230,18 @@ export const getLeaderboard = async (
     totalTalkTimeSeconds: number
   }>
 > => {
+  const isConversation = conversationSql(
+    await getVoicemailCutoffSeconds(filters.twilioConfigId),
+  )
   let query = db
     .selectFrom('call')
     .innerJoin('user', 'user.id', 'call.userId')
+    .leftJoin('disposition', 'disposition.id', 'call.dispositionId')
     .select([
       'call.userId',
       'user.name as userName',
       db.fn.count('call.id').as('totalCalls'),
-      sql<number>`COUNT(*) FILTER (WHERE call.status = 'completed' AND call.duration > 0)`.as(
+      sql<number>`COUNT(*) FILTER (WHERE ${isConversation})`.as(
         'connectedCalls',
       ),
       sql<number>`COALESCE(SUM(call.duration), 0)`.as('totalTalkTimeSeconds'),

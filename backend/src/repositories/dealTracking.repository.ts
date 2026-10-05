@@ -3,6 +3,7 @@ import { sql } from 'kysely'
 import { Decimal } from '@prisma/client/runtime/library'
 import { InsertDBLeadStageHistory } from '@shared/db/src/types'
 import { withId } from './utils'
+import { VOICEMAIL_LABEL } from '@/lib/call-outcomes'
 
 export interface LeadDealState {
   id: string
@@ -239,3 +240,41 @@ export const findCallQualityStats = async (
     avgCoachingScore: Number(coaching?.avg ?? 0),
   }
 }
+
+/** Calls in a period with their disposition, for the calling funnel. */
+export const findCallsForFunnel = (
+  organizationId: string,
+  startDate: Date,
+  endDate: Date,
+) =>
+  db
+    .selectFrom('call')
+    .innerJoin('twilio_config', 'twilio_config.id', 'call.twilioConfigId')
+    .leftJoin('disposition', 'disposition.id', 'call.dispositionId')
+    .select([
+      'call.id',
+      'call.duration',
+      'call.direction',
+      'call.userId',
+      'disposition.label as dispositionLabel',
+    ])
+    .where('twilio_config.organizationId', '=', organizationId)
+    .where('call.startedAt', '>=', startDate)
+    .where('call.startedAt', '<=', endDate)
+    .execute()
+
+/** Lengths of calls marked voicemail (all time), for the org's voicemail cutoff. */
+export const findVoicemailDurations = async (organizationId: string) =>
+  (
+    await db
+      .selectFrom('call')
+      .innerJoin('twilio_config', 'twilio_config.id', 'call.twilioConfigId')
+      .innerJoin('disposition', 'disposition.id', 'call.dispositionId')
+      .select('call.duration')
+      .where('twilio_config.organizationId', '=', organizationId)
+      .where(sql<boolean>`disposition.label ~* ${VOICEMAIL_LABEL.source}`)
+      .where('call.duration', '>', 0)
+      .orderBy('call.startedAt', 'desc')
+      .limit(2000)
+      .execute()
+  ).map((r) => r.duration)

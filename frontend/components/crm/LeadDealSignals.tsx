@@ -7,6 +7,7 @@ import {
   ChevronUp,
   ExternalLink,
   Mail,
+  PenLine,
   Phone,
   Trophy,
   Users,
@@ -15,7 +16,9 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { useLeadDealSignals } from '@/hooks/api/useDealMetrics'
+import { useLeadDealSignals, useRecordManualSignal } from '@/hooks/api/useDealMetrics'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
 import { DealOutcomeDialog } from './DealOutcomeDialog'
 import {
   DEAL_LOSS_REASONS,
@@ -35,7 +38,7 @@ interface LeadDealSignalsProps {
   onPendingOutcomeHandled?: () => void
 }
 
-const SOURCE_ICON = { call: Phone, email: Mail, meeting: Video } as const
+const SOURCE_ICON = { call: Phone, email: Mail, meeting: Video, manual: PenLine } as const
 
 const reasonLabel = (outcome: DealOutcome, reason: string) =>
   (outcome === 'won' ? DEAL_WIN_REASONS : DEAL_LOSS_REASONS).find(
@@ -117,6 +120,7 @@ export function LeadDealSignals({
   const { data, isLoading } = useLeadDealSignals(leadId)
   const [dialogOutcome, setDialogOutcome] = useState<DealOutcome | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   const signals = data?.data ?? []
   const latest = signals[0]
@@ -154,6 +158,19 @@ export function LeadDealSignals({
           </Button>
         </div>
       </div>
+
+      {editing ? (
+        <ManualContextForm leadId={leadId} onDone={() => setEditing(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <PenLine className="w-3.5 h-3.5" />
+          Add context: next step or champion
+        </button>
+      )}
 
       {dealOutcomeNotes && (
         <p className="text-sm text-muted-foreground italic">“{dealOutcomeNotes}”</p>
@@ -236,5 +253,80 @@ export function LeadDealSignals({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * Fill in what the AI could not see: the agreed next step (a date makes it
+ * "secured") and who is championing the deal.
+ */
+function ManualContextForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
+  const record = useRecordManualSignal()
+  const [nextStep, setNextStep] = useState('')
+  const [dueAt, setDueAt] = useState('')
+  const [championName, setChampionName] = useState('')
+  const [championScore, setChampionScore] = useState('')
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!nextStep.trim() && !championName.trim()) return
+    try {
+      await record.mutateAsync({
+        leadId,
+        nextStep: nextStep.trim() || null,
+        nextStepDueAt: dueAt ? new Date(dueAt).toISOString() : null,
+        championName: championName.trim() || null,
+        championScore: championScore === '' ? null : Number(championScore),
+      })
+      toast.success('Context saved')
+      onDone()
+    } catch (error) {
+      toast.error('Could not save', { description: error instanceof Error ? error.message : undefined })
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-2 sm:grid-cols-2 rounded-lg border border-border p-3">
+      <Input
+        placeholder="Next step (e.g. Demo with their CFO)"
+        value={nextStep}
+        onChange={(e) => setNextStep(e.target.value)}
+        maxLength={500}
+      />
+      <Input
+        type="datetime-local"
+        value={dueAt}
+        onChange={(e) => setDueAt(e.target.value)}
+        aria-label="Next step date"
+        title="A dated next step counts as secured"
+      />
+      <Input
+        placeholder="Champion name"
+        value={championName}
+        onChange={(e) => setChampionName(e.target.value)}
+        maxLength={200}
+      />
+      <select
+        value={championScore}
+        onChange={(e) => setChampionScore(e.target.value)}
+        className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+        aria-label="Champion strength"
+      >
+        <option value="">Champion strength</option>
+        {[10, 8, 6, 4, 2, 0].map((n) => (
+          <option key={n} value={n}>
+            {n}/10{n >= 8 ? ' (actively selling for us)' : n <= 2 ? ' (no advocate)' : ''}
+          </option>
+        ))}
+      </select>
+      <div className="sm:col-span-2 flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={record.isPending || (!nextStep.trim() && !championName.trim())}>
+          {record.isPending ? 'Saving…' : 'Save'}
+        </Button>
+      </div>
+    </form>
   )
 }

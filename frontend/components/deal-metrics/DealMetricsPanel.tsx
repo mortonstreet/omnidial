@@ -107,26 +107,17 @@ export function DealMetricsPanel({
 
       <DealSummaryRow summary={metrics?.summary} isLoading={isLoading} />
 
+      {/* Ordered by what drives decisions: process, then calling and the
+          funnel, then deal health, then outcomes. Lists inside scroll. */}
       <div className="grid gap-4 xl:grid-cols-2">
         <SalesProcessSection process={metrics?.salesProcess} isLoading={isLoading} />
+        <ActivitySection activity={metrics?.activity} isLoading={isLoading} />
+        <ConversionSection conversion={metrics?.conversion} isLoading={isLoading} />
         <VelocitySection velocity={metrics?.velocity} isLoading={isLoading} />
-        <ConversionSection
-          conversion={metrics?.conversion}
-          isLoading={isLoading}
-        />
-        <NextStepsSection
-          nextSteps={metrics?.nextSteps}
-          isLoading={isLoading}
-        />
-        <ChampionsSection
-          champions={metrics?.champions}
-          isLoading={isLoading}
-        />
+        <NextStepsSection nextSteps={metrics?.nextSteps} isLoading={isLoading} />
+        <ChampionsSection champions={metrics?.champions} isLoading={isLoading} />
         <WinLossSection winLoss={metrics?.winLoss} isLoading={isLoading} />
-        <div className="grid gap-4 content-start">
-          <ActivitySection activity={metrics?.activity} isLoading={isLoading} />
-          <DealSizeSection dealSize={metrics?.dealSize} isLoading={isLoading} />
-        </div>
+        <DealSizeSection dealSize={metrics?.dealSize} isLoading={isLoading} />
       </div>
     </div>
   )

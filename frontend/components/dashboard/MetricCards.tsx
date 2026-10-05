@@ -92,22 +92,22 @@ export function MetricCards({ metrics, isLoading }: MetricCardsProps) {
       />
       <MetricCard
         icon={PhoneCall}
-        label="Connected"
+        label="Conversations"
         value={metrics.connectedCalls}
-        subValue={`${metrics.connectionRate}% rate`}
+        subValue={`${metrics.connectionRate}% of calls`}
         isLoading={isLoading}
       />
       <MetricCard
         icon={Clock}
         label="Talk Time"
         value={formatDuration(metrics.totalTalkTimeSeconds)}
-        subValue="success metric"
+        subValue={`${formatDuration(metrics.conversationTalkTimeSeconds ?? 0)} in conversations`}
         isLoading={isLoading}
         isSuccessMetric
       />
       <MetricCard
         icon={Timer}
-        label="Avg Duration"
+        label="Avg Conversation"
         value={formatDuration(metrics.avgCallDurationSeconds)}
         isLoading={isLoading}
       />

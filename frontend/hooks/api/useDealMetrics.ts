@@ -7,6 +7,7 @@ import type {
   DealSignal,
   HubSpotReconcileReport,
   HubSpotSyncStatus,
+  RecordManualSignalRequest,
   SetDealOutcomeRequest,
   SetDealOutcomeResponse,
   SyncDealSignalsRequest,
@@ -128,5 +129,18 @@ export function useSyncHubSpotStages() {
     mutationFn: () =>
       post<{ data: { added: string[]; unmatched: string[] } }>(ENDPOINTS.DEAL_METRICS.HUBSPOT_STAGES_SYNC, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['deal-metrics'] }),
+  })
+}
+
+/** Rep-entered next step / champion where AI scoring has nothing to go on. */
+export function useRecordManualSignal() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ leadId, ...body }: RecordManualSignalRequest) =>
+      post<{ data: DealSignal }>(ENDPOINTS.DEAL_METRICS.SIGNALS(leadId), body),
+    onSuccess: (_, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.leadDealSignals(leadId) })
+      queryClient.invalidateQueries({ queryKey: ['deal-metrics'] })
+    },
   })
 }

@@ -185,6 +185,7 @@ export default function DashboardPage() {
             connectionRate: 0,
             totalTalkTimeSeconds: 0,
             avgCallDurationSeconds: 0,
+            conversationTalkTimeSeconds: 0,
           }}
           isLoading={isLoadingAnalytics}
         />
@@ -201,6 +202,7 @@ export default function DashboardPage() {
             connectionRate: 0,
             totalTalkTimeSeconds: 0,
             avgCallDurationSeconds: 0,
+            conversationTalkTimeSeconds: 0,
           }}
           isLoading={isLoadingAnalytics}
         />

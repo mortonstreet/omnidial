@@ -1936,6 +1936,130 @@ export const reconcileAll = async () => {
   return results
 }
 
+// ------------------------------------------------------------ history backfill
+
+/**
+ * Rebuild past stage moves from HubSpot's property history so velocity and
+ * stage conversion cover the months before OmniDial tracked stages. Only
+ * history older than a lead's first OmniDial-recorded move is added, so
+ * re-running never duplicates. Also links deals the old sync never stored.
+ */
+export const backfillStageHistory = async (organizationId: string) => {
+  const { config: cfg } = await loadContext(organizationId)
+  const stages = await pipelineRepository.findByOrganizationId(organizationId)
+  const stageById = new Map(stages.map((s) => [s.id, s]))
+  const records = await syncRepo.findLinkedRecords(organizationId)
+  const report = {
+    leads: records.length,
+    dealsLinked: 0,
+    transitionsAdded: 0,
+    skippedUnmapped: 0,
+    errors: [] as string[],
+  }
+
+  for (const record of records) {
+    try {
+      let dealId = record.externalDealId
+      if (!dealId) {
+        dealId = await resolveDealId(
+          organizationId,
+          cfg,
+          null,
+          record.externalId,
+        )
+        if (!dealId) continue
+        await crmSyncRecordRepository.update(
+          organizationId,
+          record.leadId,
+          PROVIDER,
+          { externalDealId: dealId },
+        )
+        report.dealsLinked++
+      }
+      const deal = await hs.getObject(
+        organizationId,
+        'deals',
+        dealId,
+        [cfg.stageProperty],
+        [cfg.stageProperty],
+      )
+      const history = [
+        ...(deal.propertiesWithHistory?.[cfg.stageProperty] ?? []),
+      ]
+        .filter((h) => h.value)
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        )
+
+      const earliest = await syncRepo.earliestStageHistoryAt(
+        organizationId,
+        record.leadId,
+      )
+      const rows: Parameters<
+        typeof dealTrackingRepository.insertStageHistory
+      >[0] = []
+      let previous: DBPipelineStage | undefined
+      for (const entry of history) {
+        const at = new Date(entry.timestamp)
+        const stage = await localStageFor(
+          organizationId,
+          cfg,
+          stages,
+          entry.value,
+        )
+        if (!stage) {
+          report.skippedUnmapped++
+          continue
+        }
+        if (previous?.id === stage.id) continue
+        if (!earliest || at < earliest) {
+          rows.push({
+            organizationId,
+            leadId: record.leadId,
+            fromStageId: previous?.id ?? null,
+            toStageId: stage.id,
+            fromStageLabel: previous?.label ?? null,
+            toStageLabel: stage.label,
+            dealValue: null,
+            source: 'hubspot',
+            changedById: null,
+            createdAt: at,
+          })
+        }
+        previous = stage
+      }
+      if (rows.length) {
+        await dealTrackingRepository.insertStageHistory(rows)
+        report.transitionsAdded += rows.length
+        // Time-in-stage clock for leads still in the last replayed stage.
+        const last = rows[rows.length - 1]
+        const [lead] = await syncRepo.findLeadsForSync(organizationId, [
+          record.leadId,
+        ])
+        if (
+          !earliest &&
+          lead?.pipelineStageId === last.toStageId &&
+          stageById.has(last.toStageId!)
+        ) {
+          await dealTrackingRepository.updateLeadDealFields(
+            organizationId,
+            [record.leadId],
+            {
+              stageEnteredAt: last.createdAt as Date,
+            },
+          )
+        }
+      }
+    } catch (error) {
+      report.errors.push(
+        `${record.leadId}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+  return report
+}
+
 // ------------------------------------------------------------ setup & status
 
 /** Create the "OmniDial" deal property group and properties (idempotent). */
