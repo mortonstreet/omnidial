@@ -1,4 +1,44 @@
 import * as leadRepo from '@/repositories/lead.repository'
+import * as dealTrackingService from '@/services/dealTracking.service'
+import { cleanCustomFields, cleanLeadFields } from '@/lib/lead-hygiene'
+import * as hubspotSyncRepository from '@/repositories/hubspotSync.repository'
+import { enqueueCrmSync, enqueueCrmSyncMany } from '@/queues/crm-sync.queue'
+
+/** Lead columns mirrored to the CRM; edits to these are timestamped. */
+const CRM_SYNCED_FIELDS = [
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'company',
+  'title',
+  'linkedInUrl',
+  'dealValue',
+  'pipelineStageId',
+] as const
+
+export interface LeadWriteOptions {
+  /** Where the write came from. CRM-originated writes are not pushed back. */
+  source?: 'app' | 'hubspot'
+  /** When the edit happened (the CRM's timestamp for pulled changes). */
+  editedAt?: Date
+}
+
+const afterLeadWrite = async (
+  organizationId: string,
+  leadId: string,
+  changedFields: string[],
+  options: LeadWriteOptions,
+) => {
+  const synced = changedFields.filter((f) =>
+    (CRM_SYNCED_FIELDS as readonly string[]).includes(f),
+  )
+  if (synced.length === 0) return
+  await hubspotSyncRepository
+    .stampFieldEdits(organizationId, leadId, synced, options.editedAt)
+    .catch((error) => console.error('Failed to stamp field edits:', error))
+  if (options.source !== 'hubspot') await enqueueCrmSync(organizationId, leadId)
+}
 import * as campaignLeadRepo from '@/repositories/campaign-lead.repository'
 import * as campaignRepo from '@/repositories/campaign.repository'
 import * as noteRepo from '@/repositories/note.repository'
@@ -36,8 +76,72 @@ export interface CreateLeadParams {
   dealValue?: number
 }
 
-export const create = async (params: CreateLeadParams) => {
-  const lead = await leadRepo.create(params)
+type TextFields = Pick<
+  CreateLeadParams,
+  'firstName' | 'lastName' | 'email' | 'company' | 'title' | 'linkedInUrl'
+> & { website?: string | null; customFields?: Record<string, string> }
+
+/**
+ * Same cleaning rules as CSV and HubSpot ingest (lib/lead-hygiene): trimmed,
+ * placeholder-free text, lowercase valid emails, canonical URLs. Phone keeps
+ * its typed form; the repository derives E.164 from it.
+ */
+const sanitizeLeadText = <T extends Partial<Record<keyof TextFields, unknown>>>(
+  data: T,
+): T => {
+  const cleaned = cleanLeadFields({
+    firstName: data.firstName ?? undefined,
+    lastName: data.lastName ?? undefined,
+    email: data.email ?? undefined,
+    company: data.company ?? undefined,
+    title: data.title ?? undefined,
+    linkedInUrl: data.linkedInUrl ?? undefined,
+    website: data.website ?? undefined,
+  })
+  const result: Record<string, unknown> = { ...data }
+  // A value that cleans away (e.g. "N/A") becomes null: unset on create,
+  // cleared on update.
+  Object.assign(result, cleaned)
+  if (data.customFields) {
+    result.customFields = cleanCustomFields(
+      data.customFields as Record<string, unknown>,
+    )
+  }
+  return result as T
+}
+
+export const create = async (rawParams: CreateLeadParams) => {
+  const params = sanitizeLeadText(rawParams)
+  const lead = await leadRepo.create({
+    ...params,
+    firstName: params.firstName ?? undefined,
+    lastName: params.lastName ?? undefined,
+    email: params.email ?? undefined,
+    company: params.company ?? undefined,
+    title: params.title ?? undefined,
+    linkedInUrl: params.linkedInUrl ?? undefined,
+  })
+
+  if (lead.pipelineStageId || lead.dealValue) {
+    await dealTrackingService
+      .trackLeadChanges({
+        organizationId: params.organizationId,
+        before: [
+          {
+            id: lead.id,
+            pipelineStageId: null,
+            dealValue: null,
+            initialDealValue: null,
+            dealOutcome: null,
+          },
+        ],
+        pipelineStageId: lead.pipelineStageId ?? undefined,
+        dealValue: params.dealValue,
+        changedById: params.userId,
+      })
+      .catch((error) => console.error('Failed to track new deal:', error))
+    await enqueueCrmSync(params.organizationId, lead.id)
+  }
 
   // Mirror the primaries into lead_contact_method so dedupe and search see
   // them. Non-blocking: a lead that saved should not fail on bookkeeping.
@@ -122,13 +226,46 @@ export interface UpdateLeadParams {
   clientId?: string | null
 }
 
-export const update = async (params: UpdateLeadParams) => {
-  const { id, organizationId, ...data } = params
+export const update = async (
+  params: UpdateLeadParams,
+  changedById?: string,
+  options: LeadWriteOptions = {},
+) => {
+  const { id, organizationId, ...rawData } = params
+  const data = sanitizeLeadText(rawData)
+
+  const tracksDeal =
+    data.pipelineStageId !== undefined || data.dealValue !== undefined
+  const before = tracksDeal
+    ? await dealTrackingService.snapshotLead(organizationId, id)
+    : undefined
 
   const lead = await leadRepo.update(id, organizationId, data)
   if (!lead) {
     throw new Error('Lead not found')
   }
+
+  if (before) {
+    await dealTrackingService
+      .trackLeadChanges({
+        organizationId,
+        before: [before],
+        pipelineStageId: data.pipelineStageId,
+        dealValue: data.dealValue,
+        changedById,
+        source: options.source === 'hubspot' ? 'hubspot' : 'app',
+      })
+      .catch((error) => console.error('Failed to track deal change:', error))
+  }
+
+  await afterLeadWrite(
+    organizationId,
+    id,
+    Object.keys(data).filter(
+      (key) => (data as Record<string, unknown>)[key] !== undefined,
+    ),
+    options,
+  )
 
   // Only touch the mirror when the primary values actually changed.
   if (data.email !== undefined || data.phone !== undefined) {
@@ -153,11 +290,24 @@ export const move = async (
   id: string,
   organizationId: string,
   pipelineStageId: string | null,
+  changedById?: string,
 ) => {
+  const before = await dealTrackingService.snapshotLead(organizationId, id)
   const lead = await leadRepo.update(id, organizationId, { pipelineStageId })
   if (!lead) {
     throw new Error('Lead not found')
   }
+  if (before) {
+    await dealTrackingService
+      .trackLeadChanges({
+        organizationId,
+        before: [before],
+        pipelineStageId,
+        changedById,
+      })
+      .catch((error) => console.error('Failed to track deal change:', error))
+  }
+  await afterLeadWrite(organizationId, id, ['pipelineStageId'], {})
   return lead
 }
 
@@ -338,14 +488,37 @@ export interface BulkAddToPipelineParams {
 
 export const bulkAddToPipeline = async (
   params: BulkAddToPipelineParams,
+  changedById?: string,
 ): Promise<BulkAddToPipelineResponse> => {
   const { organizationId, leadIds, pipelineStageId } = params
 
+  const before = await dealTrackingService.snapshotLeads(
+    organizationId,
+    leadIds,
+  )
   const result = await leadRepo.bulkUpdatePipelineStage(
     organizationId,
     leadIds,
     pipelineStageId,
   )
+  await dealTrackingService
+    .trackLeadChanges({
+      organizationId,
+      before,
+      pipelineStageId,
+      changedById,
+      source: 'bulk',
+    })
+    .catch((error) => console.error('Failed to track deal changes:', error))
+  const moved = before
+    .filter((lead) => lead.pipelineStageId !== pipelineStageId)
+    .map((lead) => lead.id)
+  for (const leadId of moved) {
+    await hubspotSyncRepository
+      .stampFieldEdits(organizationId, leadId, ['pipelineStageId'])
+      .catch((error) => console.error('Failed to stamp field edits:', error))
+  }
+  await enqueueCrmSyncMany(organizationId, moved)
 
   return {
     success: true,

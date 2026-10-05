@@ -7,6 +7,7 @@ export enum QueueName {
   RESEARCH_TASK = 'research-task',
   SMS_CAMPAIGN = 'sms-campaign',
   BILLING = 'billing',
+  CRM_SYNC = 'crm-sync',
 }
 
 export enum ExampleEventType {
@@ -111,4 +112,17 @@ export interface SmsCampaignEvent {
   messageSid?: string
   status?: string
   errorCode?: string
+}
+
+export enum CrmSyncEventType {
+  PUSH_LEAD = 'pushLead',
+  RECONCILE_ALL = 'reconcileAll',
+  SYNC_CALL = 'syncCall',
+}
+
+export interface CrmSyncEvent {
+  type: CrmSyncEventType
+  organizationId?: string
+  leadId?: string
+  callId?: string
 }

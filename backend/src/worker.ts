@@ -6,9 +6,11 @@ import { ScheduledNotificationProcessor } from '@/queues/scheduled-notification.
 import { ResearchTaskProcessor } from '@/queues/research-task.worker'
 import { SmsCampaignProcessor } from '@/queues/sms-campaign.worker'
 import { BillingProcessor } from '@/queues/billing.worker'
+import { CrmSyncProcessor } from '@/queues/crm-sync.worker'
 import { exampleQueue, scheduleRecurringExampleCheck } from '@/queues'
 import { scheduleSmsCampaignProcessor } from '@/queues/sms-campaign.queue'
 import { scheduleBillingJobs } from '@/queues/billing.queue'
+import { scheduleCrmReconcile } from '@/queues/crm-sync.queue'
 
 import logger from '@/lib/logger'
 
@@ -24,6 +26,7 @@ export const startWorker = async () => {
   const researchTaskProcessor = new ResearchTaskProcessor()
   const smsCampaignProcessor = new SmsCampaignProcessor()
   const billingProcessor = new BillingProcessor()
+  const crmSyncProcessor = new CrmSyncProcessor()
 
   try {
     const jobs = await exampleQueue.getJobSchedulers()
@@ -53,6 +56,13 @@ export const startWorker = async () => {
     logger.error('Failed to schedule billing jobs:', error)
   }
 
+  try {
+    await scheduleCrmReconcile()
+    logger.info('Scheduled HubSpot drift reconcile (every 6 hours)')
+  } catch (error) {
+    logger.error('Failed to schedule HubSpot reconcile:', error)
+  }
+
   const shutdown = async () => {
     logger.info('Shutting down Worker services...')
     await eventProcessor.close()
@@ -63,6 +73,7 @@ export const startWorker = async () => {
     await researchTaskProcessor.close()
     await smsCampaignProcessor.close()
     await billingProcessor.close()
+    await crmSyncProcessor.close()
     logger.info('Worker services stopped.')
     process.exit(0)
   }

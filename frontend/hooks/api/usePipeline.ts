@@ -45,7 +45,14 @@ export function useUpdatePipelineStage() {
   return useMutation<
     DBPipelineStage,
     Error,
-    { id: string; label?: string; color?: string; sortOrder?: number; isDefault?: boolean }
+    {
+      id: string;
+      label?: string;
+      color?: string;
+      sortOrder?: number;
+      isDefault?: boolean;
+      outcome?: 'open' | 'won' | 'lost' | null;
+    }
   >({
     mutationFn: async ({ id, ...data }) => {
       return await patch<DBPipelineStage>(ENDPOINTS.PIPELINE_STAGES.UPDATE(id), data);

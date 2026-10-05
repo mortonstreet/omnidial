@@ -10,6 +10,7 @@
     "tsc": "tsc --noEmit",
     "start": "node dist/server.mjs",
     "cli:script": "tsx cli/script.ts",
+    "hubspot": "tsx cli/hubspot.ts",
     "clerk:backfill": "tsx cli/clerk-backfill.ts",
     "cli:flush-rate-limits": "tsx cli/flush-rate-limits.ts",
     "cli:test-notifications": "tsx cli/test-notifications.ts",

@@ -290,6 +290,15 @@ export const ENDPOINTS = {
     CALLS: (orgId: string) => `/analytics/${orgId}/calls`,
     LEADERBOARD: (orgId: string) => `/analytics/${orgId}/leaderboard`,
   },
+  DEAL_METRICS: {
+    BASE: '/deal-metrics',
+    OUTCOME: (leadId: string) => `/deal-metrics/leads/${leadId}/outcome`,
+    SIGNALS: (leadId: string) => `/deal-metrics/leads/${leadId}/signals`,
+    SYNC: '/deal-metrics/signals/sync',
+    GRAIN_CONNECT: '/deal-metrics/grain/connect',
+    HUBSPOT_STATUS: '/deal-metrics/hubspot/status',
+    HUBSPOT_RECONCILE: '/deal-metrics/hubspot/reconcile',
+  },
   SCHEDULE: {
     LIST: (orgId: string) => `/schedule/${orgId}`,
     CREATE: '/schedule',
@@ -780,6 +789,15 @@ export const QUERY_KEYS = {
   mySession: () => ['dialer', 'session', 'me'] as const,
   // Lead Calls
   leadCalls: (leadId?: string) => ['lead', leadId, 'calls'] as const,
+  // Deal metrics
+  dealMetrics: (
+    orgId?: string,
+    startDate?: string,
+    endDate?: string,
+    clientId?: string,
+  ) => ['deal-metrics', orgId, startDate, endDate, clientId] as const,
+  leadDealSignals: (leadId?: string) => ['deal-metrics', 'signals', leadId] as const,
+  hubspotSyncStatus: (orgId?: string) => ['deal-metrics', 'hubspot-sync', orgId] as const,
   // Analytics
   analyticsCalls: (
     orgId?: string,

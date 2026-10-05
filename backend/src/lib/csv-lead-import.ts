@@ -1,4 +1,27 @@
-import { validateAndNormalizePhone } from '@/lib/phone'
+import {
+  cleanCustomFields,
+  cleanText,
+  normalizeEmail,
+  normalizeLinkedInUrl,
+  normalizePhoneValue,
+  normalizeUrl,
+  parseMoney,
+} from '@/lib/lead-hygiene'
+
+/** Deal value columns are parsed to a plain number under this custom field. */
+export const CSV_DEAL_VALUE_FIELD = 'deal_value'
+const DEAL_VALUE_HEADERS = new Set([
+  'deal value',
+  'deal_value',
+  'dealvalue',
+  'deal amount',
+  'deal size',
+  'amount',
+  'opportunity value',
+  'contract value',
+  'acv',
+  'arr',
+])
 
 export interface ParsedCsvLead {
   firstName?: string
@@ -185,11 +208,22 @@ export function mapCsvRowToLead(
 
     if (!originalHeader || !value) continue
 
+    if (DEAL_VALUE_HEADERS.has(normalizedHeader)) {
+      const amount = parseMoney(value)
+      if (amount !== null && customFields[CSV_DEAL_VALUE_FIELD] === undefined) {
+        customFields[CSV_DEAL_VALUE_FIELD] = String(amount)
+      }
+      continue
+    }
+
     const mappedField = FIELD_MAPPINGS[normalizedHeader]
     if (mappedField) {
       const mappedValue = normalizeMappedValue(mappedField, value)
       if (mappedValue && !lead[mappedField]) {
         lead[mappedField] = mappedValue
+      } else if (mappedValue && lead[mappedField] !== mappedValue) {
+        // A second phone/email column: keep it instead of silently dropping it.
+        customFields[originalHeader] = mappedValue
       }
       continue
     }
@@ -207,10 +241,15 @@ export function mapCsvRowToLead(
 
   let normalizedPhone: string | null = null
   if (lead.phone) {
-    normalizedPhone = validateAndNormalizePhone(lead.phone)
+    const issues: Parameters<typeof normalizePhoneValue>[1] = []
+    normalizedPhone = normalizePhoneValue(lead.phone, issues)?.e164 ?? null
     if (!normalizedPhone) {
       if (!options.requirePhone && lead.linkedInUrl) {
         lead.phone = undefined
+      } else if (issues[0]?.problem === 'excel_scientific_notation') {
+        return {
+          error: `Phone "${lead.phone}" was corrupted by Excel (scientific notation). Format the column as Text and re-export.`,
+        }
       } else {
         return { error: `Invalid phone number format: "${lead.phone}"` }
       }
@@ -221,7 +260,7 @@ export function mapCsvRowToLead(
     lead: {
       ...lead,
       normalizedPhone,
-      customFields,
+      customFields: cleanCustomFields(customFields),
     },
   }
 }
@@ -235,17 +274,18 @@ function normalizeMappedValue(
     return undefined
   }
 
-  if (field === 'website') {
-    return normalizeWebsite(trimmed)
+  // Shared rules (lib/lead-hygiene) so CSV, HubSpot and the API agree.
+  switch (field) {
+    case 'email':
+      return normalizeEmail(trimmed) ?? undefined
+    case 'website':
+      return normalizeUrl(trimmed) ?? undefined
+    case 'linkedInUrl':
+      return normalizeLinkedInUrl(trimmed) ?? undefined
+    case 'phone':
+      // Raw (cleaned) number is kept for display; E.164 goes in normalizedPhone.
+      return cleanText(trimmed, 'phone', undefined, 64) ?? undefined
+    default:
+      return cleanText(trimmed, field) ?? undefined
   }
-
-  return trimmed
-}
-
-function normalizeWebsite(value: string): string {
-  if (/^https?:\/\//i.test(value)) {
-    return value
-  }
-
-  return `https://${value.replace(/^\/+/, '')}`
 }

@@ -1,4 +1,5 @@
 import { config } from '@/config'
+import { enqueueCallSync } from '@/queues/crm-sync.queue'
 import logger from '@/lib/logger'
 import { db } from '@/lib/db'
 import { sql } from 'kysely'
@@ -781,7 +782,9 @@ export const setCallDisposition = async (
   callId: string,
   dispositionId: string,
 ) => {
-  return callRepository.update(callId, { dispositionId })
+  const call = await callRepository.update(callId, { dispositionId })
+  await enqueueCallSync(callId)
+  return call
 }
 
 export const setCallDispositionForOrg = async (
@@ -797,7 +800,11 @@ export const setCallDispositionForOrg = async (
     return null
   }
 
-  return callRepository.updateForOrg(callId, orgId, { dispositionId })
+  const call = await callRepository.updateForOrg(callId, orgId, {
+    dispositionId,
+  })
+  await enqueueCallSync(callId)
+  return call
 }
 
 export const dropVoicemail = async (

@@ -28,6 +28,7 @@ import clientsRoutes from './clients'
 import activityRoutes from './activity'
 import scheduleRoutes from './schedule'
 import analyticsRoutes from './analytics'
+import dealMetricsRoutes from './dealMetrics'
 import scriptsRoutes from './scripts'
 import powerDialerRoutes from './powerDialer'
 import apiKeysRoutes from './api-keys'
@@ -102,6 +103,7 @@ router.use('/clients', clientsRoutes)
 router.use('/activity', activityRoutes)
 router.use('/schedule', scheduleRoutes)
 router.use('/analytics', analyticsRoutes)
+router.use('/deal-metrics', dealMetricsRoutes)
 router.use('/scripts', scriptsRoutes)
 router.use('/power-dialer', powerDialerRoutes)
 router.use('/api-keys', apiKeysRoutes)

@@ -31,11 +31,16 @@ const SCOPES = [
   'oauth',
 ]
 
+// Requested as optional so installs still succeed if the app's Auth settings
+// don't list them yet; features that need them report the missing scope.
+const OPTIONAL_SCOPES = ['crm.schemas.deals.write', 'sales-email-read']
+
 export const getOAuthUrl = (state: string, redirectUri: string): string => {
   const params = new URLSearchParams({
     client_id: config.hubspot.clientId || '',
     redirect_uri: redirectUri,
     scope: SCOPES.join(' '),
+    optional_scope: OPTIONAL_SCOPES.join(' '),
     state,
   })
   return `${HUBSPOT_AUTH_URL}?${params.toString()}`

@@ -16,6 +16,11 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useQuickCall } from '@/hooks/useQuickCall'
+import { LeadDealSignals } from '@/components/crm/LeadDealSignals'
+import {
+  resolveStageOutcome,
+  type DealOutcome,
+} from '@shared/types/src/requests/dealMetrics'
 import {
   LeadDetailHeader,
   LeadTabSidebar,
@@ -43,6 +48,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
   const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState<TabType>('overview')
+  // Set when the stage picker moves the lead into a won/lost stage.
+  const [pendingOutcome, setPendingOutcome] = useState<DealOutcome | null>(null)
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -158,6 +165,9 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
           pipelineStageId: stageId || null,
         })
         refetch()
+        const stage = stagesData?.data?.find((s) => s.id === stageId)
+        const outcome = stage ? resolveStageOutcome(stage) : 'open'
+        if (outcome !== 'open') setPendingOutcome(outcome)
         if (isHubSpotConnected) {
           await handleHubSpotSync('Stage updated and synced to HubSpot')
         } else {
@@ -353,6 +363,19 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         isHubSpotSyncing={syncLeadToCrm.isPending}
         onHubSpotSync={() => {
           void handleHubSpotSync()
+        }}
+      />
+
+      <LeadDealSignals
+        leadId={lead.id}
+        leadName={fullName}
+        dealOutcome={lead.dealOutcome}
+        dealOutcomeReason={lead.dealOutcomeReason}
+        dealOutcomeNotes={lead.dealOutcomeNotes}
+        pendingOutcome={pendingOutcome}
+        onPendingOutcomeHandled={() => {
+          setPendingOutcome(null)
+          refetch()
         }}
       />
 

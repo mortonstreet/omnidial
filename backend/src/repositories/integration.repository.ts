@@ -17,6 +17,7 @@ export interface UpdateIntegrationInput {
   tokenExpiresAt?: Date
   config?: object
   lastSyncAt?: Date
+  externalAccountId?: string | null
 }
 
 export const findByOrganizationId = async (organizationId: string) => {

@@ -10,6 +10,12 @@ export interface CrmContact {
   linkedInUrl?: string
   dealValue?: number | string | null
   pipelineStageLabel?: string
+  dealOutcome?: string | null
+  dealClosedAt?: Date | null
+  dealOutcomeReason?: string | null
+  dealOutcomeNotes?: string | null
+  /** Latest AI-extracted next step from a call / email / meeting. */
+  nextStep?: string | null
   /** Extra ways to reach the contact, beyond the primary email/phone. */
   secondaryEmails?: string[]
   secondaryPhones?: string[]

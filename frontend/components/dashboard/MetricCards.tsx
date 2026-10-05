@@ -1,6 +1,6 @@
 'use client';
 
-import { Phone, PhoneOutgoing, PhoneIncoming, PhoneCall, Clock, Timer } from 'lucide-react';
+import { Phone, PhoneOutgoing, PhoneIncoming, PhoneCall, Clock, Timer, Star } from 'lucide-react';
 import type { CallMetrics } from '@shared/types/src';
 
 interface MetricCardsProps {
@@ -26,20 +26,34 @@ function MetricCard({
   value,
   subValue,
   isLoading,
+  isSuccessMetric,
 }: {
   icon: React.ElementType;
   label: string;
   value: string | number;
   subValue?: string;
   isLoading?: boolean;
+  isSuccessMetric?: boolean;
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div
+      className={
+        isSuccessMetric
+          ? 'bg-card border border-amber-500/50 ring-1 ring-amber-500/20 rounded-xl p-4'
+          : 'bg-card border border-border rounded-xl p-4'
+      }
+    >
       <div className="flex items-center gap-2 text-muted-foreground mb-2">
-        <div className="p-2 rounded-md bg-muted">
+        <div className={isSuccessMetric ? 'p-2 rounded-md bg-amber-500/10 text-amber-500' : 'p-2 rounded-md bg-muted'}>
           <Icon className="w-4 h-4" />
         </div>
         <span className="text-sm font-normal">{label}</span>
+        {isSuccessMetric && (
+          <Star
+            className="w-3.5 h-3.5 ml-auto text-amber-500 fill-amber-500"
+            aria-label="Success metric"
+          />
+        )}
       </div>
       {isLoading ? (
         <div className="h-8 bg-muted rounded animate-pulse w-16" />
@@ -87,7 +101,9 @@ export function MetricCards({ metrics, isLoading }: MetricCardsProps) {
         icon={Clock}
         label="Talk Time"
         value={formatDuration(metrics.totalTalkTimeSeconds)}
+        subValue="success metric"
         isLoading={isLoading}
+        isSuccessMetric
       />
       <MetricCard
         icon={Timer}

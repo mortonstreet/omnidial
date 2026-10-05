@@ -3,5 +3,8 @@
   "webhook_event_receipt": "no-rls",
   "user_phone_number": "direct-org",
   "lead_contact_method": "direct-org",
-  "dnc_entry": "direct-org"
+  "dnc_entry": "direct-org",
+  "lead_stage_history": "direct-org",
+  "deal_signal": "direct-org",
+  "crm_sync_event": "direct-org"
 }

@@ -102,7 +102,7 @@ export const updateLead: AuthRequestHandler<UpdateLeadRequest> = async (
   res,
 ) => {
   try {
-    const lead = await leadService.update(req.validated)
+    const lead = await leadService.update(req.validated, req.user.id)
     res.json(lead)
   } catch (error) {
     res.status(404).json({ error: 'Lead not found' })
@@ -130,7 +130,12 @@ export const moveLead: AuthRequestHandler<MoveLeadRequest> = async (
   const { id, organizationId, pipelineStageId } = req.validated
 
   try {
-    const lead = await leadService.move(id, organizationId, pipelineStageId)
+    const lead = await leadService.move(
+      id,
+      organizationId,
+      pipelineStageId,
+      req.user.id,
+    )
     res.json(lead)
   } catch (error) {
     res.status(404).json({ error: 'Lead not found' })
@@ -197,7 +202,7 @@ export const bulkAddToCampaign: AuthRequestHandler<
 export const bulkAddToPipeline: AuthRequestHandler<
   BulkAddToPipelineRequest
 > = async (req, res) => {
-  const result = await leadService.bulkAddToPipeline(req.validated)
+  const result = await leadService.bulkAddToPipeline(req.validated, req.user.id)
   res.json(result)
 }
 

@@ -9,6 +9,12 @@ import {
   useCreatePipelineStage,
 } from "@/hooks/api/usePipeline";
 import { PipelineColumn } from "./PipelineColumn";
+import { DealOutcomeDialog } from "./DealOutcomeDialog";
+import {
+  resolveStageOutcome,
+  type DealOutcome,
+  type StageOutcomeSetting,
+} from "@shared/types/src/requests/dealMetrics";
 import { useMoveLead } from "@/hooks/api/useLeads";
 import { useConnectedCrms, useCrmPushLead } from "@/hooks/api/useCrmSync";
 import { Button } from "@/components/ui/button";
@@ -58,6 +64,12 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [leadDropTargetStageId, setLeadDropTargetStageId] = useState<string | null>(null);
+  // Deal that just landed in a won/lost stage, waiting for its reason.
+  const [closingDeal, setClosingDeal] = useState<{
+    leadId: string;
+    leadName: string;
+    outcome: DealOutcome;
+  } | null>(null);
   // Whether the in-flight stage drag already saved its order, so dragend knows
   // not to revert on top of a successful drop.
   const didPersistStageOrder = useRef(false);
@@ -122,8 +134,22 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
 
       if (!leadId || fromStageId === targetStageId) return;
 
+      const targetStage = localStages.find((s) => s.id === targetStageId);
+      const outcome = targetStage ? resolveStageOutcome(targetStage) : "open";
+
       try {
         await moveLead.mutateAsync({ id: leadId, pipelineStageId: targetStageId });
+        if (outcome !== "open") {
+          const lead = leads.find((l) => l.id === leadId);
+          setClosingDeal({
+            leadId,
+            leadName:
+              [lead?.firstName, lead?.lastName].filter(Boolean).join(" ") ||
+              lead?.company ||
+              "",
+            outcome,
+          });
+        }
         if (isHubSpotConnected) {
           try {
             await syncLeadToCrm.mutateAsync({
@@ -146,11 +172,14 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
         toast.error("Failed to move lead");
       }
     },
-    [isHubSpotConnected, moveLead, syncLeadToCrm]
+    [isHubSpotConnected, moveLead, syncLeadToCrm, localStages, leads]
   );
 
   const handleUpdateStage = useCallback(
-    async (id: string, data: { label?: string; color?: string }) => {
+    async (
+      id: string,
+      data: { label?: string; color?: string; outcome?: StageOutcomeSetting }
+    ) => {
       // Optimistic update
       setLocalStages((prev) =>
         prev.map((s) => (s.id === id ? { ...s, ...data } : s))
@@ -318,6 +347,16 @@ export function PipelineBoard({ stages, leads, onAddLead, onLeadClick }: Pipelin
           {createStage.isPending ? "Adding..." : "Add Stage"}
         </Button>
       </div>
+
+      {closingDeal && (
+        <DealOutcomeDialog
+          open
+          onOpenChange={(open) => !open && setClosingDeal(null)}
+          leadId={closingDeal.leadId}
+          leadName={closingDeal.leadName}
+          outcome={closingDeal.outcome}
+        />
+      )}
     </div>
   );
 }

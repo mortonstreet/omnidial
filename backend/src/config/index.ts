@@ -92,6 +92,10 @@ const envSchema = z.object({
   // HubSpot
   HUBSPOT_CLIENT_ID: z.string().optional(),
   HUBSPOT_CLIENT_SECRET: z.string().optional(),
+  // Legacy app id: lets webhook handling ignore echoes of our own writes.
+  HUBSPOT_APP_ID: z.string().optional(),
+  // Developer API key, only for managing webhook subscriptions from the CLI.
+  HUBSPOT_DEVELOPER_API_KEY: z.string().optional(),
   // Salesforce
   SALESFORCE_CLIENT_ID: z.string().optional(),
   SALESFORCE_CLIENT_SECRET: z.string().optional(),
@@ -376,6 +380,8 @@ export const config = {
   hubspot: {
     clientId: env.HUBSPOT_CLIENT_ID,
     clientSecret: env.HUBSPOT_CLIENT_SECRET,
+    appId: env.HUBSPOT_APP_ID,
+    developerApiKey: env.HUBSPOT_DEVELOPER_API_KEY,
   },
   salesforce: {
     clientId: env.SALESFORCE_CLIENT_ID,

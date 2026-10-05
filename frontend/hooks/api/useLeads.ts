@@ -40,6 +40,13 @@ interface Lead {
   customFields: Record<string, string> | null
   pipelineStageId: string | null
   dealValue: string | null
+  // Deal tracking
+  initialDealValue?: string | null
+  stageEnteredAt?: string | null
+  dealOutcome?: 'won' | 'lost' | null
+  dealClosedAt?: string | null
+  dealOutcomeReason?: string | null
+  dealOutcomeNotes?: string | null
   aiCompanySummary: string | null
   // Structured AI summary fields
   aiCompanyOverview: string | null

@@ -4,6 +4,8 @@ import {
   getOrCreateTranscript,
 } from '@/services/salesCoach.service'
 import { db } from '@/lib/db'
+import * as dealSignalService from '@/services/dealSignal.service'
+import { enqueueCallSync } from '@/queues/crm-sync.queue'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -297,6 +299,14 @@ export async function generateIntelligence(
     tokensUsed: analysis.tokensUsed,
     analysisTimeMs,
   })
+
+  // Same transcript feeds pipeline scoring (next step, champion, quality).
+  // Fire-and-forget: intelligence already succeeded for the user.
+  dealSignalService
+    .scoreCall(organizationId, callId)
+    .catch((error) => console.error('Deal signal scoring failed:', error))
+  // The AI summary now exists: refresh the HubSpot call activity body.
+  void enqueueCallSync(callId)
 
   return intelligence
 }

@@ -438,6 +438,17 @@ model Lead {
   // Direct client assignment (for leads not in a campaign)
   clientId String?
 
+  // Deal tracking (pipeline velocity, deal size drift, win/loss reflection)
+  stageEnteredAt     DateTime? // When the lead entered its current pipeline stage
+  initialDealValue   Decimal?  @db.Decimal(12, 2) // First deal value ever set, for over/underselling drift
+  dealOutcome        String? // "won" | "lost" | null (open)
+  dealClosedAt       DateTime?
+  dealOutcomeReason  String? // Category, e.g. "price", "timing", "competitor"
+  dealOutcomeNotes   String? // Free-text reflection
+  // { field: ISO time } of the last local edit to each CRM-synced field, so
+  // two-way sync can let the newest edit win per field.
+  syncFieldUpdatedAt Json?
+
   organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pipelineStage    PipelineStage?      @relation(fields: [pipelineStageId], references: [id])
   client           Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -453,6 +464,8 @@ model Lead {
   crmSyncRecords   CrmSyncRecord[]
   contactMethods   LeadContactMethod[]
   dncEntries       DncEntry[]
+  stageHistory     LeadStageHistory[]
+  dealSignals      DealSignal[]
 
   // Agent orchestration v2
   agentExecutions AgentExecution[]
@@ -533,6 +546,66 @@ model DncEntry {
   @@map("dnc_entry")
 }
 
+/// One row per pipeline stage transition. Time-in-stage and stage conversion
+/// are derived from consecutive rows per lead. Stage labels are snapshotted so
+/// history survives stage renames and deletes.
+model LeadStageHistory {
+  id             String   @id @default(uuid())
+  organizationId String
+  leadId         String
+  fromStageId    String?
+  toStageId      String?
+  fromStageLabel String?
+  toStageLabel   String?
+  dealValue      Decimal? @db.Decimal(12, 2) // Deal value at the moment of the move
+  source         String   @default("app") // "app" | "bulk" | "hubspot" | "api"
+  changedById    String?
+  createdAt      DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([leadId, createdAt])
+  @@map("lead_stage_history")
+}
+
+/// AI-scored deal health signal from one touchpoint: a call transcript, an
+/// email thread (Gmail) or a recorded meeting (Grain). Source-agnostic so all
+/// three feed the same next-step / champion / quality metrics.
+model DealSignal {
+  id              String    @id @default(uuid())
+  organizationId  String
+  leadId          String
+  userId          String?
+  source          String // "call" | "email" | "meeting"
+  sourceId        String // call id | gmail thread id | grain recording id
+  sourceUrl       String?
+  sourceUpdatedAt DateTime? // Last message / recording time; re-analyse when it moves
+  occurredAt      DateTime
+  summary         String    @default("")
+  nextStep        String?
+  nextStepSecured Boolean   @default(false) // A concrete date/time was agreed with the buyer
+  nextStepChannel String? // "call" | "email" | "meeting" | "other"
+  nextStepDueAt   DateTime?
+  nextStepScore   Int? // 0-10 specificity + commitment
+  championScore   Int? // 0-10 buyer advocacy
+  championName    String?
+  engagementScore Int? // 0-10 buyer responsiveness / initiative
+  qualityScore    Int? // 0-10 rep execution on this touchpoint
+  sentiment       String? // "positive" | "neutral" | "negative"
+  evidence        Json      @default("{}") // Quotes backing each score + risk flags
+  modelUsed       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, source, sourceId, leadId])
+  @@index([organizationId, occurredAt])
+  @@index([leadId, occurredAt])
+  @@map("deal_signal")
+}
+
 model PipelineStage {
   id             String   @id @default(uuid())
   organizationId String
@@ -540,6 +613,9 @@ model PipelineStage {
   color          String   @default("#6B7280")
   sortOrder      Int      @default(0)
   isDefault      Boolean  @default(false)
+  // "open" | "won" | "lost". Null = infer from the label ("Closed Won" etc.)
+  // so existing pipelines report win/loss without being reconfigured.
+  outcome        String?
   createdAt      DateTime @default(now())
 
   leads Lead[]
@@ -661,15 +737,15 @@ model LeadList {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
 
-  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  folder                LeadListFolder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  createdBy             User                  @relation(fields: [createdById], references: [id])
-  lastModifiedBy        User?                 @relation("LeadListModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
-  entries               LeadListEntry[]
-  campaignLists         CampaignList[]
-  smsCampaignLists      SmsCampaignList[]
-  favorites             ListFavorite[]
-  opens                 ListOpen[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  folder           LeadListFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdBy        User              @relation(fields: [createdById], references: [id])
+  lastModifiedBy   User?             @relation("LeadListModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
+  entries          LeadListEntry[]
+  campaignLists    CampaignList[]
+  smsCampaignLists SmsCampaignList[]
+  favorites        ListFavorite[]
+  opens            ListOpen[]
 
   @@index([organizationId])
   @@index([folderId])
@@ -765,6 +841,9 @@ model Call {
 
   // Local presence field
   poolNumberId String? // Which pool number was used for caller ID
+
+  // CRM activity this call was logged as (HubSpot call engagement id)
+  crmActivityId String?
 
   // Sales Coach relations
   transcript   CallTranscript?
@@ -920,24 +999,28 @@ model PowerDialerProgress {
 
 // Integration for OAuth connections (Settings feature)
 model Integration {
-  id             String    @id @default(uuid())
-  organizationId String
-  provider       String // 'salesforce' | 'hubspot' | 'slack' | 'google_sheets' | 'zapier' | 'webhook'
-  accessToken    String? // Encrypted
-  refreshToken   String? // Encrypted
-  tokenExpiresAt DateTime?
-  connectedById  String
-  config         Json? // Sync settings, field mappings, etc.
-  autoSyncToCrm  Boolean   @default(false)
-  lastSyncAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @default(now()) @updatedAt
+  id                String    @id @default(uuid())
+  organizationId    String
+  provider          String // 'salesforce' | 'hubspot' | 'slack' | 'google_sheets' | 'zapier' | 'webhook'
+  accessToken       String? // Encrypted
+  refreshToken      String? // Encrypted
+  tokenExpiresAt    DateTime?
+  connectedById     String
+  config            Json? // Sync settings, field mappings, etc.
+  autoSyncToCrm     Boolean   @default(false)
+  lastSyncAt        DateTime?
+  // Account id on the provider side (HubSpot portal / hub id). Webhooks carry
+  // it, so events route to the right org instead of probing every connection.
+  externalAccountId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   connectedBy  User         @relation(fields: [connectedById], references: [id])
 
   @@unique([organizationId, provider])
   @@index([organizationId])
+  @@index([provider, externalAccountId])
   @@map("integration")
 }
 
@@ -2813,25 +2896,52 @@ model AdminAuditLog {
 // ============================================
 
 model CrmSyncRecord {
-  id             String   @id @default(uuid())
-  organizationId String
-  leadId         String
-  provider       String // "hubspot" | "salesforce" | "attio"
-  externalId     String // Contact ID in the external CRM
-  externalUrl    String? // Direct link to CRM contact
-  syncDirection  String // "push" | "pull"
-  syncStatus     String // "synced" | "failed" | "pending"
-  lastSyncedAt   DateTime
-  errorMessage   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  id              String    @id @default(uuid())
+  organizationId  String
+  leadId          String
+  provider        String // "hubspot" | "salesforce" | "attio"
+  externalId      String // Contact ID in the external CRM
+  externalUrl     String? // Direct link to CRM contact
+  externalDealId  String? // Deal linked to this lead (HubSpot); never re-guessed once known
+  externalTaskId  String? // Open next-step task created from AI signals
+  lastPushedAt    DateTime?
+  lastPulledAt    DateTime?
+  pushedHash      String? // Hash of the last pushed property set; unchanged pushes are skipped
+  remoteDeletedAt DateTime? // Contact deleted/merged away in the CRM; lead kept, link paused
+  syncDirection   String // "push" | "pull"
+  syncStatus      String // "synced" | "failed" | "pending"
+  lastSyncedAt    DateTime
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, leadId, provider])
   @@index([organizationId, provider])
   @@index([leadId])
+  @@index([provider, externalDealId])
   @@map("crm_sync_record")
+}
+
+/// Audit trail for CRM sync: every push, pull and reconcile change, so drift
+/// is explainable ("HubSpot changed amount at 14:02, newer than our edit").
+model CrmSyncEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  leadId         String?
+  provider       String // "hubspot"
+  direction      String // "push" | "pull" | "reconcile"
+  objectType     String // "contact" | "deal" | "call" | "task" | "property"
+  externalId     String?
+  status         String // "applied" | "skipped" | "conflict" | "failed"
+  changes        Json     @default("{}") // { field: { from, to, winner } }
+  message        String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([leadId, createdAt])
+  @@map("crm_sync_event")
 }
 
 // Usage-based billing

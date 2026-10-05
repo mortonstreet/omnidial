@@ -1,5 +1,6 @@
 import { CrmAdapter, CrmContact, CrmPushResult, CrmSearchResult } from './types'
 import { hubspotFetch } from './hubspotFetch'
+import { dealTrackingProperties } from '@/lib/hubspot-deal-properties'
 import { decrypt, encrypt } from '@/lib/encryption'
 import { config } from '@/config'
 import * as integrationRepository from '@/repositories/integration.repository'
@@ -124,7 +125,7 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   }
 }
 
-async function getHubSpotHeaders(
+export async function getHubSpotHeaders(
   organizationId: string,
   options: { forceRefresh?: boolean } = {},
 ): Promise<Record<string, string>> {
@@ -179,7 +180,7 @@ async function getHubSpotHeaders(
   }
 }
 
-const isExpiredHubSpotAuthError = (error: unknown) => {
+export const isExpiredHubSpotAuthError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
   return /EXPIRED_AUTHENTICATION|OAuth token.*expired|expired.*OAuth token/i.test(
     message,
@@ -249,10 +250,50 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     }
   }
 
-  private async pushContactWithHeaders(
-    headers: Record<string, string>,
-    contact: CrmContact,
-  ): Promise<CrmPushResult> {
+  /**
+   * Create or update the contact only (no deal), returning its id. Used by
+   * the two-way sync, which manages the deal itself by stored deal id.
+   */
+  async upsertContact(contact: CrmContact): Promise<string> {
+    const run = async (headers: Record<string, string>) => {
+      const properties = this.contactProperties(contact)
+      const existingId = await this.findExistingContactId(headers, contact)
+      if (existingId) {
+        await this.updateContact(headers, existingId, properties)
+        return existingId
+      }
+      const response = await hubspotFetch(
+        `${HUBSPOT_API_BASE}/crm/v3/objects/contacts`,
+        { method: 'POST', headers, body: JSON.stringify({ properties }) },
+      )
+      if (response.ok) return ((await response.json()) as { id: string }).id
+      if (response.status === 409) {
+        const conflictId = await this.findExistingContactId(headers, {
+          ...contact,
+          externalId: undefined,
+        })
+        if (conflictId) {
+          await this.updateContact(headers, conflictId, properties)
+          return conflictId
+        }
+      }
+      throw new Error(
+        `Failed to create HubSpot contact: ${await response.text()}`,
+      )
+    }
+
+    const headers = await getHubSpotHeaders(this.organizationId)
+    try {
+      return await run(headers)
+    } catch (error) {
+      if (!isExpiredHubSpotAuthError(error)) throw error
+      return run(
+        await getHubSpotHeaders(this.organizationId, { forceRefresh: true }),
+      )
+    }
+  }
+
+  private contactProperties(contact: CrmContact): Record<string, string> {
     const properties: Record<string, string> = {}
     if (contact.firstName) properties.firstname = contact.firstName
     if (contact.lastName) properties.lastname = contact.lastName
@@ -271,6 +312,14 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     if (contact.secondaryEmails?.length) {
       properties.hs_additional_emails = contact.secondaryEmails.join(';')
     }
+    return properties
+  }
+
+  private async pushContactWithHeaders(
+    headers: Record<string, string>,
+    contact: CrmContact,
+  ): Promise<CrmPushResult> {
+    const properties = this.contactProperties(contact)
 
     const existingContactId = await this.findExistingContactId(headers, contact)
     if (existingContactId) {
@@ -523,6 +572,8 @@ export class HubSpotCrmAdapter implements CrmAdapter {
     if (contact.dealValue !== undefined && contact.dealValue !== null) {
       properties.amount = String(contact.dealValue)
     }
+
+    Object.assign(properties, dealTrackingProperties(contact))
 
     const existingDealId = await this.findAssociatedDealId(headers, contactId)
     if (existingDealId) {

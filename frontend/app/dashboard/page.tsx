@@ -19,6 +19,7 @@ import {
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { MetricCards } from '@/components/dashboard/MetricCards';
 import { MobileQuickStats } from '@/components/dashboard/MobileQuickStats';
+import { PipelineHealthStrip } from '@/components/deal-metrics/PipelineHealthStrip';
 import { CallsOverTimeChart } from '@/components/dashboard/CallsOverTimeChart';
 import { CallStatusChart } from '@/components/dashboard/CallStatusChart';
 import { CallsLogModal } from '@/components/dashboard/CallsLogModal';
@@ -202,6 +203,15 @@ export default function DashboardPage() {
             avgCallDurationSeconds: 0,
           }}
           isLoading={isLoadingAnalytics}
+        />
+      </div>
+
+      {/* Deal health - full breakdown on the CRM tab */}
+      <div className="mb-6">
+        <PipelineHealthStrip
+          startDate={startDate}
+          endDate={endDate}
+          clientId={clientFilter}
         />
       </div>
 

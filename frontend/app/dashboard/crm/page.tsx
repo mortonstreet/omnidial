@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Page } from '@/components/dashboard/Page'
 import { PipelineBoard } from '@/components/crm/PipelineBoard'
 import { CreateLeadModal } from '@/components/crm/CreateLeadModal'
@@ -26,10 +26,37 @@ import {
 } from '@/components/ui/tooltip'
 import { Plus, RefreshCw, Users } from 'lucide-react'
 import { Logo3DSpinner } from '@/components/ui/Logo3DSpinner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DealMetricsPanel } from '@/components/deal-metrics/DealMetricsPanel'
 import { toast } from 'sonner'
 
+type CrmTab = 'pipeline' | 'metrics'
+
+// useSearchParams needs a Suspense boundary for static rendering.
 export default function CRMPage() {
+  return (
+    <Suspense>
+      <CRMPageContent />
+    </Suspense>
+  )
+}
+
+function CRMPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const tab: CrmTab =
+    searchParams.get('tab') === 'metrics' ? 'metrics' : 'pipeline'
+
+  const handleTabChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (value === 'metrics') params.set('tab', 'metrics')
+    else params.delete('tab')
+    const query = params.toString()
+    router.replace(`/dashboard/crm${query ? `?${query}` : ''}`, {
+      scroll: false,
+    })
+  }
+
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [selectedStageId, setSelectedStageId] = useState<string | undefined>()
   const [selectedClientId, setSelectedClientId] = useState<string | undefined>()
@@ -157,7 +184,9 @@ export default function CRMPage() {
                     ) : (
                       <BrandLogo provider="hubspot" size={16} />
                     )}
-                    {syncAllLeads.isPending ? 'Syncing…' : 'Sync All to HubSpot'}
+                    {syncAllLeads.isPending
+                      ? 'Syncing…'
+                      : 'Sync All to HubSpot'}
                   </Button>
                 </span>
               </TooltipTrigger>
@@ -183,27 +212,42 @@ export default function CRMPage() {
         </div>
       </div>
 
-      {/* Pipeline Board */}
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <Logo3DSpinner size={80} />
-        </div>
-      ) : stages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-center">
-          <p className="text-muted-foreground mb-4">No pipeline stages found</p>
-          <p className="text-sm text-muted-foreground">
-            Pipeline stages will be created automatically when you add your
-            first lead.
-          </p>
-        </div>
-      ) : (
-        <PipelineBoard
-          stages={stages}
-          leads={leads}
-          onAddLead={handleAddLead}
-          onLeadClick={handleLeadClick}
-        />
-      )}
+      <Tabs value={tab} onValueChange={handleTabChange} className="gap-4">
+        <TabsList>
+          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          <TabsTrigger value="metrics">Deal Metrics</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="metrics">
+          <DealMetricsPanel clientId={selectedClientId} />
+        </TabsContent>
+
+        <TabsContent value="pipeline">
+          {/* Pipeline Board */}
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <Logo3DSpinner size={80} />
+            </div>
+          ) : stages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <p className="text-muted-foreground mb-4">
+                No pipeline stages found
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Pipeline stages will be created automatically when you add your
+                first lead.
+              </p>
+            </div>
+          ) : (
+            <PipelineBoard
+              stages={stages}
+              leads={leads}
+              onAddLead={handleAddLead}
+              onLeadClick={handleLeadClick}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Create Lead Modal */}
       <CreateLeadModal
