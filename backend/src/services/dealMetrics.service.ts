@@ -2,6 +2,8 @@ import * as dealTrackingRepository from '@/repositories/dealTracking.repository'
 import * as dealSignalRepository from '@/repositories/dealSignal.repository'
 import * as pipelineRepository from '@/repositories/pipeline.repository'
 import * as integrationRepository from '@/repositories/integration.repository'
+import * as dealTouchpointRepository from '@/repositories/dealTouchpoint.repository'
+import { summarizeSalesProcess, type Touch } from '@/lib/sales-process'
 import {
   average,
   classifyTrend,
@@ -104,16 +106,36 @@ export const getDealMetrics = async (params: {
     (d) => d.dealOutcome === 'lost' && inRange(d.dealClosedAt, start, end),
   )
 
-  const talkByLead = await dealTrackingRepository.findTalkTimeByLead(
-    organizationId,
-    [...won, ...lost].map((d) => d.id),
-  )
+  const [talkByLead, touchesByLead] = await Promise.all([
+    dealTrackingRepository.findTalkTimeByLead(
+      organizationId,
+      [...won, ...lost].map((d) => d.id),
+    ),
+    dealTouchpointRepository.findTouchesForLeads(
+      organizationId,
+      deals.map((d) => d.id),
+    ),
+  ])
 
-  const summary = buildSummary(openDeals, won, lost)
+  const salesProcess = buildSalesProcess(
+    touchesByLead,
+    won,
+    openDeals,
+    toItem,
+    start,
+    end,
+  )
+  const summary = buildSummary(
+    openDeals,
+    won,
+    lost,
+    salesProcess.avgFirstTouchToCloseDays,
+  )
 
   return {
     range: { startDate: start.toISOString(), endDate: end.toISOString() },
     summary,
+    salesProcess,
     velocity: buildVelocity(
       stages,
       stageRefs,
@@ -173,13 +195,15 @@ const buildSummary = (
   openDeals: PipelineDealRow[],
   won: PipelineDealRow[],
   lost: PipelineDealRow[],
+  firstTouchCycleDays: number | null,
 ) => {
   const closed = won.length + lost.length
   const winRate = closed > 0 ? won.length / closed : 0
   const avgWonDealSize = average(values(won))
-  const avgSalesCycleDays = average(
-    won.map(cycleDays).filter((d): d is number => d !== null),
-  )
+  // Real touch history beats stage moves whenever it exists.
+  const avgSalesCycleDays =
+    firstTouchCycleDays ??
+    average(won.map(cycleDays).filter((d): d is number => d !== null))
   return {
     openDeals: openDeals.length,
     openPipelineValue: round(sum(values(openDeals))),
@@ -189,6 +213,9 @@ const buildSummary = (
     wonValue: round(sum(values(won))),
     avgWonDealSize: round(avgWonDealSize),
     avgSalesCycleDays: round(avgSalesCycleDays, 1),
+    salesCycleBasis: (firstTouchCycleDays !== null
+      ? 'first_touch'
+      : 'stage') as 'first_touch' | 'stage',
     salesVelocityPerDay: round(
       salesVelocityPerDay({
         openDeals: openDeals.length,
@@ -197,6 +224,42 @@ const buildSummary = (
         avgCycleDays: avgSalesCycleDays,
       }),
     ),
+  }
+}
+
+const buildSalesProcess = (
+  touchesByLead: Map<string, Touch[]>,
+  won: PipelineDealRow[],
+  openDeals: PipelineDealRow[],
+  toItem: (d: PipelineDealRow) => DealListItem,
+  start: Date,
+  end: Date,
+) => {
+  const summary = summarizeSalesProcess({
+    touchesByLead,
+    won: won
+      .filter((d) => d.dealClosedAt)
+      .map((d) => ({ leadId: d.id, closedAt: d.dealClosedAt! })),
+    openLeadIds: openDeals.map((d) => d.id),
+  })
+  const openById = new Map(openDeals.map((d) => [d.id, d]))
+  const touchesInPeriod = { call: 0, email: 0, meeting: 0 }
+  for (const touches of touchesByLead.values()) {
+    for (const t of touches) {
+      if (t.at >= start && t.at <= end) touchesInPeriod[t.kind]++
+    }
+  }
+  return {
+    ...summary,
+    quietDeals: summary.quietDeals
+      .filter((q) => openById.has(q.leadId))
+      .map((q) => ({
+        ...toItem(openById.get(q.leadId)!),
+        daysSilent: q.daysSilent,
+        lastTouchAt: q.lastTouchAt.toISOString(),
+        touches: q.touches,
+      })),
+    touchesInPeriod,
   }
 }
 

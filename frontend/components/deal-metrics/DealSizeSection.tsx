@@ -33,9 +33,7 @@ export function DealSizeSection({
 
           {d.comparableWonDeals === 0 ? (
             <EmptyMetric>
-              Need first quotes: set a deal value when a deal enters the
-              pipeline. Its first value is kept, so closing values can be
-              compared against it.
+              Set deal values to compare closes against first quotes.
             </EmptyMetric>
           ) : (
             <div className="rounded-lg bg-muted/50 p-3 grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -32,6 +32,13 @@ const NON_PROSPEO_PROVIDERS = DataVendorProvider.options.filter(
 const getOrgId = (authReq: AuthRequest<unknown>): string | null =>
   (authReq.session as any)?.session?.activeOrganizationId ?? null
 
+/** Vendor connections are org-owned: every by-id route is scoped to the caller's org. */
+const requireOrgId = (req: unknown): string => {
+  const organizationId = getOrgId(req as AuthRequest<unknown>)
+  if (!organizationId) throw new Error('No active organization')
+  return organizationId
+}
+
 const canUseProspeo = (authReq: AuthRequest<unknown>) =>
   PROSPEO_ALLOWED_SYSTEM_ROLES.has(String((authReq.user as any)?.role ?? ''))
 
@@ -128,6 +135,7 @@ router.patch(
 
       const connection = await enrichmentService.updateVendorConnection(
         data.id,
+        requireOrgId(req),
         {
           apiKey: data.apiKey,
           isActive: data.isActive,
@@ -149,7 +157,7 @@ router.delete(
   withBetterAuth,
   async (req, res: Response, next: NextFunction) => {
     try {
-      await enrichmentService.disconnectVendor(req.params.id)
+      await enrichmentService.disconnectVendor(req.params.id, requireOrgId(req))
       res.status(204).send()
     } catch (error) {
       next(error)
@@ -162,7 +170,10 @@ router.post(
   withBetterAuth,
   async (req, res: Response, next: NextFunction) => {
     try {
-      const result = await enrichmentService.testVendorConnection(req.params.id)
+      const result = await enrichmentService.testVendorConnection(
+        req.params.id,
+        requireOrgId(req),
+      )
       res.json(result)
     } catch (error) {
       next(error)

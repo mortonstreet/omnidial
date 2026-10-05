@@ -78,6 +78,11 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string(),
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
+  // Optional separate Google OAuth client for read-only Gmail pipeline
+  // scoring (e.g. an Internal app in the mailbox's Workspace). Falls back to
+  // GOOGLE_CLIENT_ID/SECRET.
+  GMAIL_READER_CLIENT_ID: z.string().optional(),
+  GMAIL_READER_CLIENT_SECRET: z.string().optional(),
   RESEND_API_KEY: z.string(),
   RESEND_FROM_ADDRESS: z.string().optional(),
   RESEND_FALLBACK_FROM_ADDRESS: z.string().optional(),
@@ -358,6 +363,10 @@ export const config = {
     google: {
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
+    },
+    gmailReader: {
+      clientId: env.GMAIL_READER_CLIENT_ID || env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GMAIL_READER_CLIENT_SECRET || env.GOOGLE_CLIENT_SECRET,
     },
     microsoft: {
       clientId: env.MICROSOFT_CLIENT_ID,

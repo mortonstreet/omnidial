@@ -133,6 +133,22 @@ export const getHubSpotSyncStatus: AuthRequestHandler<
   }
 }
 
+export const syncHubSpotStages: AuthRequestHandler<
+  GetHubSpotSyncStatusRequest
+> = async (req, res) => {
+  const organizationId = getOrganizationId(req.session)
+  if (!organizationId) {
+    return res.status(400).json({ error: 'No active organization' })
+  }
+  try {
+    const { added, unmatched } =
+      await hubspotSyncService.syncStagesToHubSpot(organizationId)
+    return res.json({ data: { added, unmatched } })
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) })
+  }
+}
+
 export const reconcileHubSpot: AuthRequestHandler<
   ReconcileHubSpotRequest
 > = async (req, res) => {

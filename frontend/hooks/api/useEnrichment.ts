@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { VendorTestResult } from '@shared/types/src/requests/enrichment'
 import { get, post, patch, del } from '@/lib/api'
 import { QUERY_KEYS, ENDPOINTS } from '@/lib/config'
 import { useActiveOrganization } from '@/lib/auth-client'
@@ -16,12 +17,7 @@ import type {
 } from '@shared/types/src'
 
 // Local type for test connection response
-interface TestVendorConnectionResponse {
-  success: boolean
-  creditsRemaining?: number
-  message?: string
-  error?: string
-}
+type TestVendorConnectionResponse = VendorTestResult
 
 // List vendor connections
 export function useEnrichmentVendors(enabled = true) {
@@ -114,11 +110,16 @@ export function useDisconnectVendor() {
 
 // Test vendor connection
 export function useTestVendorConnection() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (vendorId: string) => {
       return await post<TestVendorConnectionResponse>(
         ENDPOINTS.ENRICHMENT.VENDOR_TEST(vendorId),
       )
+    },
+    // The check stores the vendor's live balance; refresh the cards.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['enrichment', 'vendors'] })
     },
   })
 }

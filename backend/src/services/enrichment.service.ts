@@ -1,9 +1,11 @@
 import { db } from '@/lib/db'
+import { sql } from 'kysely'
 import { v4 as uuidv4 } from 'uuid'
 import { encrypt, decrypt } from '@/lib/encryption'
 import type {
   VendorConnectionResponse,
   VendorTestResult,
+  VendorCheckStatus,
   ContactInfoResponse,
   EnrichLeadResponse,
   BulkEnrichResponse,
@@ -83,6 +85,7 @@ export const connectVendor = async (
 
 export const updateVendorConnection = async (
   connectionId: string,
+  organizationId: string,
   data: {
     apiKey?: string
     isActive?: boolean
@@ -113,23 +116,33 @@ export const updateVendorConnection = async (
     .updateTable('data_vendor_connection')
     .set(updateData)
     .where('id', '=', connectionId)
+    .where('organizationId', '=', organizationId)
     .returningAll()
     .executeTakeFirstOrThrow()
 
   return transformConnection(updated, null)
 }
 
-export const disconnectVendor = async (connectionId: string): Promise<void> => {
-  await db
+export const disconnectVendor = async (
+  connectionId: string,
+  organizationId: string,
+): Promise<void> => {
+  const result = await db
     .deleteFrom('data_vendor_connection')
     .where('id', '=', connectionId)
-    .execute()
+    .where('organizationId', '=', organizationId)
+    .executeTakeFirst()
+  if (!result.numDeletedRows) throw new Error('Connection not found')
 }
 
 export const listVendorConnections = async (
   organizationId: string,
   filters: { isActive?: boolean },
 ): Promise<VendorConnectionResponse[]> => {
+  await refreshStaleVendorBalances(organizationId).catch((error) =>
+    logger.warn({ error, organizationId }, 'Vendor balance refresh failed'),
+  )
+
   let query = db
     .selectFrom('data_vendor_connection as dvc')
     .leftJoin('user as u', 'u.id', 'dvc.connectedById')
@@ -150,6 +163,10 @@ export const listVendorConnections = async (
       'dvc.creditsUsed',
       'dvc.creditsLimit',
       'dvc.lastSyncAt',
+      'dvc.vendorCreditsRemaining',
+      'dvc.creditsCheckedAt',
+      'dvc.lastCheckStatus',
+      'dvc.lastCheckMessage',
       'dvc.connectedById',
       'dvc.createdAt',
       'dvc.updatedAt',
@@ -172,6 +189,10 @@ export const listVendorConnections = async (
     creditsUsed: c.creditsUsed,
     creditsLimit: c.creditsLimit,
     creditsRemaining: c.creditsLimit ? c.creditsLimit - c.creditsUsed : null,
+    vendorCreditsRemaining: c.vendorCreditsRemaining,
+    creditsCheckedAt: c.creditsCheckedAt?.toISOString() ?? null,
+    lastCheckStatus: (c.lastCheckStatus as VendorCheckStatus | null) ?? null,
+    lastCheckMessage: c.lastCheckMessage,
     lastSyncAt: c.lastSyncAt?.toISOString() || null,
     connectedById: c.connectedById,
     connectedByName: c.connectedByName,
@@ -180,40 +201,106 @@ export const listVendorConnections = async (
   }))
 }
 
-export const testVendorConnection = async (
-  connectionId: string,
-): Promise<VendorTestResult> => {
-  const connection = await db
+type VendorConnectionRow = NonNullable<
+  Awaited<ReturnType<typeof findVendorConnection>>
+>
+
+const findVendorConnection = (connectionId: string, organizationId: string) =>
+  db
     .selectFrom('data_vendor_connection')
     .where('id', '=', connectionId)
+    .where('organizationId', '=', organizationId)
     .selectAll()
     .executeTakeFirst()
 
-  if (!connection) {
-    throw new Error('Connection not found')
-  }
-
-  const apiKey = decrypt(connection.apiKeyEncrypted)
+/** Ask the vendor for account state and store it on the connection. */
+const checkVendor = async (
+  connection: VendorConnectionRow,
+): Promise<VendorTestResult> => {
   const startTime = Date.now()
-
+  let result: Awaited<ReturnType<VendorAdapter['testConnection']>>
   try {
     const adapter = getVendorAdapter(connection.provider as DataVendorProvider)
-    const result = await adapter.testConnection(apiKey)
-
-    return {
-      success: result.success,
-      message: result.message,
-      responseTimeMs: Date.now() - startTime,
-      creditsRemaining: result.creditsRemaining,
-    }
+    result = await adapter.testConnection(decrypt(connection.apiKeyEncrypted))
   } catch (error) {
-    return {
+    result = {
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
-      responseTimeMs: Date.now() - startTime,
       creditsRemaining: null,
     }
   }
+  const status = result.unverified
+    ? 'unverified'
+    : result.success
+      ? 'ok'
+      : 'failed'
+  await db
+    .updateTable('data_vendor_connection')
+    .set({
+      lastCheckStatus: status,
+      lastCheckMessage: result.message.slice(0, 500),
+      creditsCheckedAt: new Date(),
+      // Keep the last known balance when a check fails.
+      ...(result.creditsRemaining !== null && {
+        vendorCreditsRemaining: result.creditsRemaining,
+      }),
+    })
+    .where('id', '=', connection.id)
+    .execute()
+  return {
+    success: result.success,
+    status,
+    message: result.message,
+    responseTimeMs: Date.now() - startTime,
+    creditsRemaining: result.creditsRemaining,
+  }
+}
+
+export const testVendorConnection = async (
+  connectionId: string,
+  organizationId: string,
+): Promise<VendorTestResult> => {
+  const connection = await findVendorConnection(connectionId, organizationId)
+  if (!connection) throw new Error('Connection not found')
+  return checkVendor(connection)
+}
+
+/** Vendors whose adapters can read the live account balance. */
+const LIVE_CHECK_PROVIDERS = new Set([
+  'prospeo',
+  'leadmagic',
+  'forager',
+  'firecrawl',
+])
+const BALANCE_MAX_AGE_MS = 15 * 60 * 1000
+const BALANCE_REFRESH_TIMEOUT_MS = 6_000
+
+/**
+ * Refresh balances older than 15 minutes when settings are opened, so the
+ * cards show the vendor's real numbers. Bounded so a slow vendor can't stall
+ * the page; whatever finishes in time is shown.
+ */
+const refreshStaleVendorBalances = async (organizationId: string) => {
+  const stale = await db
+    .selectFrom('data_vendor_connection')
+    .selectAll()
+    .where('organizationId', '=', organizationId)
+    .where('isActive', '=', true)
+    .where((eb) =>
+      eb.or([
+        eb('creditsCheckedAt', 'is', null),
+        eb('creditsCheckedAt', '<', new Date(Date.now() - BALANCE_MAX_AGE_MS)),
+      ]),
+    )
+    .execute()
+  const checks = stale
+    .filter((c) => LIVE_CHECK_PROVIDERS.has(c.provider))
+    .map((c) => checkVendor(c).catch(() => undefined))
+  if (checks.length === 0) return
+  await Promise.race([
+    Promise.all(checks),
+    new Promise((resolve) => setTimeout(resolve, BALANCE_REFRESH_TIMEOUT_MS)),
+  ])
 }
 
 // === Lead Enrichment ===
@@ -865,7 +952,8 @@ export const enrichLead = async (
     await db
       .updateTable('data_vendor_connection')
       .set({
-        creditsUsed: connection.creditsUsed + result.creditsCost,
+        // Atomic: concurrent enrichments must not overwrite each other's count.
+        creditsUsed: sql`"creditsUsed" + ${result.creditsCost}`,
         lastSyncAt: new Date(),
         updatedAt: new Date(),
       })
@@ -1589,6 +1677,8 @@ interface VendorAdapter {
     success: boolean
     message: string
     creditsRemaining: number | null
+    /** Set by adapters that cannot reach the vendor yet (no live check). */
+    unverified?: boolean
   }>
   enrichLead(
     apiKey: string,
@@ -1629,11 +1719,13 @@ function getVendorAdapter(provider: DataVendorProvider): VendorAdapter {
 
 // Stub adapters - implement actual API calls for each provider
 const apolloAdapter: VendorAdapter = {
-  async testConnection(apiKey: string) {
-    // Apollo API test - would make actual API call
+  async testConnection() {
+    // No live API check implemented: say so instead of reporting success.
     return {
-      success: true,
-      message: 'Apollo connection successful',
+      success: false,
+      unverified: true,
+      message:
+        'Apollo has no live check yet. The key is saved but not verified.',
       creditsRemaining: null,
     }
   },
@@ -1651,10 +1743,13 @@ const apolloAdapter: VendorAdapter = {
 }
 
 const clearbitAdapter: VendorAdapter = {
-  async testConnection(apiKey: string) {
+  async testConnection() {
+    // No live API check implemented: say so instead of reporting success.
     return {
-      success: true,
-      message: 'Clearbit connection successful',
+      success: false,
+      unverified: true,
+      message:
+        'Clearbit has no live check yet. The key is saved but not verified.',
       creditsRemaining: null,
     }
   },
@@ -1671,10 +1766,13 @@ const clearbitAdapter: VendorAdapter = {
 }
 
 const zoominfoAdapter: VendorAdapter = {
-  async testConnection(apiKey: string) {
+  async testConnection() {
+    // No live API check implemented: say so instead of reporting success.
     return {
-      success: true,
-      message: 'ZoomInfo connection successful',
+      success: false,
+      unverified: true,
+      message:
+        'ZoomInfo has no live check yet. The key is saved but not verified.',
       creditsRemaining: null,
     }
   },
@@ -1691,10 +1789,13 @@ const zoominfoAdapter: VendorAdapter = {
 }
 
 const lushaAdapter: VendorAdapter = {
-  async testConnection(apiKey: string) {
+  async testConnection() {
+    // No live API check implemented: say so instead of reporting success.
     return {
-      success: true,
-      message: 'Lusha connection successful',
+      success: false,
+      unverified: true,
+      message:
+        'Lusha has no live check yet. The key is saved but not verified.',
       creditsRemaining: null,
     }
   },
@@ -1711,10 +1812,13 @@ const lushaAdapter: VendorAdapter = {
 }
 
 const enrichEngineAdapter: VendorAdapter = {
-  async testConnection(apiKey: string) {
+  async testConnection() {
+    // No live API check implemented: say so instead of reporting success.
     return {
-      success: true,
-      message: 'EnrichEngine connection successful',
+      success: false,
+      unverified: true,
+      message:
+        'EnrichEngine has no live check yet. The key is saved but not verified.',
       creditsRemaining: null,
     }
   },
@@ -2230,7 +2334,7 @@ export async function enrichLeadFromLinkedIn(
         await db
           .updateTable('data_vendor_connection')
           .set({
-            creditsUsed: connection.creditsUsed + (result.creditsUsed ?? 1),
+            creditsUsed: sql`"creditsUsed" + ${result.creditsUsed ?? 1}`,
             lastSyncAt: new Date(),
             updatedAt: new Date(),
           })
@@ -2527,6 +2631,10 @@ function transformConnection(
     creditsRemaining: connection.creditsLimit
       ? connection.creditsLimit - connection.creditsUsed
       : null,
+    vendorCreditsRemaining: connection.vendorCreditsRemaining ?? null,
+    creditsCheckedAt: connection.creditsCheckedAt?.toISOString() ?? null,
+    lastCheckStatus: connection.lastCheckStatus ?? null,
+    lastCheckMessage: connection.lastCheckMessage ?? null,
     lastSyncAt: connection.lastSyncAt?.toISOString() || null,
     connectedById: connection.connectedById,
     connectedByName,

@@ -92,7 +92,14 @@ export interface HubSpotObject {
   archived?: boolean
 }
 
-type ObjectType = 'contacts' | 'deals' | 'calls' | 'tasks' | 'emails'
+type ObjectType =
+  | 'contacts'
+  | 'deals'
+  | 'calls'
+  | 'tasks'
+  | 'emails'
+  | 'meetings'
+  | 'notes'
 
 export const getObject = (
   organizationId: string,
@@ -185,6 +192,10 @@ export const ASSOCIATION = {
   callToDeal: 206,
   taskToContact: 204,
   taskToDeal: 216,
+  meetingToContact: 200,
+  meetingToDeal: 212,
+  noteToContact: 202,
+  noteToDeal: 214,
 } as const
 
 export const listAssociatedIds = async (
@@ -273,6 +284,26 @@ export const getDealProperty = (organizationId: string, name: string) =>
   request<HubSpotProperty>(
     organizationId,
     `/crm/v3/properties/deals/${encodeURIComponent(name)}`,
+  )
+
+/** Replace a deal property's dropdown options (needs crm.schemas.deals.write). */
+export const updateDealPropertyOptions = (
+  organizationId: string,
+  name: string,
+  options: Array<{
+    label: string
+    value: string
+    displayOrder?: number
+    hidden?: boolean
+  }>,
+) =>
+  request<HubSpotProperty>(
+    organizationId,
+    `/crm/v3/properties/deals/${encodeURIComponent(name)}`,
+    {
+      method: 'PATCH',
+      body: { options },
+    },
   )
 
 export const createPropertyGroup = (

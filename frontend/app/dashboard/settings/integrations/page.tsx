@@ -6,6 +6,7 @@ import { Page } from "@/components/dashboard/Page";
 import { Button } from "@/components/ui/button";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { SlackSettings } from "@/components/settings/SlackSettings";
+import { DealSyncSettings } from "@/components/settings/DealSyncSettings";
 import { CheckCircle2, XCircle, AlertCircle, ArrowLeft } from "lucide-react";
 
 type SlackStatus = "connected" | "reconnected" | "denied" | "error" | null;
@@ -127,6 +128,12 @@ function IntegrationsPageContent() {
         <section>
           <h2 className="text-lg font-semibold mb-4">Data Integrations</h2>
           <IntegrationsSettings />
+        </section>
+
+        {/* Deal scoring + HubSpot two-way sync */}
+        <section id="deal-sync">
+          <h2 className="text-lg font-semibold mb-4">Deal Sync</h2>
+          <DealSyncSettings />
         </section>
       </div>
     </Page>

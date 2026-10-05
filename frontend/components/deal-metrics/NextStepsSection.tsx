@@ -31,9 +31,7 @@ export function NextStepsSection({
         <div className="space-y-4">
           {n.touchpoints === 0 ? (
             <EmptyMetric>
-              Scored from call transcripts, Gmail threads and Grain meetings.
-              Generate call intelligence or connect Gmail / Grain, then press
-              “Score new touchpoints”.
+              No scored touchpoints yet.
             </EmptyMetric>
           ) : (
             <>

@@ -18,6 +18,9 @@ import {
   useTestVendorConnection,
 } from "@/hooks/api/useEnrichment";
 import { BrandLogo } from "@/components/ui/BrandLogo";
+import { ConfirmButton } from "@/components/ui/confirm-button";
+import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 
 type VendorProvider = "apollo" | "zoominfo" | "clearbit" | "lusha" | "enrichengine" | "prospeo" | "forager" | "leadmagic";
@@ -117,8 +120,8 @@ export function DataVendorSettings() {
     }
   };
 
+  // Confirmation is the two-click ConfirmButton on the card.
   const handleDisconnect = async (id: string) => {
-    if (!confirm("Are you sure you want to disconnect this vendor?")) return;
     try {
       await disconnectVendor.mutateAsync(id);
       setExpandedVendorId(null);
@@ -131,9 +134,17 @@ export function DataVendorSettings() {
     setTestingId(id);
     try {
       const result = await testConnection.mutateAsync(id);
-      alert(result.success ? "Connection successful!" : `Connection failed: ${result.message}`);
+      const balance =
+        result.creditsRemaining !== null
+          ? `${result.creditsRemaining.toLocaleString()} credits left`
+          : undefined;
+      if (result.status === "ok") toast.success("Connection works", { description: balance });
+      else if (result.status === "unverified") toast.warning(result.message);
+      else toast.error("Connection failed", { description: result.message });
     } catch (error) {
-      console.error("Failed to test connection:", error);
+      toast.error("Test failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setTestingId(null);
     }
@@ -306,14 +317,7 @@ export function DataVendorSettings() {
                       <BrandLogo provider={card.provider} size={28} />
                     </div>
                     {card.isConnected && card.vendorData ? (
-                      <span className={`flex items-center gap-1.5 text-xs font-medium ${
-                        card.vendorData.isActive ? "text-green-600" : "text-muted-foreground"
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          card.vendorData.isActive ? "bg-green-500" : "bg-muted-foreground/40"
-                        }`} />
-                        {card.vendorData.isActive ? "Active" : "Inactive"}
-                      </span>
+                      <VendorStatus vendor={card.vendorData} />
                     ) : (
                       <span className="text-xs text-muted-foreground/60">Not connected</span>
                     )}
@@ -330,18 +334,7 @@ export function DataVendorSettings() {
                   {/* Connected vendor info */}
                   {card.isConnected && card.vendorData && (
                     <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-[11px] text-muted-foreground tabular-nums">
-                        Credits: {card.vendorData.creditsUsed || 0}
-                        {card.vendorData.creditsLimit ? ` / ${card.vendorData.creditsLimit}` : ""}
-                      </span>
-                      {(card.vendorData.enabledDataTypes ?? ["phone", "email", "profile"]).map((dt: string) => (
-                        <span
-                          key={dt}
-                          className="inline-flex px-1.5 py-0.5 text-[10px] rounded bg-foreground/5 text-muted-foreground capitalize"
-                        >
-                          {dt === "profile" ? "Profile" : dt}
-                        </span>
-                      ))}
+                      <VendorCredits vendor={card.vendorData} />
                     </div>
                   )}
 
@@ -373,14 +366,13 @@ export function DataVendorSettings() {
                       >
                         {card.vendorData.isActive ? "Deactivate" : "Activate"}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10 ml-auto"
-                        onClick={() => handleDisconnect(card.vendorData!.id)}
+                      <ConfirmButton
+                        className="h-7 text-xs ml-auto"
+                        confirmLabel="Click again"
+                        onConfirm={() => handleDisconnect(card.vendorData!.id)}
                       >
                         Disconnect
-                      </Button>
+                      </ConfirmButton>
                     </div>
                   )}
 
@@ -547,6 +539,59 @@ export function DataVendorSettings() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+type VendorCard = {
+  isActive: boolean;
+  creditsUsed: number;
+  creditsLimit: number | null;
+  vendorCreditsRemaining?: number | null;
+  creditsCheckedAt?: string | null;
+  lastCheckStatus?: "ok" | "failed" | "unverified" | null;
+  lastCheckMessage?: string | null;
+};
+
+/** Status from the last real check, not just the on/off switch. */
+function VendorStatus({ vendor }: { vendor: VendorCard }) {
+  const state = !vendor.isActive
+    ? { label: "Off", dot: "bg-muted-foreground/40", text: "text-muted-foreground" }
+    : vendor.lastCheckStatus === "failed"
+      ? { label: "Check failed", dot: "bg-red-500", text: "text-red-500" }
+      : vendor.lastCheckStatus === "unverified"
+        ? { label: "Not verified", dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" }
+        : { label: "Active", dot: "bg-green-500", text: "text-green-600" };
+  return (
+    <span
+      className={`flex items-center gap-1.5 text-xs font-medium ${state.text}`}
+      title={vendor.lastCheckMessage ?? undefined}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${state.dot}`} />
+      {state.label}
+    </span>
+  );
+}
+
+/** Vendor's live balance (when its API reports one) and OmniDial's own usage. */
+function VendorCredits({ vendor }: { vendor: VendorCard }) {
+  const checked = vendor.creditsCheckedAt
+    ? formatDistanceToNow(new Date(vendor.creditsCheckedAt), { addSuffix: true })
+    : null;
+  return (
+    <div className="text-[11px] text-muted-foreground tabular-nums space-y-0.5">
+      {vendor.vendorCreditsRemaining !== null && vendor.vendorCreditsRemaining !== undefined ? (
+        <div title={checked ? `Checked ${checked}` : undefined}>
+          <span className="text-foreground font-medium">{vendor.vendorCreditsRemaining.toLocaleString()}</span>{" "}
+          credits left{checked && ` · ${checked}`}
+        </div>
+      ) : (
+        <div>Balance not reported by this vendor</div>
+      )}
+      <div>
+        Used by OmniDial: {vendor.creditsUsed.toLocaleString()}
+        {vendor.creditsLimit ? ` of ${vendor.creditsLimit.toLocaleString()} cap` : ""}
+      </div>
     </div>
   );
 }

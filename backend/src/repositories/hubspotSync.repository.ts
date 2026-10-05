@@ -173,7 +173,19 @@ export const findUnloggedCalls = (
     .innerJoin('twilio_config', 'twilio_config.id', 'call.twilioConfigId')
     .leftJoin('disposition', 'disposition.id', 'call.dispositionId')
     .leftJoin('call_intelligence', 'call_intelligence.callId', 'call.id')
+    .leftJoin('deal_signal', (join) =>
+      join
+        .onRef('deal_signal.sourceId', '=', 'call.id')
+        .on('deal_signal.source', '=', 'call'),
+    )
     .select([
+      'deal_signal.nextStep as nextStep',
+      'deal_signal.nextStepSecured as nextStepSecured',
+      'deal_signal.championName as championName',
+      'deal_signal.championScore as championScore',
+      'deal_signal.qualityScore as qualityScore',
+      'deal_signal.evidence as evidence',
+      'call.leadId as leadId',
       'call.id',
       'call.direction',
       'call.duration',
@@ -213,7 +225,19 @@ export const findCallActivity = (callId: string) =>
     .selectFrom('call')
     .leftJoin('disposition', 'disposition.id', 'call.dispositionId')
     .leftJoin('call_intelligence', 'call_intelligence.callId', 'call.id')
+    .leftJoin('deal_signal', (join) =>
+      join
+        .onRef('deal_signal.sourceId', '=', 'call.id')
+        .on('deal_signal.source', '=', 'call'),
+    )
     .select([
+      'deal_signal.nextStep as nextStep',
+      'deal_signal.nextStepSecured as nextStepSecured',
+      'deal_signal.championName as championName',
+      'deal_signal.championScore as championScore',
+      'deal_signal.qualityScore as qualityScore',
+      'deal_signal.evidence as evidence',
+      'call.leadId as leadId',
       'call.crmActivityId',
       'disposition.label as dispositionLabel',
       'call_intelligence.summary as summary',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   endOfDay,
   startOfDay,
@@ -24,10 +24,9 @@ import { NextStepsSection } from './NextStepsSection'
 import { ChampionsSection } from './ChampionsSection'
 import { WinLossSection } from './WinLossSection'
 import { ActivitySection } from './ActivitySection'
-import { SignalSourcesStrip } from './SignalSourcesStrip'
-import { HubSpotSyncPanel } from './HubSpotSyncPanel'
+import { SalesProcessSection } from './SalesProcessSection'
 
-type RangeKey = '30d' | '90d' | 'qtd' | '12m'
+export type RangeKey = '30d' | '90d' | 'qtd' | '12m'
 
 const RANGE_LABELS: Record<RangeKey, string> = {
   '30d': 'Last 30 days',
@@ -49,8 +48,37 @@ const rangeStart = (key: RangeKey, now: Date) => {
   }
 }
 
-export function DealMetricsPanel({ clientId }: { clientId?: string }) {
-  const [range, setRange] = useState<RangeKey>('90d')
+/** Period picker; rendered by the CRM page next to the tabs. */
+export function DealRangeSelect({
+  value,
+  onChange,
+}: {
+  value: RangeKey
+  onChange: (value: RangeKey) => void
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as RangeKey)}>
+      <SelectTrigger className="w-[160px] h-8">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
+          <SelectItem key={key} value={key}>
+            {RANGE_LABELS[key]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+export function DealMetricsPanel({
+  clientId,
+  range,
+}: {
+  clientId?: string
+  range: RangeKey
+}) {
 
   const { startDate, endDate } = useMemo(() => {
     const now = new Date()
@@ -69,27 +97,6 @@ export function DealMetricsPanel({ clientId }: { clientId?: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          How fast deals move, where they die, and what is driving wins and
-          losses.
-        </p>
-        <Select
-          value={range}
-          onValueChange={(value) => setRange(value as RangeKey)}
-        >
-          <SelectTrigger className="w-[170px] h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
-              <SelectItem key={key} value={key}>
-                {RANGE_LABELS[key]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
       {isError && (
         <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">
@@ -98,11 +105,10 @@ export function DealMetricsPanel({ clientId }: { clientId?: string }) {
         </div>
       )}
 
-      <SignalSourcesStrip sources={metrics?.sources} />
-      <HubSpotSyncPanel connected={!!metrics?.sources.hubspot.connected} />
       <DealSummaryRow summary={metrics?.summary} isLoading={isLoading} />
 
       <div className="grid gap-4 xl:grid-cols-2">
+        <SalesProcessSection process={metrics?.salesProcess} isLoading={isLoading} />
         <VelocitySection velocity={metrics?.velocity} isLoading={isLoading} />
         <ConversionSection
           conversion={metrics?.conversion}

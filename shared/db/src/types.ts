@@ -15,6 +15,7 @@ import {
   DncEntry,
   LeadStageHistory,
   DealSignal,
+  DealTouchpoint,
 } from "./generated/types";
 
 
@@ -63,6 +64,9 @@ export type InsertDBLeadStageHistory = Insertable<LeadStageHistory>;
 
 export type DBDealSignal = Selectable<DealSignal>;
 export type InsertDBDealSignal = Insertable<DealSignal>;
+
+export type DBDealTouchpoint = Selectable<DealTouchpoint>;
+export type InsertDBDealTouchpoint = Insertable<DealTouchpoint>;
 
 export type DBTask = Selectable<Task>;
 export type UpdateDBTask = Updateable<Task>;

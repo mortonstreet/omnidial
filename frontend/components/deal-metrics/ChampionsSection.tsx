@@ -24,9 +24,7 @@ export function ChampionsSection({
       {c &&
         (c.dealsScored === 0 ? (
           <EmptyMetric>
-            Champion scores come from AI review of calls, email threads and
-            meetings with open deals. Score touchpoints to see who is
-            advocating.
+            No scored touchpoints with open deals yet.
           </EmptyMetric>
         ) : (
           <div className="space-y-4">

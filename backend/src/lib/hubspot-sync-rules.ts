@@ -31,6 +31,8 @@ export interface HubSpotSyncConfig {
   stageMap: Record<string, string>
   /** Set once `hubspot setup-properties` has created the OmniDial property group. */
   customPropertiesReady: boolean
+  /** Which OMNIDIAL_DEAL_PROPERTIES version exists in HubSpot (newer fields are only sent once created). */
+  customPropertiesVersion: number
   /**
    * Let the 6-hourly reconcile fix drift automatically. Off until a manual
    * `hubspot reconcile` has been reviewed; until then the job only reports.
@@ -54,6 +56,12 @@ export const readSyncConfig = (raw: unknown): HubSpotSyncConfig => {
     stageProperty: c.stageProperty || 'dealstage',
     stageMap: c.stageMap ?? {},
     customPropertiesReady: c.customPropertiesReady === true,
+    customPropertiesVersion:
+      typeof c.customPropertiesVersion === 'number'
+        ? c.customPropertiesVersion
+        : c.customPropertiesReady
+          ? 1
+          : 0,
     autoReconcile: c.autoReconcile === true,
     writeBacks: {
       calls: w.calls !== false,
@@ -163,7 +171,48 @@ export const OMNIDIAL_DEAL_PROPERTIES = [
     type: 'datetime',
     fieldType: 'date',
   },
+  // v2: touch timeline (calls + emails + meetings)
+  {
+    name: 'omnidial_first_touch_date',
+    label: 'First touch',
+    type: 'datetime',
+    fieldType: 'date',
+  },
+  {
+    name: 'omnidial_touch_count',
+    label: 'Touches (calls + emails + meetings)',
+    type: 'number',
+    fieldType: 'number',
+  },
+  {
+    name: 'omnidial_email_messages',
+    label: 'Email messages',
+    type: 'number',
+    fieldType: 'number',
+  },
+  {
+    name: 'omnidial_meetings',
+    label: 'Meetings',
+    type: 'number',
+    fieldType: 'number',
+  },
+  {
+    name: 'omnidial_buyer_reply_hours',
+    label: 'Buyer email reply time (median hours)',
+    type: 'number',
+    fieldType: 'number',
+  },
 ] as const
+
+/** Bump when fields are added above; setup-properties records the version it created. */
+export const OMNIDIAL_PROPERTIES_VERSION = 2
+const V2_PROPERTIES = new Set([
+  'omnidial_first_touch_date',
+  'omnidial_touch_count',
+  'omnidial_email_messages',
+  'omnidial_meetings',
+  'omnidial_buyer_reply_hours',
+])
 
 // ------------------------------------------------------------ building
 
@@ -251,6 +300,13 @@ export const buildDealProperties = (params: {
   signal: SignalForSync | null
   talkTimeSeconds: number
   leadUrl: string
+  timeline?: {
+    firstTouchAt: Date
+    touches: number
+    emails: number
+    meetings: number
+    medianBuyerReplyHours: number | null
+  } | null
 }): Record<string, string> => {
   const { lead, config, stageValue, signal } = params
   const props: Record<string, string> = { dealname: dealName(lead) }
@@ -295,6 +351,23 @@ export const buildDealProperties = (params: {
       set('omnidial_engagement_score', signal.engagementScore)
       set('omnidial_last_touch_date', signal.occurredAt.toISOString())
     }
+    const t = params.timeline
+    if (t && config.customPropertiesVersion >= 2) {
+      set('omnidial_first_touch_date', t.firstTouchAt.toISOString())
+      set('omnidial_touch_count', t.touches)
+      set('omnidial_email_messages', t.emails)
+      set('omnidial_meetings', t.meetings)
+      set(
+        'omnidial_buyer_reply_hours',
+        t.medianBuyerReplyHours === null
+          ? null
+          : Math.round(t.medianBuyerReplyHours),
+      )
+    }
+  }
+  // Never send a field HubSpot does not have yet.
+  if (config.customPropertiesVersion < 2) {
+    for (const key of V2_PROPERTIES) delete props[key]
   }
   return props
 }

@@ -7,6 +7,7 @@ import {
   getDealMetrics,
   getHubSpotSyncStatus,
   reconcileHubSpot,
+  syncHubSpotStages,
   getLeadDealSignals,
   setDealOutcome,
   syncDealSignals,
@@ -69,6 +70,14 @@ router.get(
   withBetterAuth,
   validateAndMerge(GetHubSpotSyncStatusRequestSchema),
   authenticatedRoute(getHubSpotSyncStatus),
+)
+
+// Add OmniDial stages missing from HubSpot's stage dropdown, then re-map
+router.post(
+  '/hubspot/stages/sync',
+  withBetterAuth,
+  validateAndMerge(GetHubSpotSyncStatusRequestSchema),
+  authenticatedRoute(syncHubSpotStages),
 )
 
 // Compare every linked lead with HubSpot; fix=true converges (newest edit wins)

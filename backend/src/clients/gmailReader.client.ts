@@ -16,8 +16,8 @@ export const GMAIL_READONLY_SCOPES = [
 // across orgs would leak tokens between concurrent requests.
 const newOAuthClient = () =>
   new google.auth.OAuth2(
-    config.providers.google.clientId,
-    config.providers.google.clientSecret,
+    config.providers.gmailReader.clientId,
+    config.providers.gmailReader.clientSecret,
   )
 
 export const getOAuthUrl = (state: string, redirectUri: string): string =>
@@ -94,6 +94,31 @@ export const listThreadIdsWithContact = async (
     .filter((id): id is string => !!id)
 }
 
+/** Thread ids matching full name + after date (name lookup fallback). */
+export const listThreadIdsByName = async (
+  gmail: gmail_v1.Gmail,
+  fullName: string,
+  after: Date,
+  maxResults = 10,
+): Promise<string[]> => {
+  const { data } = await gmail.users.threads.list({
+    userId: 'me',
+    q: `"${fullName.replace(/"/g, '')}" after:${gmailDate(after)}`,
+    maxResults,
+  })
+  return (data.threads ?? [])
+    .map((t) => t.id)
+    .filter((id): id is string => !!id)
+}
+
+export interface ThreadMessage {
+  id: string
+  fromEmail: string | null
+  /** Every address on From/To/Cc, lowercased. */
+  addresses: string[]
+  at: Date
+}
+
 export interface ThreadDigest {
   threadId: string
   subject: string
@@ -101,7 +126,13 @@ export interface ThreadDigest {
   lastMessageAt: Date
   firstMessageAt: Date
   text: string
+  messages: ThreadMessage[]
 }
+
+const ADDRESS = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/gi
+
+const addressesIn = (value: string) =>
+  (value.match(ADDRESS) ?? []).map((a) => a.toLowerCase())
 
 const header = (message: gmail_v1.Schema$Message, name: string) =>
   message.payload?.headers?.find(
@@ -138,10 +169,19 @@ export const getThreadDigest = async (
   }
   const participants = new Set<string>()
   const parts: string[] = []
+  const threadMessages: ThreadMessage[] = []
 
   for (const message of messages) {
     const from = header(message, 'From')
     participants.add(from)
+    threadMessages.push({
+      id: message.id ?? `${threadId}:${message.internalDate}`,
+      fromEmail: addressesIn(from)[0] ?? null,
+      addresses: addressesIn(
+        `${from} ${header(message, 'To')} ${header(message, 'Cc')}`,
+      ),
+      at: new Date(Number(message.internalDate ?? 0)),
+    })
     const sentAt = new Date(Number(message.internalDate ?? 0)).toISOString()
     parts.push(
       `--- ${sentAt} | From: ${from} | To: ${header(message, 'To')}\n${stripQuotedReply(findPlainText(message.payload) || message.snippet || '')}`,
@@ -156,5 +196,6 @@ export const getThreadDigest = async (
     firstMessageAt: new Date(Math.min(...times)),
     lastMessageAt: new Date(Math.max(...times)),
     text: parts.join('\n\n'),
+    messages: threadMessages,
   }
 }

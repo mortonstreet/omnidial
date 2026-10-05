@@ -6,5 +6,6 @@
   "dnc_entry": "direct-org",
   "lead_stage_history": "direct-org",
   "deal_signal": "direct-org",
-  "crm_sync_event": "direct-org"
+  "crm_sync_event": "direct-org",
+  "deal_touchpoint": "direct-org"
 }

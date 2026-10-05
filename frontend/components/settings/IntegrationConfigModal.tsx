@@ -5,10 +5,11 @@ import Modal from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { FormInput } from "@/components/ui/form-input";
 import { toast } from "sonner";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import {
   useUpdateIntegrationConfig,
   useTestIntegration,
-  useDisconnectIntegration,
+  useConnectIntegration,
 } from "@/hooks/api/useIntegrations";
 import { IntegrationResponse, IntegrationConfig, SyncDirection } from "@shared/types/src";
 
@@ -16,16 +17,23 @@ interface IntegrationConfigModalProps {
   integration: IntegrationResponse;
   isOpen: boolean;
   onClose: () => void;
+  onDisconnect: () => void;
+  isDisconnecting: boolean;
 }
+
+/** OAuth providers whose connect flow re-authorizes in place (keeps settings). */
+const RECONNECTABLE = new Set(["hubspot", "gmail", "google_sheets"]);
 
 export function IntegrationConfigModal({
   integration,
   isOpen,
   onClose,
+  onDisconnect,
+  isDisconnecting,
 }: IntegrationConfigModalProps) {
   const updateConfigMutation = useUpdateIntegrationConfig();
   const testMutation = useTestIntegration();
-  const disconnectMutation = useDisconnectIntegration();
+  const connectMutation = useConnectIntegration();
 
   const [config, setConfig] = useState<IntegrationConfig>({
     syncLeads: true,
@@ -75,31 +83,27 @@ export function IntegrationConfigModal({
     });
   };
 
-  const handleDisconnect = () => {
-    if (!confirm("Are you sure you want to disconnect this integration?")) {
-      return;
-    }
-
-    disconnectMutation.mutate(integration.provider, {
-      onSuccess: () => {
-        toast.success("Integration disconnected");
-        onClose();
+  // Re-runs OAuth; the callback updates the existing connection's tokens,
+  // so new permissions are granted without losing sync settings.
+  const handleReconnect = () => {
+    connectMutation.mutate(integration.provider, {
+      onSuccess: (data) => {
+        if (data?.data?.url) window.location.href = data.data.url;
       },
-      onError: () => {
-        toast.error("Failed to disconnect integration");
-      },
+      onError: () => toast.error("Failed to start reconnect"),
     });
   };
 
   const isWebhook = integration.provider === "webhook";
   const isGoogleSheets = integration.provider === "google_sheets";
+  const isHubSpot = integration.provider === "hubspot";
+  const hasSettings = isWebhook || isGoogleSheets;
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={`Configure ${integration.name}`}
-      subtitle="Manage your integration settings"
     >
       <div className="space-y-6">
         {/* Status */}
@@ -113,6 +117,16 @@ export function IntegrationConfigModal({
             </span>
           )}
         </div>
+
+        {isHubSpot && (
+          <p className="text-sm text-muted-foreground">
+            Sync health, stage mapping and drift checks are under{" "}
+            <a href="#deal-sync" onClick={onClose} className="underline hover:text-foreground">
+              Deal Sync
+            </a>
+            .
+          </p>
+        )}
 
         {/* Webhook-specific settings */}
         {isWebhook && (
@@ -251,26 +265,28 @@ export function IntegrationConfigModal({
         )}
 
         {/* Actions */}
-        <div className="flex justify-between pt-4 border-t border-border">
-          <Button
-            variant="outline"
-            onClick={handleDisconnect}
-            disabled={disconnectMutation.isPending}
-            className="text-red-600 hover:text-red-700"
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-border">
+          <ConfirmButton
+            onConfirm={onDisconnect}
+            disabled={isDisconnecting}
+            confirmLabel={isHubSpot ? "Click again: deletes sync setup" : "Click again to disconnect"}
           >
             Disconnect
-          </Button>
+          </ConfirmButton>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleTest}
-              disabled={testMutation.isPending}
-            >
-              Test Connection
+            {RECONNECTABLE.has(integration.provider) && (
+              <Button variant="outline" onClick={handleReconnect} disabled={connectMutation.isPending}>
+                Reconnect
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleTest} disabled={testMutation.isPending}>
+              Test
             </Button>
-            <Button onClick={handleSave} disabled={updateConfigMutation.isPending}>
-              Save
-            </Button>
+            {hasSettings && (
+              <Button onClick={handleSave} disabled={updateConfigMutation.isPending}>
+                Save
+              </Button>
+            )}
           </div>
         </div>
       </div>

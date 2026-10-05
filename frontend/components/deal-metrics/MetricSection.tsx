@@ -36,10 +36,13 @@ export function MetricSection({
             <Icon className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-medium text-foreground">{title}</h3>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            )}
+            {/* Explanations live in a hover tooltip to keep the grid scannable. */}
+            <h3
+              className="text-sm font-medium text-foreground"
+              title={description}
+            >
+              {title}
+            </h3>
           </div>
         </div>
         {action}

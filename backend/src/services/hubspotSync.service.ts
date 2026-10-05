@@ -21,6 +21,13 @@ import * as syncRepo from '@/repositories/hubspotSync.repository'
 import * as pipelineRepository from '@/repositories/pipeline.repository'
 import * as dealSignalRepository from '@/repositories/dealSignal.repository'
 import * as dealTrackingRepository from '@/repositories/dealTracking.repository'
+import * as dealTouchpointRepository from '@/repositories/dealTouchpoint.repository'
+import {
+  callBodyHtml,
+  meetingBodyHtml,
+  threadNoteHtml,
+} from '@/lib/hubspot-activity-body'
+import { buildTimeline, median as medianOf } from '@/lib/sales-process'
 import * as contactMethodRepository from '@/repositories/leadContactMethod.repository'
 import * as leadService from '@/services/lead.service'
 import {
@@ -33,6 +40,7 @@ import {
   CONTACT_FIELDS,
   OMNIDIAL_DEAL_PROPERTIES,
   OMNIDIAL_PROPERTY_GROUP,
+  OMNIDIAL_PROPERTIES_VERSION,
   STAGE_FIELD,
   buildContactProperties,
   buildDealProperties,
@@ -233,6 +241,63 @@ export const autoMapStages = async (
     stageMap,
   })
   return { stageMap, unmatched, hubspotStages }
+}
+
+/**
+ * Make HubSpot's stage dropdown match OmniDial: add an option for every
+ * OmniDial stage HubSpot lacks (e.g. "churn"), then re-map. Only for custom
+ * dropdown stage properties; built-in pipeline stages are managed in HubSpot.
+ */
+export const syncStagesToHubSpot = async (organizationId: string) => {
+  const { config: cfg } = await loadContext(organizationId)
+  if (cfg.stageProperty === 'dealstage') {
+    return { added: [] as string[], ...(await autoMapStages(organizationId)) }
+  }
+  const [stages, property] = await Promise.all([
+    pipelineRepository.findByOrganizationId(organizationId),
+    hs.getDealProperty(organizationId, cfg.stageProperty),
+  ])
+  const options = property.options ?? []
+  const missing = stages.filter(
+    (s) =>
+      !options.some(
+        (o) => !o.hidden && normalizeLabel(o.label) === normalizeLabel(s.label),
+      ),
+  )
+  if (missing.length > 0) {
+    const used = new Set(options.map((o) => o.value))
+    const added = missing.map((s, i) => {
+      let value =
+        s.label
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_|_$/g, '') || `stage_${i}`
+      while (used.has(value)) value = `${value}_omnidial`
+      used.add(value)
+      return {
+        label: s.label.trim(),
+        value,
+        displayOrder: options.length + i,
+        hidden: false,
+      }
+    })
+    try {
+      await hs.updateDealPropertyOptions(organizationId, cfg.stageProperty, [
+        ...options,
+        ...added,
+      ])
+    } catch (error) {
+      if (error instanceof hs.HubSpotApiError && error.status === 403) {
+        throw new Error(
+          `HubSpot needs the crm.schemas.deals.write permission to add stages. Grant it (reconnect HubSpot) or add "${missing.map((s) => s.label).join('", "')}" to the ${property.label} property in HubSpot.`,
+        )
+      }
+      throw error
+    }
+  }
+  const result = await autoMapStages(organizationId)
+  return { added: missing.map((s) => s.label), ...result }
 }
 
 /** Set one mapping by OmniDial stage label/id and HubSpot stage label/value. */
@@ -588,7 +653,7 @@ export const pushLead = async (
   if (!options.force && !lead.pipelineStageId && !record?.externalId)
     return { status: 'skipped' }
 
-  const [stages, [signal], talk, unloggedCalls, contactMethods] =
+  const [stages, [signal], talk, unloggedCalls, contactMethods, touches] =
     await Promise.all([
       pipelineRepository.findByOrganizationId(organizationId),
       dealSignalRepository.findByLead(organizationId, leadId, 1),
@@ -601,7 +666,9 @@ export const pushLead = async (
           )
         : Promise.resolve([]),
       contactMethodRepository.findByLead(organizationId, leadId),
+      dealTouchpointRepository.findTouchesForLeads(organizationId, [leadId]),
     ])
+  const timeline = buildTimeline(touches.get(leadId) ?? [])
   const stage = stages.find((s) => s.id === lead.pipelineStageId)
   const wantsDeal = !!lead.pipelineStageId || !!record?.externalDealId
   const stageValue = stageValueFor(cfg, lead.pipelineStageId)
@@ -614,6 +681,13 @@ export const pushLead = async (
     signal: signal ?? null,
     talkTimeSeconds: talk.get(leadId) ?? 0,
     leadUrl: leadUrl(leadId),
+    timeline: timeline && {
+      firstTouchAt: timeline.firstTouchAt,
+      touches: timeline.touches,
+      emails: timeline.byKind.email,
+      meetings: timeline.byKind.meeting,
+      medianBuyerReplyHours: medianOf(timeline.buyerReplyHours),
+    },
   })
   const taskSpec = cfg.writeBacks.tasks ? nextStepTask(signal) : null
   const hash = hashProperties({
@@ -623,11 +697,19 @@ export const pushLead = async (
     taskSpec,
   })
   const linked = record?.syncStatus === 'synced' && !!record.externalId
+  const pendingSignals = cfg.writeBacks.calls
+    ? await dealSignalRepository.findSignalsNeedingCrmActivity(
+        organizationId,
+        leadId,
+        record?.lastPushedAt ?? null,
+      )
+    : []
   if (
     !options.force &&
     linked &&
     record.pushedHash === hash &&
-    unloggedCalls.length === 0
+    unloggedCalls.length === 0 &&
+    pendingSignals.length === 0
   ) {
     return { status: 'skipped' }
   }
@@ -780,6 +862,13 @@ export const pushLead = async (
       contactId,
       dealId,
     )
+    const signalActivities = await writeSignalActivities(
+      organizationId,
+      leadId,
+      pendingSignals,
+      contactId,
+      dealId,
+    )
     const taskId = taskSpec
       ? await upsertTask(
           organizationId,
@@ -820,6 +909,8 @@ export const pushLead = async (
           contact: Object.keys(contactProps),
           deal: wantsDeal ? Object.keys(dealProps) : [],
           callsLogged: loggedCalls,
+          meetingsLogged: signalActivities.meetings,
+          threadNotes: signalActivities.notes,
           task: taskSpec ? taskId : null,
           pulledFromHubSpot: [...pulled, ...pulledDeal],
         },
@@ -897,17 +988,33 @@ type UnloggedCall = Awaited<
   ReturnType<typeof syncRepo.findUnloggedCalls>
 >[number]
 
-const callBody = (call: {
+type CallForBody = {
   dispositionLabel: string | null
   summary: string | null
-}) =>
-  [
-    call.dispositionLabel ? `Disposition: ${call.dispositionLabel}` : null,
-    call.summary || null,
-    'Logged by OmniDial',
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+  leadId: string | null
+  nextStep: string | null
+  nextStepSecured: boolean | null
+  championName: string | null
+  championScore: number | null
+  qualityScore: number | null
+  evidence: unknown
+}
+
+/** Summary + key moments from the call's deal signal, never the transcript. */
+const callBody = (call: CallForBody) =>
+  callBodyHtml({
+    dispositionLabel: call.dispositionLabel,
+    summary: call.summary,
+    signal: {
+      nextStep: call.nextStep,
+      nextStepSecured: call.nextStepSecured,
+      championName: call.championName,
+      championScore: call.championScore,
+      qualityScore: call.qualityScore,
+      evidence: call.evidence,
+    },
+    leadUrl: call.leadId ? leadUrl(call.leadId) : null,
+  })
 
 const logCalls = async (
   organizationId: string,
@@ -947,6 +1054,140 @@ const logCalls = async (
     logged++
   }
   return logged
+}
+
+type PendingSignal = Awaited<
+  ReturnType<typeof dealSignalRepository.findSignalsNeedingCrmActivity>
+>[number]
+
+const assoc = (
+  contactId: string,
+  dealId: string | null,
+  toContact: number,
+  toDeal: number,
+) => [
+  { toId: contactId, associationTypeId: toContact },
+  ...(dealId ? [{ toId: dealId, associationTypeId: toDeal }] : []),
+]
+
+/**
+ * Grain meetings -> HubSpot meetings; Gmail threads -> one HubSpot note per
+ * thread on the deal, rewritten as the thread grows. Both carry summary +
+ * key moments with links back to the recording / thread and OmniDial.
+ */
+const writeSignalActivities = async (
+  organizationId: string,
+  leadId: string,
+  signals: PendingSignal[],
+  contactId: string,
+  dealId: string | null,
+) => {
+  let meetings = 0
+  let notes = 0
+  for (const signal of signals) {
+    if (signal.source === 'meeting') {
+      const touch = await dealTouchpointRepository.findBySource(
+        organizationId,
+        leadId,
+        'grain',
+        signal.sourceId,
+      )
+      const start = signal.occurredAt
+      const end = touch?.durationSeconds
+        ? new Date(start.getTime() + touch.durationSeconds * 1000)
+        : start
+      const created = await hs.createObject(
+        organizationId,
+        'meetings',
+        {
+          hs_timestamp: start.toISOString(),
+          hs_meeting_title: 'Sales meeting (Grain)',
+          hs_meeting_body: meetingBodyHtml({
+            signal,
+            recordingUrl: signal.sourceUrl,
+            leadUrl: leadUrl(leadId),
+          }),
+          hs_meeting_start_time: start.toISOString(),
+          hs_meeting_end_time: end.toISOString(),
+          hs_meeting_outcome: 'COMPLETED',
+          ...(signal.sourceUrl && {
+            hs_meeting_external_url: signal.sourceUrl,
+          }),
+        },
+        assoc(
+          contactId,
+          dealId,
+          hs.ASSOCIATION.meetingToContact,
+          hs.ASSOCIATION.meetingToDeal,
+        ),
+      )
+      await dealSignalRepository.setCrmActivityId(signal.id, created.id)
+      meetings++
+      continue
+    }
+
+    // Email thread note
+    const messages = await dealTouchpointRepository.threadStats(
+      organizationId,
+      leadId,
+      signal.sourceId,
+    )
+    const timeline = buildTimeline(
+      messages.map((m) => ({
+        kind: 'email' as const,
+        direction: (m.direction as 'inbound' | 'outbound' | null) ?? null,
+        at: m.occurredAt,
+        threadId: m.threadId,
+      })),
+    )
+    const body = threadNoteHtml({
+      signal,
+      stats: {
+        messages: messages.length,
+        fromBuyer: messages.filter((m) => m.direction === 'inbound').length,
+        fromRep: messages.filter((m) => m.direction === 'outbound').length,
+        firstAt: timeline?.firstTouchAt ?? null,
+        lastAt: timeline?.lastTouchAt ?? null,
+        medianBuyerReplyHours: timeline
+          ? medianOf(timeline.buyerReplyHours)
+          : null,
+      },
+      threadUrl: signal.sourceUrl,
+      leadUrl: leadUrl(leadId),
+    })
+    const properties = {
+      hs_note_body: body,
+      hs_timestamp: signal.occurredAt.toISOString(),
+    }
+    if (signal.crmActivityId) {
+      try {
+        await hs.updateObject(
+          organizationId,
+          'notes',
+          signal.crmActivityId,
+          properties,
+        )
+        notes++
+        continue
+      } catch (error) {
+        if (!hs.isNotFound(error)) throw error
+      }
+    }
+    const created = await hs.createObject(
+      organizationId,
+      'notes',
+      properties,
+      assoc(
+        contactId,
+        dealId,
+        hs.ASSOCIATION.noteToContact,
+        hs.ASSOCIATION.noteToDeal,
+      ),
+    )
+    await dealSignalRepository.setCrmActivityId(signal.id, created.id)
+    notes++
+  }
+  return { meetings, notes }
 }
 
 type Signal =
@@ -1733,7 +1974,10 @@ export const setupProperties = async (organizationId: string) => {
       .catch(ignoreConflict)
     ;(result === 'created' ? created : existing).push(property.name)
   }
-  await saveSyncConfig(organizationId, { customPropertiesReady: true })
+  await saveSyncConfig(organizationId, {
+    customPropertiesReady: true,
+    customPropertiesVersion: OMNIDIAL_PROPERTIES_VERSION,
+  })
   return { created, existing }
 }
 
