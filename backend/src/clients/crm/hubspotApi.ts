@@ -275,6 +275,26 @@ export const getDealProperty = (organizationId: string, name: string) =>
     `/crm/v3/properties/deals/${encodeURIComponent(name)}`,
   )
 
+/** Replace a deal property's dropdown options (needs crm.schemas.deals.write). */
+export const updateDealPropertyOptions = (
+  organizationId: string,
+  name: string,
+  options: Array<{
+    label: string
+    value: string
+    displayOrder?: number
+    hidden?: boolean
+  }>,
+) =>
+  request<HubSpotProperty>(
+    organizationId,
+    `/crm/v3/properties/deals/${encodeURIComponent(name)}`,
+    {
+      method: 'PATCH',
+      body: { options },
+    },
+  )
+
 export const createPropertyGroup = (
   organizationId: string,
   objectType: 'deals' | 'contacts',

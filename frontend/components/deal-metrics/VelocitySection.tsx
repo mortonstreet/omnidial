@@ -59,6 +59,8 @@ export function VelocitySection({
 }) {
   const stages = velocity ?? []
   const hasData = stages.some((s) => s.samples > 0 || s.currentDeals > 0)
+  // Stay/trend columns only mean something once deals have moved stages.
+  const hasMoves = stages.some((s) => s.samples > 0)
 
   return (
     <MetricSection
@@ -68,23 +70,23 @@ export function VelocitySection({
       isLoading={isLoading}
     >
       {!hasData ? (
-        <EmptyMetric>
-          Move deals between stages to start measuring velocity — stage history
-          starts from this release.
-        </EmptyMetric>
+        <EmptyMetric>Fills in as deals move between stages.</EmptyMetric>
       ) : (
         <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-sm min-w-[520px]">
+          <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-muted-foreground text-left">
                 <th className="font-normal py-1.5 px-1">Stage</th>
-                <th className="font-normal py-1.5 px-1 text-right">Avg</th>
-                <th className="font-normal py-1.5 px-1 text-right">Median</th>
-                <th className="font-normal py-1.5 px-1 text-right">Exits</th>
-                <th className="font-normal py-1.5 px-1 text-right">
-                  Sitting now
+                <th className="font-normal py-1.5 px-1 text-right">Deals</th>
+                <th className="font-normal py-1.5 px-1 text-right" title="Average time the deals there now have been in the stage">
+                  In stage
                 </th>
-                <th className="font-normal py-1.5 px-1 text-right">Trend</th>
+                {hasMoves && (
+                  <th className="font-normal py-1.5 px-1 text-right" title="Average time deals spent in the stage before moving on">
+                    Avg stay
+                  </th>
+                )}
+                {hasMoves && <th className="font-normal py-1.5 px-1 text-right">Trend</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -99,31 +101,25 @@ export function VelocitySection({
                       <span className="truncate">{stage.label}</span>
                     </div>
                   </td>
-                  <td className="py-2 px-1 text-right">
-                    {stage.samples > 0 ? formatDays(stage.avgDays) : '—'}
-                    {stage.samples > 0 && stage.previousAvgDays > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        was {formatDays(stage.previousAvgDays)}
-                      </div>
-                    )}
+                  <td className="py-2 px-1 text-right tabular-nums">{stage.currentDeals}</td>
+                  <td className="py-2 px-1 text-right tabular-nums text-muted-foreground">
+                    {stage.currentDeals > 0 && stage.avgDaysInStageNow > 0
+                      ? formatDays(stage.avgDaysInStageNow)
+                      : '—'}
                   </td>
-                  <td className="py-2 px-1 text-right">
-                    {stage.samples > 0 ? formatDays(stage.medianDays) : '—'}
-                  </td>
-                  <td className="py-2 px-1 text-right text-muted-foreground">
-                    {stage.samples}
-                  </td>
-                  <td className="py-2 px-1 text-right">
-                    {stage.currentDeals}
-                    {stage.currentDeals > 0 && stage.avgDaysInStageNow > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        avg {formatDays(stage.avgDaysInStageNow)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-2 px-1 text-right">
-                    <TrendBadge trend={stage.trend} />
-                  </td>
+                  {hasMoves && (
+                    <td
+                      className="py-2 px-1 text-right tabular-nums"
+                      title={stage.samples ? `${stage.samples} exits · median ${formatDays(stage.medianDays)}` : undefined}
+                    >
+                      {stage.samples > 0 ? formatDays(stage.avgDays) : '—'}
+                    </td>
+                  )}
+                  {hasMoves && (
+                    <td className="py-2 px-1 text-right">
+                      {stage.trend !== 'no_data' && <TrendBadge trend={stage.trend} />}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

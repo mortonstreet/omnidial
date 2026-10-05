@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowDownLeft, ArrowUpRight, CheckCircle2, Loader2, Refr
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/ui/BrandLogo'
-import { useHubSpotSyncStatus, useReconcileHubSpot } from '@/hooks/api/useDealMetrics'
+import { useHubSpotSyncStatus, useReconcileHubSpot, useSyncHubSpotStages } from '@/hooks/api/useDealMetrics'
 import type { HubSpotReconcileReport } from '@shared/types/src/requests/dealMetrics'
 import { MetricSection, Stat } from './MetricSection'
 import { leadHref } from './format'
@@ -30,6 +30,7 @@ const show = (value: unknown) =>
 export function HubSpotSyncPanel({ connected }: { connected: boolean }) {
   const { data, isLoading, error } = useHubSpotSyncStatus(connected)
   const reconcile = useReconcileHubSpot()
+  const syncStages = useSyncHubSpotStages()
   const [report, setReport] = useState<HubSpotReconcileReport | null>(null)
 
   if (!connected) return null
@@ -47,27 +48,42 @@ export function HubSpotSyncPanel({ connected }: { connected: boolean }) {
     }
   }
 
+  const addStages = async () => {
+    try {
+      const { data: result } = await syncStages.mutateAsync()
+      if (result.unmatched.length) toast.warning(`Still unmapped: ${result.unmatched.join(', ')}`)
+      else toast.success(result.added.length ? `Added ${result.added.join(', ')} to HubSpot` : 'Stages already match')
+    } catch (err) {
+      toast.error('Could not add stages', { description: err instanceof Error ? err.message : undefined })
+    }
+  }
+
   const unmapped = status?.stageMapping.filter((m) => !m.hubspotStage) ?? []
-  const setupIssues = [
-    ...(status?.tokenError ? [`HubSpot token error: ${status.tokenError}. Reconnect HubSpot.`] : []),
+  const missingScope = (scope: string) => status?.missingOptionalScopes.some((s) => s.scope === scope)
+  const issues: Array<{ text: string; action?: React.ReactNode }> = [
+    ...(status?.tokenError ? [{ text: 'HubSpot token error. Reconnect HubSpot.' }] : []),
     ...(status?.missingRequiredScopes.length
-      ? [`Missing required scopes: ${status.missingRequiredScopes.join(', ')}. Reconnect HubSpot.`]
+      ? [{ text: `Reconnect HubSpot to grant ${status.missingRequiredScopes.join(', ')}` }]
       : []),
     ...(unmapped.length
-      ? [`${unmapped.length} stage(s) not mapped to HubSpot: ${unmapped.map((m) => m.omnidialStage).join(', ')}`]
+      ? [{
+          text: `Not in HubSpot: ${unmapped.map((m) => m.omnidialStage).join(', ')}`,
+          action: (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={addStages} disabled={syncStages.isPending}>
+              {syncStages.isPending ? 'Adding…' : 'Add to HubSpot'}
+            </Button>
+          ),
+        }]
       : []),
-    ...(status?.missingOptionalScopes ?? []).map((s) => `Optional scope ${s.scope} missing (needed to ${s.purpose})`),
-    ...(status && !status.config.customPropertiesReady && !status.missingOptionalScopes.some((s) => s.scope === 'crm.schemas.deals.write')
-      ? ['OmniDial score properties not created in HubSpot yet (run: hubspot setup-properties)']
-      : []),
+    ...(missingScope('crm.schemas.deals.write') ? [{ text: 'Score fields on deals need the property-settings permission' }] : []),
+    ...(missingScope('sales-email-read') ? [{ text: 'Email scoring needs the read-emails permission' }] : []),
   ]
-  const failedPushes = count(status?.last24h, 'push', 'failed') + count(status?.last24h, 'pull', 'failed')
 
   return (
     <MetricSection
       icon={HubSpotIcon}
       title="HubSpot sync"
-      description="Two-way: newest edit wins per field. Every change is logged."
+      description="Two-way sync. The newest edit wins per field, and every change is logged."
       isLoading={isLoading}
       action={
         <div className="flex gap-2">
@@ -106,21 +122,27 @@ export function HubSpotSyncPanel({ connected }: { connected: boolean }) {
               }
               hint="pushed / pulled"
             />
-            <Stat label="Failures (24h)" value={failedPushes} tone={failedPushes > 0 ? 'bad' : 'good'} />
+            <Stat
+              label="Failing"
+              value={status.failedLinks}
+              hint="deals whose last push failed"
+              tone={status.failedLinks > 0 ? 'bad' : 'good'}
+            />
           </div>
 
-          {setupIssues.length > 0 ? (
+          {issues.length > 0 ? (
             <ul className="space-y-1.5">
-              {setupIssues.map((issue) => (
-                <li key={issue} className="flex gap-2 text-sm text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                  {issue}
+              {issues.map((issue) => (
+                <li key={issue.text} className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{issue.text}</span>
+                  {issue.action}
                 </li>
               ))}
             </ul>
           ) : (
             <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-4 h-4" /> Setup complete: scopes granted, every stage mapped.
+              <CheckCircle2 className="w-4 h-4" /> Fully set up
             </p>
           )}
 

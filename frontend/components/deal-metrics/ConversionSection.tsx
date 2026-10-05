@@ -16,7 +16,7 @@ export function ConversionSection({
   conversion?: StageConversionItem[]
   isLoading?: boolean
 }) {
-  const stages = conversion ?? []
+  const stages = (conversion ?? []).filter((s) => s.entered > 0)
   const maxEntered = Math.max(1, ...stages.map((s) => s.entered))
   const candidates = stages.filter((s) => s.entered >= MIN_ENTRIES_FOR_LEAK)
   const leak = candidates.length
@@ -32,11 +32,8 @@ export function ConversionSection({
       description="Of deals entering each stage: advanced, lost, or still stuck"
       isLoading={isLoading}
     >
-      {stages.every((s) => s.entered === 0) ? (
-        <EmptyMetric>
-          Conversion is measured from stage moves. Drag deals forward (or to a
-          Won/Lost stage) and this fills in.
-        </EmptyMetric>
+      {stages.length === 0 ? (
+        <EmptyMetric>Fills in as deals move between stages.</EmptyMetric>
       ) : (
         <div className="space-y-3">
           {stages.map((stage) => {
@@ -84,9 +81,9 @@ export function ConversionSection({
                     style={{ width: `${pct(stage.lost)}%` }}
                   />
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {stage.entered} entered · {stage.advanced} advanced ·{' '}
-                  {stage.lost} lost · {stage.stalled} stalled
+                <div className="text-xs text-muted-foreground mt-1 tabular-nums">
+                  {stage.advanced}/{stage.entered} advanced
+                  {stage.lost > 0 && ` · ${stage.lost} lost`}
                 </div>
               </div>
             )

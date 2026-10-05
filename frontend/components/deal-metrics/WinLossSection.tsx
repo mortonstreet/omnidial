@@ -85,8 +85,7 @@ export function WinLossSection({
       {w &&
         (w.won + w.lost === 0 ? (
           <EmptyMetric>
-            No deals closed in this period. Move a deal to a Won or Lost stage
-            (or mark it from the lead page) and record why.
+            No deals closed in this period.
           </EmptyMetric>
         ) : (
           <div className="space-y-4">

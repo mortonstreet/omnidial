@@ -6,11 +6,13 @@
  *   pnpm --filter backend hubspot map-stages [--pipeline <id>] [--property deal_stage_2]
  *   pnpm --filter backend hubspot map-stages --set "Demo Booked=Appointment Scheduled"
  *   pnpm --filter backend hubspot setup-properties
+ *   pnpm --filter backend hubspot sync-stages
  *   pnpm --filter backend hubspot config [autoSync=true] [autoReconcile=true] [writeBacks.calls=false]
  *   pnpm --filter backend hubspot reconcile [--fix]
  *   pnpm --filter backend hubspot push --lead <leadId> | --unlinked
  *   pnpm --filter backend hubspot webhooks [--apply]
  *   pnpm --filter backend hubspot events [--limit 30]
+ *   pnpm --filter backend hubspot reconnect-url [--backend https://api.omnidial.io]
  *
  * Add --org <organizationId> when more than one org has HubSpot connected.
  * Reads the same env as the backend (DATABASE/REDIS/HUBSPOT_* vars).
@@ -21,6 +23,7 @@ import * as syncRepo from '@/repositories/hubspotSync.repository'
 import * as sync from '@/services/hubspotSync.service'
 import * as hs from '@/clients/crm/hubspotApi'
 import { readSyncConfig } from '@/lib/hubspot-sync-rules'
+import * as hubspotService from '@/services/hubspot.service'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -101,6 +104,9 @@ const commands: Record<string, (org: string) => Promise<unknown>> = {
 
   'setup-properties': (org) => sync.setupProperties(org),
 
+  /** Add OmniDial stages missing from HubSpot's stage dropdown, then re-map. */
+  'sync-stages': (org) => sync.syncStagesToHubSpot(org),
+
   config: async (org) => {
     const assignments = args
       .slice(1)
@@ -173,6 +179,37 @@ const commands: Record<string, (org: string) => Promise<unknown>> = {
       }
     }
     return applyWebhookSubscriptions(appId, developerApiKey, targetUrl, wanted)
+  },
+
+  /**
+   * Re-authorize link that keeps the existing connection (stage map, portal,
+   * links) and only swaps the token - needed after adding scopes to the app.
+   * Disconnect + connect would delete the integration's sync settings.
+   */
+  'reconnect-url': async (org) => {
+    const integration =
+      await integrationRepository.findByOrganizationAndProvider(org, 'hubspot')
+    if (!integration) throw new Error('HubSpot is not connected')
+    const backend = flag('backend')
+    const backendUrl = (
+      typeof backend === 'string' ? backend : config.backendUrl || ''
+    ).replace(/\/$/, '')
+    const state = Buffer.from(
+      JSON.stringify({
+        organizationId: org,
+        provider: 'hubspot',
+        userId: integration.connectedById,
+        redirectUrl: '/dashboard/settings/integrations',
+        timestamp: Date.now(),
+      }),
+    ).toString('base64url')
+    return {
+      url: hubspotService.getOAuthUrl(
+        state,
+        `${backendUrl}/api/integrations/hubspot/callback`,
+      ),
+      note: 'Open while logged into HubSpot as a portal admin and approve. The connection keeps its sync settings.',
+    }
   },
 
   events: async (org) => {

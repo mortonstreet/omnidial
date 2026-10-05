@@ -298,6 +298,7 @@ export const ENDPOINTS = {
     GRAIN_CONNECT: '/deal-metrics/grain/connect',
     HUBSPOT_STATUS: '/deal-metrics/hubspot/status',
     HUBSPOT_RECONCILE: '/deal-metrics/hubspot/reconcile',
+    HUBSPOT_STAGES_SYNC: '/deal-metrics/hubspot/stages/sync',
   },
   SCHEDULE: {
     LIST: (orgId: string) => `/schedule/${orgId}`,

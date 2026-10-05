@@ -120,3 +120,13 @@ export function useReconcileHubSpot() {
     },
   })
 }
+
+/** Add OmniDial stages missing from HubSpot's stage dropdown, then re-map. */
+export function useSyncHubSpotStages() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      post<{ data: { added: string[]; unmatched: string[] } }>(ENDPOINTS.DEAL_METRICS.HUBSPOT_STAGES_SYNC, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['deal-metrics'] }),
+  })
+}

@@ -53,6 +53,7 @@ export function DealSummaryRow({
   isLoading?: boolean
 }) {
   const s = summary
+  const closed = (s?.wonDeals ?? 0) + (s?.lostDeals ?? 0)
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
       <SummaryCard
@@ -65,29 +66,29 @@ export function DealSummaryRow({
       <SummaryCard
         icon={Trophy}
         label="Win Rate"
-        value={formatPercent(s?.winRate ?? 0)}
-        subValue={`${s?.wonDeals ?? 0}W / ${s?.lostDeals ?? 0}L`}
+        value={closed ? formatPercent(s?.winRate ?? 0) : '—'}
+        subValue={closed ? `${s?.wonDeals}W / ${s?.lostDeals}L` : 'no closes yet'}
         isLoading={isLoading}
       />
       <SummaryCard
         icon={DollarSign}
         label="Avg Won Deal"
-        value={formatCurrency(s?.avgWonDealSize ?? 0)}
-        subValue={`${formatCurrency(s?.wonValue ?? 0)} won`}
+        value={s?.wonDeals ? formatCurrency(s.avgWonDealSize) : '—'}
+        subValue={s?.wonDeals ? `${formatCurrency(s.wonValue)} won` : undefined}
         isLoading={isLoading}
       />
       <SummaryCard
         icon={CalendarClock}
         label="Sales Cycle"
         value={s?.avgSalesCycleDays ? formatDays(s.avgSalesCycleDays) : '—'}
-        subValue="avg to win"
+        subValue={s?.avgSalesCycleDays ? 'avg to win' : undefined}
         isLoading={isLoading}
       />
       <SummaryCard
         icon={Gauge}
         label="Sales Velocity"
-        value={formatCurrency(s?.salesVelocityPerDay ?? 0)}
-        subValue="/ day"
+        value={s?.salesVelocityPerDay ? formatCurrency(s.salesVelocityPerDay) : '—'}
+        subValue={s?.salesVelocityPerDay ? '/ day' : undefined}
         isLoading={isLoading}
       />
     </div>

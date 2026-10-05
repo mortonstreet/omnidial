@@ -27,7 +27,11 @@ import {
 import { Plus, RefreshCw, Users } from 'lucide-react'
 import { Logo3DSpinner } from '@/components/ui/Logo3DSpinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { DealMetricsPanel } from '@/components/deal-metrics/DealMetricsPanel'
+import {
+  DealMetricsPanel,
+  DealRangeSelect,
+  type RangeKey,
+} from '@/components/deal-metrics/DealMetricsPanel'
 import { toast } from 'sonner'
 
 type CrmTab = 'pipeline' | 'metrics'
@@ -58,6 +62,7 @@ function CRMPageContent() {
   }
 
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [metricsRange, setMetricsRange] = useState<RangeKey>('90d')
   const [selectedStageId, setSelectedStageId] = useState<string | undefined>()
   const [selectedClientId, setSelectedClientId] = useState<string | undefined>()
 
@@ -213,13 +218,18 @@ function CRMPageContent() {
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange} className="gap-4">
-        <TabsList>
-          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-          <TabsTrigger value="metrics">Deal Metrics</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+            <TabsTrigger value="metrics">Deal Metrics</TabsTrigger>
+          </TabsList>
+          {tab === 'metrics' && (
+            <DealRangeSelect value={metricsRange} onChange={setMetricsRange} />
+          )}
+        </div>
 
         <TabsContent value="metrics">
-          <DealMetricsPanel clientId={selectedClientId} />
+          <DealMetricsPanel clientId={selectedClientId} range={metricsRange} />
         </TabsContent>
 
         <TabsContent value="pipeline">

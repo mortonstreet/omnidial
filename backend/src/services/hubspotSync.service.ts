@@ -235,6 +235,63 @@ export const autoMapStages = async (
   return { stageMap, unmatched, hubspotStages }
 }
 
+/**
+ * Make HubSpot's stage dropdown match OmniDial: add an option for every
+ * OmniDial stage HubSpot lacks (e.g. "churn"), then re-map. Only for custom
+ * dropdown stage properties; built-in pipeline stages are managed in HubSpot.
+ */
+export const syncStagesToHubSpot = async (organizationId: string) => {
+  const { config: cfg } = await loadContext(organizationId)
+  if (cfg.stageProperty === 'dealstage') {
+    return { added: [] as string[], ...(await autoMapStages(organizationId)) }
+  }
+  const [stages, property] = await Promise.all([
+    pipelineRepository.findByOrganizationId(organizationId),
+    hs.getDealProperty(organizationId, cfg.stageProperty),
+  ])
+  const options = property.options ?? []
+  const missing = stages.filter(
+    (s) =>
+      !options.some(
+        (o) => !o.hidden && normalizeLabel(o.label) === normalizeLabel(s.label),
+      ),
+  )
+  if (missing.length > 0) {
+    const used = new Set(options.map((o) => o.value))
+    const added = missing.map((s, i) => {
+      let value =
+        s.label
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_|_$/g, '') || `stage_${i}`
+      while (used.has(value)) value = `${value}_omnidial`
+      used.add(value)
+      return {
+        label: s.label.trim(),
+        value,
+        displayOrder: options.length + i,
+        hidden: false,
+      }
+    })
+    try {
+      await hs.updateDealPropertyOptions(organizationId, cfg.stageProperty, [
+        ...options,
+        ...added,
+      ])
+    } catch (error) {
+      if (error instanceof hs.HubSpotApiError && error.status === 403) {
+        throw new Error(
+          `HubSpot needs the crm.schemas.deals.write permission to add stages. Grant it (reconnect HubSpot) or add "${missing.map((s) => s.label).join('", "')}" to the ${property.label} property in HubSpot.`,
+        )
+      }
+      throw error
+    }
+  }
+  const result = await autoMapStages(organizationId)
+  return { added: missing.map((s) => s.label), ...result }
+}
+
 /** Set one mapping by OmniDial stage label/id and HubSpot stage label/value. */
 export const setStageMapping = async (
   organizationId: string,
