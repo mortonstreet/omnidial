@@ -14,7 +14,9 @@ import { completeJson } from '@/clients/openrouter.client'
 import { decrypt, encrypt } from '@/lib/encryption'
 import { isTranscriptReadyForAnalysis } from '@/services/salesCoach.service'
 import { mapWithConcurrency } from '@/utils/concurrency'
-import { enqueueCrmSync } from '@/queues/crm-sync.queue'
+import * as dealTouchpointRepository from '@/repositories/dealTouchpoint.repository'
+import { anyAddressOnDomain, companyDomain } from '@/lib/email-domain'
+import { enqueueCallSync, enqueueCrmSync } from '@/queues/crm-sync.queue'
 import * as hubspotApi from '@/clients/crm/hubspotApi'
 import * as hubspotSyncRepository from '@/repositories/hubspotSync.repository'
 import { readSyncConfig } from '@/lib/hubspot-sync-rules'
@@ -35,7 +37,12 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const FIRST_SYNC_LOOKBACK_DAYS = 60
 /** Bounded so one sync request stays well inside the request timeout. */
 const MAX_LEADS_PER_GMAIL_SYNC = 150
-const MAX_THREADS_PER_LEAD = 3
+/** Touch history for the timeline: up to this many threads per lead. */
+const MAX_THREADS_PER_LEAD = 20
+/** AI-score only the most recent threads per open deal (bounded model cost). */
+const MAX_SCORED_THREADS_PER_LEAD = 3
+/** First Gmail sync reaches this far back so long-running deals have history. */
+const GMAIL_HISTORY_DAYS = 365
 const MAX_RECORDINGS_PER_GRAIN_SYNC = 40
 
 export interface SyncResult {
@@ -90,6 +97,8 @@ const saveSignal = async (
   })
   // New next step / scores -> HubSpot deal properties and task.
   await enqueueCrmSync(base.organizationId, base.leadId)
+  // A newly scored call: rewrite its HubSpot call activity with key moments.
+  if (base.source === 'call') await enqueueCallSync(base.sourceId)
   return signal
 }
 
@@ -209,46 +218,135 @@ const syncSince = (lastSyncAt: Date | null) =>
  * Score recent email threads with every open pipeline lead. A thread is only
  * re-scored when a new message has arrived since it was last scored.
  */
+/**
+ * Read-only Gmail lookup per pipeline lead: by email address, or, with no
+ * email, by full name restricted to threads that include someone at the
+ * lead's company domain (no false matches on common names).
+ *
+ * Every message of a matched thread is recorded on the touch timeline (open
+ * and closed deals, a year back) so cycle, reply-time and gap metrics have
+ * receipts. Only the most recent threads of open deals are AI-scored.
+ */
 export const syncGmailSignals = async (
   organizationId: string,
-): Promise<SyncResult & { leadsChecked: number }> => {
+): Promise<SyncResult & { leadsChecked: number; touchesRecorded: number }> => {
   const result = emptyResult()
   const access = await getGmailAccess(organizationId)
-  const since = syncSince(access.lastSyncAt)
+  const since = access.lastSyncAt
+    ? syncSince(access.lastSyncAt)
+    : new Date(Date.now() - GMAIL_HISTORY_DAYS * DAY_MS)
   const leads = (
-    await dealSignalRepository.findPipelineLeadEmails(organizationId)
+    await dealSignalRepository.findPipelineLeadsForEmail(organizationId)
   ).slice(0, MAX_LEADS_PER_GMAIL_SYNC)
+  let touchesRecorded = 0
 
   await mapWithConcurrency(leads, 3, async (lead) => {
+    const label = lead.email ?? [lead.firstName, lead.lastName].join(' ')
     try {
-      const threadIds = await gmailReader.listThreadIdsWithContact(
-        access.gmail,
-        lead.email!,
-        since,
-        MAX_THREADS_PER_LEAD,
-      )
-      for (const threadId of threadIds) {
-        await scoreThread(organizationId, access, lead.id, threadId, result)
+      const domain = companyDomain(lead)
+      const fullName = [lead.firstName, lead.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+      let threadIds: string[]
+      let requireDomain: string | null = null
+      if (lead.email) {
+        threadIds = await gmailReader.listThreadIdsWithContact(
+          access.gmail,
+          lead.email,
+          since,
+          MAX_THREADS_PER_LEAD,
+        )
+      } else if (domain && fullName.includes(' ')) {
+        threadIds = await gmailReader.listThreadIdsByName(
+          access.gmail,
+          fullName,
+          since,
+          MAX_THREADS_PER_LEAD,
+        )
+        requireDomain = domain
+      } else {
+        result.skipped++
+        return
+      }
+
+      // Gmail returns most recent threads first.
+      for (const [index, threadId] of threadIds.entries()) {
+        const outcome = await processThread(
+          organizationId,
+          access,
+          lead.id,
+          threadId,
+          {
+            requireDomain,
+            score: !lead.dealOutcome && index < MAX_SCORED_THREADS_PER_LEAD,
+            result,
+          },
+        )
+        touchesRecorded += outcome.touches
       }
     } catch (error) {
-      recordFailure(result, lead.email!, error)
+      recordFailure(result, label, error)
     }
   })
 
   await integrationRepository.update(organizationId, 'gmail', {
     lastSyncAt: new Date(),
   })
-  return { ...result, leadsChecked: leads.length }
+  return { ...result, leadsChecked: leads.length, touchesRecorded }
+}
+
+const processThread = async (
+  organizationId: string,
+  access: Awaited<ReturnType<typeof getGmailAccess>>,
+  leadId: string,
+  threadId: string,
+  options: { requireDomain: string | null; score: boolean; result: SyncResult },
+): Promise<{ touches: number }> => {
+  const digest = await gmailReader.getThreadDigest(access.gmail, threadId)
+  if (
+    options.requireDomain &&
+    !digest.messages.some((m) =>
+      anyAddressOnDomain(m.addresses, options.requireDomain!),
+    )
+  ) {
+    return { touches: 0 } // name matched, but nobody from their company: someone else
+  }
+
+  const mailbox = access.mailbox?.toLowerCase()
+  await dealTouchpointRepository.upsertMany(
+    digest.messages.map((m) => ({
+      organizationId,
+      leadId,
+      kind: 'email',
+      direction:
+        !mailbox || !m.fromEmail
+          ? null
+          : m.fromEmail === mailbox
+            ? 'outbound'
+            : 'inbound',
+      source: 'gmail',
+      sourceId: m.id,
+      threadId,
+      occurredAt: m.at,
+      durationSeconds: null,
+    })),
+  )
+
+  if (options.score) {
+    await scoreThread(organizationId, access, leadId, digest, options.result)
+  }
+  return { touches: digest.messages.length }
 }
 
 const scoreThread = async (
   organizationId: string,
   access: Awaited<ReturnType<typeof getGmailAccess>>,
   leadId: string,
-  threadId: string,
+  digest: gmailReader.ThreadDigest,
   result: SyncResult,
 ) => {
-  const digest = await gmailReader.getThreadDigest(access.gmail, threadId)
+  const threadId = digest.threadId
   const existing = (
     await dealSignalRepository.findBySource(organizationId, 'email', threadId)
   ).find((signal) => signal.leadId === leadId)
@@ -328,6 +426,31 @@ export const syncGrainSignals = async (
       }
 
       const occurredAt = new Date(recording.start_datetime)
+      const durationSeconds = recording.end_datetime
+        ? Math.max(
+            0,
+            Math.round(
+              (new Date(recording.end_datetime).getTime() -
+                occurredAt.getTime()) /
+                1000,
+            ),
+          )
+        : recording.duration_ms
+          ? Math.round(recording.duration_ms / 1000)
+          : null
+      await dealTouchpointRepository.upsertMany(
+        leads.map((lead) => ({
+          organizationId,
+          leadId: lead.id,
+          kind: 'meeting',
+          direction: null,
+          source: 'grain',
+          sourceId: recording.id,
+          threadId: null,
+          occurredAt,
+          durationSeconds,
+        })),
+      )
       const transcript = await grainClient.getTranscriptText(
         token,
         recording.id,
@@ -375,6 +498,7 @@ const HUBSPOT_EMAIL_PROPS = [
   'hs_email_direction',
   'hs_email_from_email',
   'hs_email_to_email',
+  'hs_email_thread_id',
 ]
 const MAX_EMAILS_PER_DIGEST = 15
 
@@ -401,14 +525,30 @@ export const syncHubSpotEmailSignals = async (
         'emails',
       )
       if (emailIds.length === 0) return
-      const emails = (
-        await hubspotApi.batchRead(
-          organizationId,
-          'emails',
-          emailIds.slice(-200),
-          HUBSPOT_EMAIL_PROPS,
-        )
+      const logged = await hubspotApi.batchRead(
+        organizationId,
+        'emails',
+        emailIds.slice(-200),
+        HUBSPOT_EMAIL_PROPS,
       )
+      // Every logged email is a touch on the timeline, whether or not it gets scored.
+      await dealTouchpointRepository.upsertMany(
+        logged.map((e) => ({
+          organizationId,
+          leadId: record.leadId,
+          kind: 'email',
+          direction:
+            e.properties.hs_email_direction === 'INCOMING_EMAIL'
+              ? 'inbound'
+              : 'outbound',
+          source: 'hubspot_email',
+          sourceId: e.id,
+          threadId: e.properties.hs_email_thread_id ?? null,
+          occurredAt: new Date(e.properties.hs_timestamp ?? 0),
+          durationSeconds: null,
+        })),
+      )
+      const emails = logged
         .map((e) => ({
           p: e.properties,
           at: new Date(e.properties.hs_timestamp ?? 0),

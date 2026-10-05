@@ -81,7 +81,13 @@ export function DealSummaryRow({
         icon={CalendarClock}
         label="Sales Cycle"
         value={s?.avgSalesCycleDays ? formatDays(s.avgSalesCycleDays) : '—'}
-        subValue={s?.avgSalesCycleDays ? 'avg to win' : undefined}
+        subValue={
+          s?.avgSalesCycleDays
+            ? s.salesCycleBasis === 'first_touch'
+              ? 'first touch → win'
+              : 'stage entry → win'
+            : undefined
+        }
         isLoading={isLoading}
       />
       <SummaryCard

@@ -105,6 +105,26 @@ export const findUnscoredTranscribedCalls = async (
     .execute()
 }
 
+/**
+ * Pipeline leads (open and closed) for Gmail lookup: by email, or by name +
+ * company domain when there is no email.
+ */
+export const findPipelineLeadsForEmail = async (organizationId: string) => {
+  return db
+    .selectFrom('lead')
+    .select(['id', 'email', 'firstName', 'lastName', 'website', 'dealOutcome'])
+    .where('organizationId', '=', organizationId)
+    .where('deletedAt', 'is', null)
+    .where((eb) =>
+      eb.or([
+        eb('pipelineStageId', 'is not', null),
+        eb('dealOutcome', 'is not', null),
+      ]),
+    )
+    .orderBy('updatedAt', 'desc')
+    .execute()
+}
+
 /** Pipeline leads with an email address, for Gmail thread matching. */
 export const findPipelineLeadEmails = async (organizationId: string) => {
   return db
@@ -160,3 +180,41 @@ export const findCallForSignal = async (
     .where('twilio_config.organizationId', '=', organizationId)
     .executeTakeFirst()
 }
+
+/**
+ * Meetings not yet in HubSpot, and email-thread signals whose HubSpot note is
+ * missing or older than the signal (thread grew / re-scored).
+ */
+export const findSignalsNeedingCrmActivity = (
+  organizationId: string,
+  leadId: string,
+  since: Date | null,
+) =>
+  db
+    .selectFrom('deal_signal')
+    .selectAll()
+    .where('organizationId', '=', organizationId)
+    .where('leadId', '=', leadId)
+    .where((eb) =>
+      eb.or([
+        eb.and([eb('source', '=', 'meeting'), eb('crmActivityId', 'is', null)]),
+        eb.and([
+          eb('source', '=', 'email'),
+          // HubSpot-logged emails are already in HubSpot: no note for them.
+          eb('sourceId', 'not like', 'hubspot-contact:%'),
+          eb.or([
+            eb('crmActivityId', 'is', null),
+            ...(since ? [eb('updatedAt', '>', since)] : []),
+          ]),
+        ]),
+      ]),
+    )
+    .orderBy('occurredAt', 'asc')
+    .execute()
+
+export const setCrmActivityId = (id: string, crmActivityId: string) =>
+  db
+    .updateTable('deal_signal')
+    .set({ crmActivityId })
+    .where('id', '=', id)
+    .execute()

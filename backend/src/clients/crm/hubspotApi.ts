@@ -92,7 +92,14 @@ export interface HubSpotObject {
   archived?: boolean
 }
 
-type ObjectType = 'contacts' | 'deals' | 'calls' | 'tasks' | 'emails'
+type ObjectType =
+  | 'contacts'
+  | 'deals'
+  | 'calls'
+  | 'tasks'
+  | 'emails'
+  | 'meetings'
+  | 'notes'
 
 export const getObject = (
   organizationId: string,
@@ -185,6 +192,10 @@ export const ASSOCIATION = {
   callToDeal: 206,
   taskToContact: 204,
   taskToDeal: 216,
+  meetingToContact: 200,
+  meetingToDeal: 212,
+  noteToContact: 202,
+  noteToDeal: 214,
 } as const
 
 export const listAssociatedIds = async (

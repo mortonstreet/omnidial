@@ -466,6 +466,7 @@ model Lead {
   dncEntries       DncEntry[]
   stageHistory     LeadStageHistory[]
   dealSignals      DealSignal[]
+  touchpoints      DealTouchpoint[]
 
   // Agent orchestration v2
   agentExecutions AgentExecution[]
@@ -595,6 +596,8 @@ model DealSignal {
   sentiment       String? // "positive" | "neutral" | "negative"
   evidence        Json      @default("{}") // Quotes backing each score + risk flags
   modelUsed       String?
+  // HubSpot activity this touchpoint was written as (meeting / thread note)
+  crmActivityId   String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
 
@@ -604,6 +607,30 @@ model DealSignal {
   @@index([organizationId, occurredAt])
   @@index([leadId, occurredAt])
   @@map("deal_signal")
+}
+
+/// One customer touch outside OmniDial's own calls: an email message or a
+/// recorded meeting. Calls are read straight from `call`; together they form
+/// the touch timeline behind real sales-cycle, reply-time and gap metrics.
+model DealTouchpoint {
+  id              String   @id @default(uuid())
+  organizationId  String
+  leadId          String
+  kind            String // "email" | "meeting"
+  direction       String? // "outbound" (from us) | "inbound" (from buyer)
+  source          String // "gmail" | "hubspot_email" | "grain"
+  sourceId        String // message id / recording id
+  threadId        String?
+  occurredAt      DateTime
+  durationSeconds Int?
+  createdAt       DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, source, sourceId, leadId])
+  @@index([organizationId, occurredAt])
+  @@index([leadId, occurredAt])
+  @@map("deal_touchpoint")
 }
 
 model PipelineStage {

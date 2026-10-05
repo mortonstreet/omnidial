@@ -24,6 +24,7 @@ import { NextStepsSection } from './NextStepsSection'
 import { ChampionsSection } from './ChampionsSection'
 import { WinLossSection } from './WinLossSection'
 import { ActivitySection } from './ActivitySection'
+import { SalesProcessSection } from './SalesProcessSection'
 
 export type RangeKey = '30d' | '90d' | 'qtd' | '12m'
 
@@ -107,6 +108,7 @@ export function DealMetricsPanel({
       <DealSummaryRow summary={metrics?.summary} isLoading={isLoading} />
 
       <div className="grid gap-4 xl:grid-cols-2">
+        <SalesProcessSection process={metrics?.salesProcess} isLoading={isLoading} />
         <VelocitySection velocity={metrics?.velocity} isLoading={isLoading} />
         <ConversionSection
           conversion={metrics?.conversion}

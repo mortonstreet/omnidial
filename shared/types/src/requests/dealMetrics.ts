@@ -170,7 +170,24 @@ export interface DealMetricsResponse {
     wonValue: number;
     avgWonDealSize: number;
     avgSalesCycleDays: number;
+    /** first_touch = from the real touch timeline; stage = from pipeline moves. */
+    salesCycleBasis: 'first_touch' | 'stage';
     salesVelocityPerDay: number;
+  };
+  salesProcess: {
+    wonWithTouches: number;
+    avgFirstTouchToCloseDays: number | null;
+    medianFirstTouchToCloseDays: number | null;
+    avgTouchesToWin: number | null;
+    touchesToWinByKind: { call: number | null; email: number | null; meeting: number | null };
+    avgTalkMinutesToWin: number | null;
+    medianDaysToFirstMeeting: number | null;
+    medianBuyerReplyHours: number | null;
+    medianRepReplyHours: number | null;
+    typicalGapDays: number | null;
+    quietDeals: Array<DealListItem & { daysSilent: number; lastTouchAt: string; touches: number }>;
+    /** Touches recorded in the period, by kind. */
+    touchesInPeriod: { call: number; email: number; meeting: number };
   };
   velocity: StageVelocity[];
   conversion: StageConversionItem[];

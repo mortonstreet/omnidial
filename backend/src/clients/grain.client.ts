@@ -17,6 +17,9 @@ export interface GrainRecording {
   id: string
   title: string
   start_datetime: string
+  /** Present on most recordings; used for meeting length on the timeline. */
+  end_datetime?: string
+  duration_ms?: number
   url: string
   participants?: GrainParticipant[]
 }

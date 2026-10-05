@@ -717,8 +717,22 @@ export type DealSignal = {
   sentiment: string | null
   evidence: Generated<unknown>
   modelUsed: string | null
+  crmActivityId: string | null
   createdAt: Generated<Timestamp>
   updatedAt: Generated<Timestamp>
+}
+export type DealTouchpoint = {
+  id: string
+  organizationId: string
+  leadId: string
+  kind: string
+  direction: string | null
+  source: string
+  sourceId: string
+  threadId: string | null
+  occurredAt: Timestamp
+  durationSeconds: number | null
+  createdAt: Generated<Timestamp>
 }
 export type Disposition = {
   id: string
@@ -1655,6 +1669,7 @@ export type DB = {
   custom_field_schema: CustomFieldSchema
   data_vendor_connection: DataVendorConnection
   deal_signal: DealSignal
+  deal_touchpoint: DealTouchpoint
   disposition: Disposition
   dnc_entry: DncEntry
   enrichengine_connection: EnrichEngineConnection
