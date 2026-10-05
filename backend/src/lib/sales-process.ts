@@ -32,7 +32,10 @@ export interface LeadTimeline {
   buyerReplyHours: number[]
   /** Hours we took to answer the buyer. */
   repReplyHours: number[]
-  /** Days between consecutive touches of any kind. */
+  /**
+   * Days between consecutive touch *days*. Several dial attempts on one day
+   * are one touch day, so retries don't make the rhythm look tighter than it is.
+   */
   gapsDays: number[]
 }
 
@@ -93,12 +96,12 @@ export const buildTimeline = (touches: Touch[]): LeadTimeline | null => {
       firstMeetingAt ??= t.at
     }
   }
+  const touchDays = [
+    ...new Set(sorted.map((t) => Math.floor(t.at.getTime() / DAY_MS))),
+  ]
   const gapsDays: number[] = []
-  for (let i = 1; i < sorted.length; i++) {
-    gapsDays.push(
-      (sorted[i].at.getTime() - sorted[i - 1].at.getTime()) / DAY_MS,
-    )
-  }
+  for (let i = 1; i < touchDays.length; i++)
+    gapsDays.push(touchDays[i] - touchDays[i - 1])
   const replies = replyTimes(sorted.filter((t) => t.kind === 'email'))
   return {
     firstTouchAt: sorted[0].at,
