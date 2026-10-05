@@ -76,6 +76,15 @@ test('deal properties use the mapped stage and only add OmniDial fields when set
   assert.equal(custom.omnidial_first_quote, '15000')
 })
 
+test('phone falls back to the stored number when normalizedPhone is missing', () => {
+  const props = buildContactProperties({
+    ...lead,
+    phone: '+14083842702',
+    normalizedPhone: null,
+  })
+  assert.equal(props.phone, '+14083842702')
+})
+
 test('hash ignores key order', () => {
   assert.equal(
     hashProperties({ a: 1, b: { c: 2, d: 3 } }),
@@ -83,17 +92,54 @@ test('hash ignores key order', () => {
   )
 })
 
-test('newest edit wins; untracked local edits lose to a timestamped remote edit', () => {
+test('tracked local edits: newest wins', () => {
   assert.equal(
-    resolveConflict('2026-10-02T00:00:00Z', '2026-10-01T00:00:00Z'),
+    resolveConflict(
+      { editedAt: '2026-10-02T00:00:00Z', isEmpty: false },
+      { editedAt: '2026-10-01T00:00:00Z' },
+    ),
     'local',
   )
   assert.equal(
-    resolveConflict('2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z'),
+    resolveConflict(
+      { editedAt: '2026-10-01T00:00:00Z', isEmpty: false },
+      { editedAt: '2026-10-02T00:00:00Z' },
+    ),
     'remote',
   )
-  assert.equal(resolveConflict(undefined, '2026-10-02T00:00:00Z'), 'remote')
-  assert.equal(resolveConflict('2026-10-02T00:00:00Z', undefined), 'local')
+  assert.equal(
+    resolveConflict({ editedAt: '2026-10-01T00:00:00Z', isEmpty: false }, {}),
+    'local',
+  )
+})
+
+test('untracked local edits: HubSpot history decides', () => {
+  // HubSpot value was our own old push -> OmniDial's current value is later
+  assert.equal(
+    resolveConflict(
+      { isEmpty: false },
+      { editedAt: '2026-08-14T00:00:00Z', fromOmniDial: true },
+    ),
+    'local',
+  )
+  // A person changed it in HubSpot -> HubSpot wins
+  assert.equal(
+    resolveConflict(
+      { isEmpty: false },
+      { editedAt: '2026-08-24T00:00:00Z', fromOmniDial: false },
+    ),
+    'remote',
+  )
+  // OmniDial blank -> HubSpot fills it, whoever wrote it
+  assert.equal(
+    resolveConflict(
+      { isEmpty: true },
+      { editedAt: '2026-08-24T00:00:00Z', fromOmniDial: true },
+    ),
+    'remote',
+  )
+  // No history at all -> keep OmniDial's value
+  assert.equal(resolveConflict({ isEmpty: false }, {}), 'local')
 })
 
 test('stage map reverses and values compare without format noise', () => {

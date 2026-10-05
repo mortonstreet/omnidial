@@ -8,6 +8,7 @@ import {
   cleanText,
   normalizeEmail,
   normalizeLinkedInUrl,
+  normalizePhoneValue,
 } from '@/lib/lead-hygiene'
 import { dealTrackingProperties } from '@/lib/hubspot-deal-properties'
 import {
@@ -209,12 +210,21 @@ export const buildContactProperties = (
   set('firstname', cleanText(lead.firstName))
   set('lastname', cleanText(lead.lastName))
   set('email', normalizeEmail(lead.email))
-  set('phone', lead.normalizedPhone)
+  set('phone', leadPhoneE164(lead))
   set('company', cleanText(lead.company))
   set('jobtitle', cleanText(lead.title))
   set('hs_linkedin_url', normalizeLinkedInUrl(lead.linkedInUrl))
   return props
 }
+
+/**
+ * E.164 phone for a lead. normalizedPhone is missing on some older leads even
+ * when `phone` is valid, so fall back to normalizing the stored number.
+ */
+export const leadPhoneE164 = (
+  lead: Pick<LeadForSync, 'phone' | 'normalizedPhone'>,
+): string | null =>
+  lead.normalizedPhone || normalizePhoneValue(lead.phone)?.e164 || null
 
 export const dealName = (lead: LeadForSync): string => {
   const person = [cleanText(lead.firstName), cleanText(lead.lastName)]
@@ -226,7 +236,7 @@ export const dealName = (lead: LeadForSync): string => {
     company ||
     person ||
     normalizeEmail(lead.email) ||
-    lead.normalizedPhone ||
+    leadPhoneE164(lead) ||
     'OmniDial Lead'
   )
 }
@@ -308,19 +318,38 @@ export const hashProperties = (value: unknown): string => {
 
 export type ConflictWinner = 'local' | 'remote'
 
+export interface LocalSide {
+  /** When OmniDial last edited the field; absent for edits made before tracking. */
+  editedAt?: string | Date | null
+  isEmpty: boolean
+}
+
+export interface RemoteSide {
+  editedAt?: string | Date | null
+  /** The HubSpot value was written by OmniDial's own app (an earlier push). */
+  fromOmniDial?: boolean
+}
+
 /**
- * Newest edit wins. A local field with no recorded edit time predates
- * tracking, so the remote edit (which has a real timestamp) wins.
+ * Newest edit wins when OmniDial has a recorded edit time. For fields edited
+ * before tracking existed, HubSpot's history decides instead:
+ * - OmniDial blank -> HubSpot fills it
+ * - HubSpot value came from OmniDial's own earlier push -> OmniDial's current
+ *   value is the later one, OmniDial wins
+ * - a person or another tool changed it in HubSpot -> HubSpot wins
  */
 export const resolveConflict = (
-  localEditedAt: string | Date | null | undefined,
-  remoteEditedAt: string | Date | null | undefined,
+  local: LocalSide,
+  remote: RemoteSide,
 ): ConflictWinner => {
-  const remote = remoteEditedAt ? new Date(remoteEditedAt).getTime() : NaN
-  const local = localEditedAt ? new Date(localEditedAt).getTime() : NaN
-  if (Number.isNaN(remote)) return 'local'
-  if (Number.isNaN(local)) return 'remote'
-  return local >= remote ? 'local' : 'remote'
+  const localAt = local.editedAt ? new Date(local.editedAt).getTime() : NaN
+  const remoteAt = remote.editedAt ? new Date(remote.editedAt).getTime() : NaN
+  if (!Number.isNaN(localAt)) {
+    return Number.isNaN(remoteAt) || localAt >= remoteAt ? 'local' : 'remote'
+  }
+  if (local.isEmpty) return 'remote'
+  if (Number.isNaN(remoteAt)) return 'local'
+  return remote.fromOmniDial ? 'local' : 'remote'
 }
 
 /** HubSpot stage value -> OmniDial stage id via the configured map. */
